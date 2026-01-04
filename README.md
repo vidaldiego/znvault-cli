@@ -276,6 +276,87 @@ WantedBy=multi-user.target
 
 See [Agent Guide](../docs/AGENT_GUIDE.md) for complete documentation.
 
+## Interactive TUI Dashboard
+
+The CLI includes an interactive terminal dashboard for real-time monitoring.
+
+```bash
+# Launch interactive dashboard
+znvault tui
+
+# Or use the alias
+znvault dashboard
+
+# With custom refresh rate (in milliseconds)
+znvault tui --refresh 10000
+
+# Start on a specific screen
+znvault tui --screen secrets
+```
+
+### Dashboard Features
+
+- **Live Health Status**: Real-time cluster and node health
+- **Security Overview**: Lockdown status and threat level
+- **Keyboard Navigation**: Use number keys (1-4) to switch screens
+- **Auto-Refresh**: Configurable polling interval
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `1-4` | Switch screens |
+| `r` | Refresh data |
+| `?` | Show help |
+| `q` | Quit |
+
+## Auto-Update
+
+The CLI automatically checks for updates (once per 24 hours) and displays a notification if a new version is available.
+
+```bash
+# Check for updates manually
+znvault self-update --check
+
+# Update to latest version
+znvault self-update
+
+# Skip confirmation
+znvault self-update --yes
+
+# Show version with update check
+znvault version
+```
+
+## Output Modes
+
+The CLI supports two output modes:
+
+| Mode | Description | When |
+|------|-------------|------|
+| **TUI** | Rich colored output with boxes and tables | Interactive terminals |
+| **Plain** | Simple text output for parsing | CI/CD, piped commands |
+
+### Automatic Detection
+
+Plain mode is automatically enabled when:
+- Running in CI environments (GitHub Actions, GitLab CI, etc.)
+- Output is piped to another command
+- stdin is not a TTY
+
+### Manual Override
+
+```bash
+# Force plain text output
+znvault --plain health
+
+# Via environment variable
+ZNVAULT_PLAIN_OUTPUT=true znvault health
+
+# Disable update checks in CI
+ZNVAULT_NO_UPDATE_CHECK=true znvault health
+```
+
 ## Environment Variables
 
 | Variable | Description |
@@ -285,6 +366,9 @@ See [Agent Guide](../docs/AGENT_GUIDE.md) for complete documentation.
 | `ZNVAULT_PASSWORD` | Password for login |
 | `ZNVAULT_API_KEY` | API key for authentication |
 | `ZNVAULT_INSECURE` | Skip TLS verification |
+| `ZNVAULT_PROFILE` | Override active profile |
+| `ZNVAULT_PLAIN_OUTPUT` | Force plain text output |
+| `ZNVAULT_NO_UPDATE_CHECK` | Disable auto-update checks |
 
 ## Documentation
 

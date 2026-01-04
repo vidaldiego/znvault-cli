@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -81,6 +81,74 @@ interface SyncState {
   lastUpdate: string;
 }
 
+// Command options interfaces
+interface InitOptions {
+  config?: string;
+}
+
+interface AddOptions {
+  name?: string;
+  combined?: string;
+  cert?: string;
+  key?: string;
+  chain?: string;
+  fullchain?: string;
+  owner?: string;
+  mode?: string;
+  reload?: string;
+  healthCheck?: string;
+  config?: string;
+}
+
+interface RemoveOptions {
+  config?: string;
+}
+
+interface ListOptions {
+  config?: string;
+  json?: boolean;
+}
+
+interface SyncOptions {
+  config?: string;
+  state: string;
+  force?: boolean;
+}
+
+interface StartOptions {
+  config?: string;
+  verbose?: boolean;
+  healthPort?: string;
+  foreground?: boolean;
+}
+
+interface StatusOptions {
+  config?: string;
+  state: string;
+  json?: boolean;
+}
+
+interface RemoteListOptions {
+  status?: string;
+  tenant?: string;
+  json?: boolean;
+}
+
+interface ConnectionsOptions {
+  tenant?: string;
+  json?: boolean;
+}
+
+interface AlertsOptions {
+  enable?: boolean;
+  disable?: boolean;
+  threshold?: string;
+}
+
+interface DeleteOptions {
+  yes?: boolean;
+}
+
 // Config locations - match standalone agent
 const SYSTEM_CONFIG_DIR = '/etc/zn-vault-agent';
 const SYSTEM_CONFIG_FILE = path.join(SYSTEM_CONFIG_DIR, 'config.json');
@@ -128,14 +196,14 @@ function getConfigPath(): string {
  * Load agent configuration
  */
 function loadConfig(configPath?: string): AgentConfig | null {
-  const filePath = configPath || getConfigPath();
+  const filePath = configPath ?? getConfigPath();
 
   if (!fs.existsSync(filePath)) {
     return null;
   }
 
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as AgentConfig;
   } catch {
     return null;
   }
@@ -144,34 +212,34 @@ function loadConfig(configPath?: string): AgentConfig | null {
 /**
  * Save agent configuration
  */
-function saveConfig(config: AgentConfig, configPath?: string): void {
-  const filePath = configPath || getConfigPath();
+function saveConfig(agentConfig: AgentConfig, configPath?: string): void {
+  const filePath = configPath ?? getConfigPath();
   const dir = path.dirname(filePath);
 
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
-  fs.writeFileSync(filePath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  fs.writeFileSync(filePath, JSON.stringify(agentConfig, null, 2), { mode: 0o600 });
 }
 
 /**
  * Create default config with current CLI credentials
  */
-async function createDefaultConfig(): Promise<AgentConfig> {
+function createDefaultConfig(): AgentConfig {
   const cliConfig = config.getConfig();
   const credentials = config.getCredentials();
   const envCredentials = config.getEnvCredentials();
   const apiKey = config.getApiKey();
 
   // Get tenant from: env > stored credentials > default tenant
-  const tenantId = process.env.ZNVAULT_TENANT_ID ||
-    credentials?.tenantId ||
-    cliConfig.defaultTenant ||
+  const tenantId = process.env.ZNVAULT_TENANT_ID ??
+    credentials?.tenantId ??
+    cliConfig.defaultTenant ??
     '';
 
   return {
-    vaultUrl: cliConfig.url || '',
+    vaultUrl: cliConfig.url,
     tenantId,
     auth: {
       apiKey: apiKey,
@@ -221,8 +289,8 @@ export function registerAgentCommands(program: Command): void {
     .command('init')
     .description('Initialize agent configuration')
     .option('-c, --config <path>', 'Config file path')
-    .action(async (options) => {
-      const configPath = options.config || getConfigPath();
+    .action((options: InitOptions) => {
+      const configPath = options.config ?? getConfigPath();
 
       if (fs.existsSync(configPath)) {
         output.error(`Config already exists at ${configPath}`);
@@ -230,8 +298,8 @@ export function registerAgentCommands(program: Command): void {
         process.exit(1);
       }
 
-      const config = await createDefaultConfig();
-      saveConfig(config, configPath);
+      const agentConfig = createDefaultConfig();
+      saveConfig(agentConfig, configPath);
 
       console.log(`Agent configuration initialized at ${configPath}`);
       console.log();
@@ -258,7 +326,7 @@ export function registerAgentCommands(program: Command): void {
     .option('--reload <command>', 'Command to run after cert update')
     .option('--health-check <command>', 'Health check command (must return 0)')
     .option('-c, --config <path>', 'Config file path')
-    .action(async (certId, options) => {
+    .action(async (certId: string, options: AddOptions) => {
       const spinner = ora('Validating certificate...').start();
 
       try {
@@ -267,16 +335,16 @@ export function registerAgentCommands(program: Command): void {
         spinner.stop();
 
         // Load or create config
-        const configPath = options.config || getConfigPath();
-        let config = loadConfig(configPath);
+        const configPath = options.config ?? getConfigPath();
+        let agentConfig = loadConfig(configPath);
 
-        if (!config) {
+        if (!agentConfig) {
           output.info('No config found, creating with current CLI credentials...');
-          config = await createDefaultConfig();
+          agentConfig = createDefaultConfig();
         }
 
         // Check if already added
-        if (config.targets.some(t => t.certId === certId)) {
+        if (agentConfig.targets.some(t => t.certId === certId)) {
           output.error(`Certificate ${certId} is already configured`);
           process.exit(1);
         }
@@ -289,7 +357,7 @@ export function registerAgentCommands(program: Command): void {
 
         const target: CertTarget = {
           certId,
-          name: options.name || cert.alias,
+          name: options.name ?? cert.alias,
           outputs: {},
           mode: options.mode,
         };
@@ -303,8 +371,8 @@ export function registerAgentCommands(program: Command): void {
         if (options.reload) target.reloadCmd = options.reload;
         if (options.healthCheck) target.healthCheckCmd = options.healthCheck;
 
-        config.targets.push(target);
-        saveConfig(config, configPath);
+        agentConfig.targets.push(target);
+        saveConfig(agentConfig, configPath);
 
         console.log(`Added certificate: ${target.name} (${certId})`);
         if (target.outputs.combined) console.log(`  Combined: ${target.outputs.combined}`);
@@ -327,16 +395,16 @@ export function registerAgentCommands(program: Command): void {
     .command('remove <cert-id-or-name>')
     .description('Remove a certificate from sync')
     .option('-c, --config <path>', 'Config file path')
-    .action(async (certIdOrName, options) => {
-      const configPath = options.config || getConfigPath();
-      const config = loadConfig(configPath);
+    .action((certIdOrName: string, options: RemoveOptions) => {
+      const configPath = options.config ?? getConfigPath();
+      const agentConfig = loadConfig(configPath);
 
-      if (!config) {
+      if (!agentConfig) {
         output.error(`Config not found. Run 'znvault agent init' first.`);
         process.exit(1);
       }
 
-      const idx = config.targets.findIndex(t =>
+      const idx = agentConfig.targets.findIndex(t =>
         t.certId === certIdOrName || t.name === certIdOrName
       );
 
@@ -345,8 +413,8 @@ export function registerAgentCommands(program: Command): void {
         process.exit(1);
       }
 
-      const removed = config.targets.splice(idx, 1)[0];
-      saveConfig(config, configPath);
+      const removed = agentConfig.targets.splice(idx, 1)[0];
+      saveConfig(agentConfig, configPath);
       console.log(`Removed certificate: ${removed.name} (${removed.certId})`);
     });
 
@@ -356,34 +424,34 @@ export function registerAgentCommands(program: Command): void {
     .description('List configured certificates')
     .option('-c, --config <path>', 'Config file path')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
-      const configPath = options.config || getConfigPath();
-      const config = loadConfig(configPath);
+    .action((options: ListOptions) => {
+      const configPath = options.config ?? getConfigPath();
+      const agentConfig = loadConfig(configPath);
 
-      if (!config) {
+      if (!agentConfig) {
         output.error(`Config not found. Run 'znvault agent init' first.`);
         process.exit(1);
       }
 
       if (options.json) {
-        output.json(config);
+        output.json(agentConfig);
         return;
       }
 
       console.log(`Config: ${configPath}`);
-      console.log(`Vault: ${config.vaultUrl}`);
-      console.log(`Tenant: ${config.tenantId}`);
-      console.log(`Certificates: ${config.targets.length}`);
+      console.log(`Vault: ${agentConfig.vaultUrl}`);
+      console.log(`Tenant: ${agentConfig.tenantId}`);
+      console.log(`Certificates: ${agentConfig.targets.length}`);
       console.log();
 
-      if (config.targets.length === 0) {
+      if (agentConfig.targets.length === 0) {
         console.log('No certificates configured. Use "znvault agent add <cert-id>" to add one.');
         return;
       }
 
       output.table(
         ['Name', 'Cert ID', 'Outputs', 'Reload'],
-        config.targets.map(t => [
+        agentConfig.targets.map(t => [
           t.name,
           t.certId.substring(0, 8) + '...',
           Object.entries(t.outputs).filter(([, v]) => v).map(([k]) => k).join(', '),
@@ -399,20 +467,20 @@ export function registerAgentCommands(program: Command): void {
     .option('-c, --config <path>', 'Config file path')
     .option('-s, --state <path>', 'State file path', DEFAULT_STATE_FILE)
     .option('--force', 'Force sync even if unchanged')
-    .action(async (options) => {
+    .action(async (options: SyncOptions) => {
       const spinner = ora('Syncing certificates...').start();
 
       try {
-        const configPath = options.config || getConfigPath();
-        const config = loadConfig(configPath);
+        const configPath = options.config ?? getConfigPath();
+        const agentConfig = loadConfig(configPath);
 
-        if (!config) {
+        if (!agentConfig) {
           spinner.fail('Config not found');
           output.error(`Run 'znvault agent init' first.`);
           process.exit(1);
         }
 
-        if (config.targets.length === 0) {
+        if (agentConfig.targets.length === 0) {
           spinner.fail('No certificates configured');
           output.error('Use "znvault agent add <cert-id>" to add certificates.');
           process.exit(1);
@@ -421,14 +489,14 @@ export function registerAgentCommands(program: Command): void {
         // Load or create state
         let state: SyncState = { certificates: {}, lastUpdate: new Date().toISOString() };
         if (fs.existsSync(options.state)) {
-          state = JSON.parse(fs.readFileSync(options.state, 'utf-8'));
+          state = JSON.parse(fs.readFileSync(options.state, 'utf-8')) as SyncState;
         }
 
         let synced = 0;
         let skipped = 0;
         let failed = 0;
 
-        for (const target of config.targets) {
+        for (const target of agentConfig.targets) {
           try {
             // Get certificate with decrypted data
             const cert = await mode.apiPost<DecryptedCertificate>(
@@ -436,10 +504,10 @@ export function registerAgentCommands(program: Command): void {
               { purpose: 'agent-sync' }
             );
 
-            // Check if changed (use fingerprintSha256 as fingerprint may be null)
-            const certFingerprint = cert.fingerprintSha256 || cert.fingerprint;
+            // Check if changed
+            const certFingerprint = cert.fingerprintSha256;
             const existingState = state.certificates[target.certId];
-            if (!options.force && existingState && existingState.fingerprint === certFingerprint) {
+            if (!options.force && existingState.fingerprint === certFingerprint) {
               skipped++;
               continue;
             }
@@ -449,7 +517,7 @@ export function registerAgentCommands(program: Command): void {
             const keyData = cert.privateKeyData ? Buffer.from(cert.privateKeyData, 'base64').toString('utf-8') : null;
             const chainData = cert.chainData ? Buffer.from(cert.chainData, 'base64').toString('utf-8') : null;
 
-            const fileMode = parseInt(target.mode || '0640', 8);
+            const fileMode = parseInt(target.mode ?? '0640', 8);
 
             // Write certificate file
             if (target.outputs.cert) {
@@ -491,7 +559,7 @@ export function registerAgentCommands(program: Command): void {
               id: target.certId,
               alias: cert.alias,
               lastSync: new Date().toISOString(),
-              version: cert.version || 1,
+              version: cert.version,
               fingerprint: certFingerprint,
             };
 
@@ -526,8 +594,8 @@ export function registerAgentCommands(program: Command): void {
     .option('-v, --verbose', 'Enable verbose logging')
     .option('--health-port <port>', 'Enable health/metrics HTTP server')
     .option('--foreground', 'Run in foreground')
-    .action(async (options) => {
-      const configPath = options.config || getConfigPath();
+    .action((options: StartOptions) => {
+      const configPath = options.config ?? getConfigPath();
 
       if (!fs.existsSync(configPath)) {
         output.error(`Config not found at ${configPath}`);
@@ -592,13 +660,13 @@ export function registerAgentCommands(program: Command): void {
 
       if (!options.foreground) {
         child.unref();
-        console.log(`Agent started with PID ${child.pid}`);
+        console.log(`Agent started with PID ${String(child.pid)}`);
         process.exit(0);
       }
 
       // In foreground mode, wait for the process
       child.on('exit', (code) => {
-        process.exit(code || 0);
+        process.exit(code ?? 0);
       });
     });
 
@@ -609,48 +677,48 @@ export function registerAgentCommands(program: Command): void {
     .option('-c, --config <path>', 'Config file path')
     .option('-s, --state <path>', 'State file path', DEFAULT_STATE_FILE)
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
-      const configPath = options.config || getConfigPath();
-      const config = loadConfig(configPath);
+    .action((options: StatusOptions) => {
+      const configPath = options.config ?? getConfigPath();
+      const agentConfig = loadConfig(configPath);
 
-      if (!config) {
+      if (!agentConfig) {
         output.error(`Config not found. Run 'znvault agent init' first.`);
         process.exit(1);
       }
 
       let state: SyncState = { certificates: {}, lastUpdate: 'never' };
       if (fs.existsSync(options.state)) {
-        state = JSON.parse(fs.readFileSync(options.state, 'utf-8'));
+        state = JSON.parse(fs.readFileSync(options.state, 'utf-8')) as SyncState;
       }
 
       if (options.json) {
-        output.json({ config, state });
+        output.json({ config: agentConfig, state });
         return;
       }
 
       console.log('Agent Configuration:');
       console.log(`  Config file: ${configPath}`);
-      console.log(`  Vault URL: ${config.vaultUrl}`);
-      console.log(`  Tenant: ${config.tenantId}`);
-      console.log(`  Certificates: ${config.targets.length}`);
+      console.log(`  Vault URL: ${agentConfig.vaultUrl}`);
+      console.log(`  Tenant: ${agentConfig.tenantId}`);
+      console.log(`  Certificates: ${agentConfig.targets.length}`);
       console.log(`  Last sync: ${state.lastUpdate}`);
       console.log();
 
-      if (config.targets.length === 0) {
+      if (agentConfig.targets.length === 0) {
         console.log('No certificates configured.');
         return;
       }
 
       output.table(
         ['Name', 'Cert ID', 'Last Sync', 'Version', 'Fingerprint'],
-        config.targets.map(t => {
+        agentConfig.targets.map(t => {
           const s = state.certificates[t.certId];
           return [
             t.name,
             t.certId.substring(0, 8) + '...',
-            s ? new Date(s.lastSync).toLocaleString() : 'never',
-            s ? String(s.version) : '-',
-            s?.fingerprint ? s.fingerprint.substring(0, 16) + '...' : '-',
+            new Date(s.lastSync).toLocaleString(),
+            String(s.version),
+            s.fingerprint.substring(0, 16) + '...',
           ];
         })
       );
@@ -669,7 +737,7 @@ export function registerAgentCommands(program: Command): void {
     .option('--status <status>', 'Filter by status (online, offline)')
     .option('--tenant <tenantId>', 'Filter by tenant (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: RemoteListOptions) => {
       const spinner = ora('Fetching agents...').start();
 
       try {
@@ -705,8 +773,8 @@ export function registerAgentCommands(program: Command): void {
             a.hostname,
             a.status === 'online' ? '● online' : '○ offline',
             formatRelativeTime(a.lastSeen),
-            a.version || '-',
-            a.platform || '-',
+            a.version ?? '-',
+            a.platform ?? '-',
             a.alertOnDisconnect ? 'enabled' : 'disabled',
           ])
         );
@@ -725,7 +793,7 @@ export function registerAgentCommands(program: Command): void {
     .description('Show active WebSocket connections')
     .option('--tenant <tenantId>', 'Filter by tenant (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ConnectionsOptions) => {
       const spinner = ora('Fetching connections...').start();
 
       try {
@@ -776,7 +844,7 @@ export function registerAgentCommands(program: Command): void {
     .option('--enable', 'Enable disconnect alerts')
     .option('--disable', 'Disable disconnect alerts')
     .option('--threshold <seconds>', 'Set disconnect threshold in seconds', '600')
-    .action(async (agentId, options) => {
+    .action(async (agentId: string, options: AlertsOptions) => {
       if (!options.enable && !options.disable) {
         output.error('Specify --enable or --disable');
         process.exit(1);
@@ -791,15 +859,15 @@ export function registerAgentCommands(program: Command): void {
         if (options.disable) payload.alertOnDisconnect = false;
         if (options.threshold) payload.disconnectThresholdSeconds = parseInt(options.threshold, 10);
 
-        const agent = await mode.apiPatch<RemoteAgent>(
+        const remoteAgent = await mode.apiPatch<RemoteAgent>(
           `/v1/agents/${encodeURIComponent(agentId)}/alerts`,
           payload
         );
 
-        spinner.succeed(`Alerts ${agent.alertOnDisconnect ? 'enabled' : 'disabled'} for ${agent.hostname}`);
+        spinner.succeed(`Alerts ${remoteAgent.alertOnDisconnect ? 'enabled' : 'disabled'} for ${remoteAgent.hostname}`);
 
-        if (agent.alertOnDisconnect) {
-          console.log(`  Threshold: ${agent.disconnectThresholdSeconds} seconds`);
+        if (remoteAgent.alertOnDisconnect) {
+          console.log(`  Threshold: ${remoteAgent.disconnectThresholdSeconds} seconds`);
         }
       } catch (err) {
         spinner.fail('Failed to update alerts');
@@ -815,7 +883,7 @@ export function registerAgentCommands(program: Command): void {
     .command('delete <agent-id>')
     .description('Remove an agent from the vault')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (agentId, options) => {
+    .action(async (agentId: string, options: DeleteOptions) => {
       if (!options.yes) {
         const readline = await import('readline');
         const rl = readline.createInterface({ input: process.stdin, output: process.stdout });

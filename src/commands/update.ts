@@ -7,7 +7,7 @@
  * automatic updates for the znvault agent.
  */
 
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 import * as output from '../lib/output.js';
 import { createUpdateChecker } from '../services/update-checker.js';
 import { createUpdateInstaller } from '../services/update-installer.js';
-import { getPlatform, getPlatformName, getInstallPath, ensureConfigDir, isRoot } from '../utils/platform.js';
+import { getPlatform, getPlatformName, ensureConfigDir, isRoot } from '../utils/platform.js';
 import type { UpdateConfig, UpdateChannel, UpdateProgress } from '../types/update.js';
 import { DEFAULT_UPDATE_CONFIG } from '../types/update.js';
 
@@ -24,6 +24,54 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const UPDATE_CONFIG_FILE = 'update.json';
+
+/**
+ * Options for the 'update check' command
+ */
+interface UpdateCheckOptions {
+  channel: string;
+  json?: boolean;
+}
+
+/**
+ * Options for the 'update install' command
+ */
+interface UpdateInstallOptions {
+  channel?: string;
+  force?: boolean;
+  path?: string;
+  yes?: boolean;
+}
+
+/**
+ * Options for the 'update config' command
+ */
+interface UpdateConfigOptions {
+  enable?: boolean;
+  disable?: boolean;
+  channel?: string;
+  window?: string;
+  timezone?: string;
+  interval?: string;
+  path?: string;
+  vaultUrl?: string;
+  show?: boolean;
+  json?: boolean;
+}
+
+/**
+ * Options for the 'update status' command
+ */
+interface UpdateStatusOptions {
+  json?: boolean;
+}
+
+/**
+ * Options for the 'update daemon' command
+ */
+interface UpdateDaemonOptions {
+  config?: string;
+}
 
 /**
  * Get current version from package.json
@@ -39,7 +87,7 @@ function getCurrentVersion(): string {
   for (const p of possiblePaths) {
     try {
       if (fs.existsSync(p)) {
-        const pkg = JSON.parse(fs.readFileSync(p, 'utf-8'));
+        const pkg = JSON.parse(fs.readFileSync(p, 'utf-8')) as { version?: string };
         if (pkg.version) {
           return pkg.version;
         }
@@ -66,7 +114,7 @@ function loadConfig(): UpdateConfig {
 
   if (fs.existsSync(configPath)) {
     try {
-      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Partial<UpdateConfig>;
       return { ...DEFAULT_UPDATE_CONFIG, ...data };
     } catch {
       // Return default on error
@@ -95,7 +143,7 @@ export function registerUpdateCommands(program: Command): void {
     .description('Check for available updates')
     .option('--channel <channel>', 'Update channel (stable, beta, staging)', 'stable')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: UpdateCheckOptions) => {
       const spinner = ora('Checking for updates...').start();
 
       try {
@@ -152,10 +200,10 @@ export function registerUpdateCommands(program: Command): void {
     .option('--force', 'Force reinstall even if up to date')
     .option('--path <path>', 'Installation path')
     .option('-y, --yes', 'Skip confirmation prompts')
-    .action(async (options) => {
+    .action(async (options: UpdateInstallOptions) => {
       const config = loadConfig();
-      const channel = (options.channel || config.channel) as UpdateChannel;
-      const installPath = options.path || config.installPath || getInstallPath();
+      const channel = (options.channel ?? config.channel) as UpdateChannel;
+      const installPath = options.path ?? config.installPath;
 
       // Check platform
       const platform = getPlatform();
@@ -169,7 +217,7 @@ export function registerUpdateCommands(program: Command): void {
       const installer = createUpdateInstaller(installPath);
       const { canInstall, reason } = installer.canInstall();
       if (!canInstall) {
-        output.error(reason || 'Cannot install to target path');
+        output.error(reason ?? 'Cannot install to target path');
         if (!isRoot()) {
           console.log('Tip: Try running with sudo');
         }
@@ -210,7 +258,7 @@ export function registerUpdateCommands(program: Command): void {
           console.log();
 
           const { confirm } = await import('inquirer').then(m =>
-            m.default.prompt([
+            m.default.prompt<{ confirm: boolean }>([
               {
                 type: 'confirm',
                 name: 'confirm',
@@ -229,7 +277,7 @@ export function registerUpdateCommands(program: Command): void {
         // Install with progress
         let currentSpinner: ReturnType<typeof ora> | null = null;
 
-        const progressHandler = (progress: UpdateProgress) => {
+        const progressHandler = (progress: UpdateProgress): void => {
           if (currentSpinner) {
             if (progress.stage === 'complete') {
               currentSpinner.succeed(progress.message);
@@ -275,7 +323,7 @@ export function registerUpdateCommands(program: Command): void {
     .option('--vault-url <url>', 'Vault URL for WebSocket notifications')
     .option('--show', 'Show current configuration')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action((options: UpdateConfigOptions) => {
       const config = loadConfig();
 
       // Show current config
@@ -318,7 +366,7 @@ export function registerUpdateCommands(program: Command): void {
           config.maintenanceWindow = {
             start,
             end,
-            timezone: options.timezone || 'UTC',
+            timezone: options.timezone ?? 'UTC',
           };
         }
       }
@@ -345,7 +393,7 @@ export function registerUpdateCommands(program: Command): void {
     .command('status')
     .description('Show update status and configuration')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action((options: UpdateStatusOptions) => {
       const config = loadConfig();
       const currentVersion = getCurrentVersion();
       const platform = getPlatform();
@@ -354,7 +402,7 @@ export function registerUpdateCommands(program: Command): void {
         currentVersion,
         platform: getPlatformName(),
         platformSupported: platform !== 'unsupported',
-        installPath: config.installPath || getInstallPath(),
+        installPath: config.installPath,
         config,
       };
 
@@ -384,9 +432,9 @@ export function registerUpdateCommands(program: Command): void {
     .command('daemon')
     .description('Start auto-update daemon (for systemd service)')
     .option('-c, --config <path>', 'Config file path')
-    .action(async (options) => {
-      const config = options.config
-        ? JSON.parse(fs.readFileSync(options.config, 'utf-8'))
+    .action(async (options: UpdateDaemonOptions) => {
+      const config: UpdateConfig = options.config
+        ? JSON.parse(fs.readFileSync(options.config, 'utf-8')) as UpdateConfig
         : loadConfig();
 
       if (!config.autoUpdate) {

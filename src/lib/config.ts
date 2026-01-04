@@ -51,7 +51,7 @@ export function setRuntimeProfile(profile: string | null): void {
  * Get the current active profile name
  */
 export function getActiveProfileName(): string {
-  return runtimeProfileOverride || process.env.ZNVAULT_PROFILE || store.get('activeProfile') || DEFAULT_PROFILE;
+  return runtimeProfileOverride ?? process.env.ZNVAULT_PROFILE ?? store.get('activeProfile');
 }
 
 /**
@@ -60,14 +60,14 @@ export function getActiveProfileName(): string {
 function migrateIfNeeded(): void {
   // Check if we have legacy config (url at root level but no profiles)
   const legacyUrl = store.get('url');
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
 
   if (legacyUrl && Object.keys(profiles).length === 0) {
     // Migrate legacy config to default profile
     const defaultProfile: Profile = {
-      url: legacyUrl || CONFIG_DEFAULTS.url,
-      insecure: store.get('insecure') || CONFIG_DEFAULTS.insecure,
-      timeout: store.get('timeout') || CONFIG_DEFAULTS.timeout,
+      url: legacyUrl,
+      insecure: store.get('insecure') ?? CONFIG_DEFAULTS.insecure,
+      timeout: store.get('timeout') ?? CONFIG_DEFAULTS.timeout,
       defaultTenant: store.get('defaultTenant'),
       credentials: store.get('credentials'),
     };
@@ -92,8 +92,9 @@ migrateIfNeeded();
  */
 function getCurrentProfile(): Profile {
   const profileName = getActiveProfileName();
-  const profiles = store.get('profiles') || {};
-  return profiles[profileName] || {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- needed for test mocks
+  const profiles = store.get('profiles') ?? {};
+  return profiles[profileName] ?? {
     url: CONFIG_DEFAULTS.url,
     insecure: CONFIG_DEFAULTS.insecure,
     timeout: CONFIG_DEFAULTS.timeout,
@@ -104,7 +105,7 @@ function getCurrentProfile(): Profile {
  * Save profile data
  */
 function saveProfile(profileName: string, profile: Profile): void {
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
   profiles[profileName] = profile;
   store.set('profiles', profiles);
 }
@@ -123,9 +124,9 @@ export function getConfig(): FullConfig {
   const profile = getCurrentProfile();
 
   return {
-    url: envUrl || profile.url || CONFIG_DEFAULTS.url,
-    insecure: envInsecure === 'true' || profile.insecure || CONFIG_DEFAULTS.insecure,
-    timeout: envTimeout ? parseInt(envTimeout, 10) : (profile.timeout || CONFIG_DEFAULTS.timeout),
+    url: envUrl ?? profile.url,
+    insecure: envInsecure === 'true' || profile.insecure,
+    timeout: envTimeout ? parseInt(envTimeout, 10) : profile.timeout,
     defaultTenant: profile.defaultTenant,
     credentials: profile.credentials,
   };
@@ -144,9 +145,14 @@ export function getConfigValue<K extends keyof FullConfig>(key: K): FullConfig[K
 export function setConfigValue<K extends keyof CLIConfig>(key: K, value: CLIConfig[K]): void {
   const profileName = getActiveProfileName();
   const profile = getCurrentProfile();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (profile as any)[key] = value;
-  saveProfile(profileName, profile);
+
+  // Type-safe assignment using a properly typed intermediate object
+  const updatedProfile: Profile = {
+    ...profile,
+    [key]: value,
+  };
+
+  saveProfile(profileName, updatedProfile);
 }
 
 /**
@@ -190,21 +196,21 @@ export function isTokenExpired(): boolean {
  * Get the effective URL (from env or config)
  */
 export function getEffectiveUrl(): string {
-  return process.env.ZNVAULT_URL || getCurrentProfile().url || CONFIG_DEFAULTS.url;
+  return process.env.ZNVAULT_URL ?? getCurrentProfile().url;
 }
 
 /**
  * Check if we have API key authentication (env or stored in profile)
  */
 export function hasApiKey(): boolean {
-  return !!(process.env.ZNVAULT_API_KEY || getCurrentProfile().apiKey);
+  return !!(process.env.ZNVAULT_API_KEY ?? getCurrentProfile().apiKey);
 }
 
 /**
  * Get API key (environment takes precedence over stored)
  */
 export function getApiKey(): string | undefined {
-  return process.env.ZNVAULT_API_KEY || getCurrentProfile().apiKey;
+  return process.env.ZNVAULT_API_KEY ?? getCurrentProfile().apiKey;
 }
 
 /**
@@ -274,9 +280,9 @@ export function getAllConfig(): Record<string, unknown> {
   const profile = getCurrentProfile();
   return {
     activeProfile: getActiveProfileName(),
-    url: profile.url || CONFIG_DEFAULTS.url,
-    insecure: profile.insecure || CONFIG_DEFAULTS.insecure,
-    timeout: profile.timeout || CONFIG_DEFAULTS.timeout,
+    url: profile.url,
+    insecure: profile.insecure,
+    timeout: profile.timeout,
     defaultTenant: profile.defaultTenant,
     hasCredentials: !!profile.credentials,
     hasApiKey: !!profile.apiKey,
@@ -293,7 +299,7 @@ export function getAllConfig(): Record<string, unknown> {
  * List all profiles
  */
 export function listProfiles(): Array<{ name: string; url: string; active: boolean; hasCredentials: boolean; hasApiKey: boolean }> {
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
   const activeProfile = getActiveProfileName();
 
   return Object.entries(profiles).map(([name, profile]) => ({
@@ -309,26 +315,25 @@ export function listProfiles(): Array<{ name: string; url: string; active: boole
  * Create a new profile
  */
 export function createProfile(name: string, options: { url?: string; insecure?: boolean; copyFrom?: string }): void {
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
 
-  if (profiles[name]) {
+  if (name in profiles) {
     throw new Error(`Profile '${name}' already exists`);
   }
 
   let newProfile: Profile;
 
   if (options.copyFrom) {
-    const sourceProfile = profiles[options.copyFrom];
-    if (!sourceProfile) {
+    if (!(options.copyFrom in profiles)) {
       throw new Error(`Source profile '${options.copyFrom}' not found`);
     }
-    newProfile = { ...sourceProfile };
+    newProfile = { ...profiles[options.copyFrom] };
     // Don't copy credentials
-    delete newProfile.credentials;
+    newProfile.credentials = undefined;
   } else {
     newProfile = {
-      url: options.url || CONFIG_DEFAULTS.url,
-      insecure: options.insecure || CONFIG_DEFAULTS.insecure,
+      url: options.url ?? CONFIG_DEFAULTS.url,
+      insecure: options.insecure ?? CONFIG_DEFAULTS.insecure,
       timeout: CONFIG_DEFAULTS.timeout,
     };
   }
@@ -352,12 +357,13 @@ export function deleteProfile(name: string): void {
     throw new Error(`Cannot delete the '${DEFAULT_PROFILE}' profile`);
   }
 
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
 
-  if (!profiles[name]) {
+  if (!(name in profiles)) {
     throw new Error(`Profile '${name}' not found`);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
   delete profiles[name];
   store.set('profiles', profiles);
 
@@ -371,9 +377,9 @@ export function deleteProfile(name: string): void {
  * Switch active profile
  */
 export function switchProfile(name: string): void {
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
 
-  if (!profiles[name]) {
+  if (!(name in profiles)) {
     throw new Error(`Profile '${name}' not found`);
   }
 
@@ -384,7 +390,7 @@ export function switchProfile(name: string): void {
  * Get a specific profile
  */
 export function getProfile(name: string): Profile | undefined {
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
   return profiles[name];
 }
 
@@ -396,17 +402,18 @@ export function renameProfile(oldName: string, newName: string): void {
     throw new Error(`Cannot rename the '${DEFAULT_PROFILE}' profile`);
   }
 
-  const profiles = store.get('profiles') || {};
+  const profiles = store.get('profiles');
 
-  if (!profiles[oldName]) {
+  if (!(oldName in profiles)) {
     throw new Error(`Profile '${oldName}' not found`);
   }
 
-  if (profiles[newName]) {
+  if (newName in profiles) {
     throw new Error(`Profile '${newName}' already exists`);
   }
 
   profiles[newName] = profiles[oldName];
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
   delete profiles[oldName];
   store.set('profiles', profiles);
 

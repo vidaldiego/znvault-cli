@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import * as mode from '../lib/mode.js';
 import * as output from '../lib/output.js';
@@ -8,6 +8,56 @@ import type {
   CertificateStats,
   DecryptedCertificate,
 } from '../types/index.js';
+
+// Option interfaces for each command
+interface ListOptions {
+  status?: string;
+  kind?: string;
+  expiring?: string;
+  json?: boolean;
+}
+
+interface GetOptions {
+  json?: boolean;
+}
+
+interface DecryptOptions {
+  output?: string;
+  purpose: string;
+}
+
+interface ExpiringOptions {
+  days: string;
+  json?: boolean;
+}
+
+interface StatsOptions {
+  json?: boolean;
+}
+
+interface StoreOptions {
+  file: string;
+  clientId: string;
+  kind: string;
+  alias: string;
+  type: string;
+  purpose: string;
+  passphrase?: string;
+  clientName?: string;
+  contact?: string;
+  tags?: string;
+}
+
+interface RotateOptions {
+  file: string;
+  type: string;
+  passphrase?: string;
+  reason: string;
+}
+
+interface DeleteOptions {
+  force?: boolean;
+}
 
 export function registerCertCommands(program: Command): void {
   const cert = program
@@ -22,7 +72,7 @@ export function registerCertCommands(program: Command): void {
     .option('--kind <kind>', 'Filter by kind (AEAT, FNMT, CUSTOM, etc.)')
     .option('--expiring <days>', 'Show certificates expiring within N days')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ListOptions) => {
       const spinner = ora('Fetching certificates...').start();
 
       try {
@@ -45,7 +95,7 @@ export function registerCertCommands(program: Command): void {
           return;
         }
 
-        const items = Array.isArray(result) ? result : result.items || [];
+        const items = Array.isArray(result) ? result : result.items;
 
         if (items.length === 0) {
           console.log('No certificates found');
@@ -83,7 +133,7 @@ export function registerCertCommands(program: Command): void {
     .command('get <id>')
     .description('Get certificate details')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: GetOptions) => {
       const spinner = ora('Fetching certificate...').start();
 
       try {
@@ -142,7 +192,7 @@ export function registerCertCommands(program: Command): void {
     .description('Decrypt and download certificate')
     .option('--output <file>', 'Write to file instead of stdout')
     .option('--purpose <purpose>', 'Purpose for access (required)', 'CLI access')
-    .action(async (id, options) => {
+    .action(async (id: string, options: DecryptOptions) => {
       const spinner = ora('Decrypting certificate...').start();
 
       try {
@@ -175,7 +225,7 @@ export function registerCertCommands(program: Command): void {
     .description('List certificates expiring soon')
     .option('--days <days>', 'Days until expiry (default: 30)', '30')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ExpiringOptions) => {
       const spinner = ora('Checking expiring certificates...').start();
 
       try {
@@ -203,7 +253,7 @@ export function registerCertCommands(program: Command): void {
             cert.subjectCn.length > 25 ? cert.subjectCn.substring(0, 22) + '...' : cert.subjectCn,
             new Date(cert.notAfter).toLocaleDateString(),
             formatDaysLeft(cert.daysUntilExpiry),
-            cert.contactEmail || '-',
+            cert.contactEmail ?? '-',
           ])
         );
       } catch (err) {
@@ -220,7 +270,7 @@ export function registerCertCommands(program: Command): void {
     .command('stats')
     .description('Get certificate statistics')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: StatsOptions) => {
       const spinner = ora('Fetching statistics...').start();
 
       try {
@@ -272,7 +322,7 @@ export function registerCertCommands(program: Command): void {
     .option('--client-name <name>', 'Client display name')
     .option('--contact <email>', 'Contact email for notifications')
     .option('--tags <tags>', 'Comma-separated tags')
-    .action(async (options) => {
+    .action(async (options: StoreOptions) => {
       const spinner = ora('Storing certificate...').start();
 
       try {
@@ -297,7 +347,7 @@ export function registerCertCommands(program: Command): void {
         if (options.passphrase) body.passphrase = options.passphrase;
         if (options.clientName) body.clientName = options.clientName;
         if (options.contact) body.contactEmail = options.contact;
-        if (options.tags) body.tags = options.tags.split(',').map((t: string) => t.trim());
+        if (options.tags) body.tags = options.tags.split(',').map((t) => t.trim());
 
         const result = await mode.apiPost<CertificateMetadata>('/v1/certificates', body);
         spinner.stop();
@@ -328,7 +378,7 @@ export function registerCertCommands(program: Command): void {
     .option('--type <type>', 'Certificate type (PEM, P12, DER)', 'PEM')
     .option('--passphrase <pass>', 'Passphrase for P12 certificates')
     .option('--reason <reason>', 'Reason for rotation', 'Certificate renewal')
-    .action(async (id, options) => {
+    .action(async (id: string, options: RotateOptions) => {
       const spinner = ora('Rotating certificate...').start();
 
       try {
@@ -374,7 +424,7 @@ export function registerCertCommands(program: Command): void {
     .command('delete <id>')
     .description('Delete a certificate')
     .option('--force', 'Skip confirmation')
-    .action(async (id, options) => {
+    .action(async (id: string, options: DeleteOptions) => {
       try {
         if (!options.force) {
           const readline = await import('node:readline');

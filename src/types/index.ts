@@ -188,10 +188,10 @@ export interface LoginResponse {
 }
 
 export interface PaginatedResponse<T> {
-  items: T[];
+  data: T[];
   total: number;
-  page: number;
-  pageSize: number;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface ApiError {
@@ -435,12 +435,12 @@ export interface PolicyTestResult {
   allowed: boolean;
   effect: 'allow' | 'deny' | 'no_match';
   reason: string;
-  matchedPolicies: {
+  matchedPolicies: Array<{
     id: string;
     name: string;
     effect: PolicyEffect;
     priority: number;
-  }[];
+  }>;
   evaluatedPolicies: number;
   evaluationTimeMs: number;
 }

@@ -14,7 +14,6 @@ import type {
   AgentManifest,
   UpdateCheckResult,
   UpdateChannel,
-  Platform,
 } from '../types/update.js';
 import { getManifestUrl } from '../types/update.js';
 import { getPlatform, getConfigDir } from '../utils/platform.js';
@@ -23,7 +22,7 @@ import { getPlatform, getConfigDir } from '../utils/platform.js';
  * Parse a semantic version string into components
  */
 function parseVersion(version: string): { major: number; minor: number; patch: number } {
-  const match = version.match(/^v?(\d+)\.(\d+)\.(\d+)/);
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version);
   if (!match) {
     return { major: 0, minor: 0, patch: 0 };
   }
@@ -53,6 +52,12 @@ function compareVersions(a: string, b: string): number {
  */
 function isNewerVersion(a: string, b: string): boolean {
   return compareVersions(a, b) > 0;
+}
+
+interface VersionCacheData {
+  version: string;
+  channel?: string;
+  checkedAt?: string;
 }
 
 export class UpdateChecker {
@@ -92,12 +97,12 @@ export class UpdateChecker {
     return new Promise((resolve, reject) => {
       https.get(url, { rejectUnauthorized: true }, (res) => {
         if (res.statusCode !== 200) {
-          reject(new Error(`Failed to fetch manifest: HTTP ${res.statusCode}`));
+          reject(new Error(`Failed to fetch manifest: HTTP ${String(res.statusCode)}`));
           return;
         }
 
         let data = '';
-        res.on('data', (chunk) => { data += chunk; });
+        res.on('data', (chunk: string) => { data += chunk; });
         res.on('end', () => {
           try {
             const manifest = JSON.parse(data) as AgentManifest;
@@ -105,7 +110,7 @@ export class UpdateChecker {
             this.lastCheck = new Date();
             resolve(manifest);
           } catch (err) {
-            reject(new Error(`Failed to parse manifest: ${err}`));
+            reject(new Error(`Failed to parse manifest: ${err instanceof Error ? err.message : String(err)}`));
           }
         });
       }).on('error', reject);
@@ -145,7 +150,7 @@ export class UpdateChecker {
         }
       }
 
-      const artifact = manifest.artifacts[platform as Platform];
+      const artifact = manifest.artifacts[platform];
 
       return {
         updateAvailable,
@@ -186,7 +191,7 @@ export class UpdateChecker {
    */
   saveLastKnownVersion(version: string): void {
     const cacheFile = path.join(getConfigDir(), 'last-version.json');
-    const data = {
+    const data: VersionCacheData = {
       version,
       channel: this.channel,
       checkedAt: new Date().toISOString(),
@@ -208,7 +213,7 @@ export class UpdateChecker {
 
     try {
       if (fs.existsSync(cacheFile)) {
-        const data = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+        const data = JSON.parse(fs.readFileSync(cacheFile, 'utf-8')) as VersionCacheData;
         return data.version;
       }
     } catch {

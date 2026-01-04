@@ -1,9 +1,17 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+
+interface ClusterStatusOptions {
+  json?: boolean;
+}
+
+interface ClusterConfirmOptions {
+  yes?: boolean;
+}
 
 export function registerClusterCommands(program: Command): void {
   const cluster = program
@@ -15,7 +23,7 @@ export function registerClusterCommands(program: Command): void {
     .command('status')
     .description('Show cluster status')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ClusterStatusOptions) => {
       const spinner = ora('Getting cluster status...').start();
 
       try {
@@ -34,10 +42,10 @@ export function registerClusterCommands(program: Command): void {
           'Enabled': status.enabled,
           'Node ID': status.nodeId,
           'Is Leader': status.isLeader,
-          'Leader Node': status.leaderNodeId || 'None',
+          'Leader Node': status.leaderNodeId ?? 'None',
         });
 
-        if (status.nodes && status.nodes.length > 0) {
+        if (status.nodes.length > 0) {
           output.section('Nodes');
           output.table(
             ['Node ID', 'Host', 'Port', 'Leader', 'Status', 'Last Heartbeat'],
@@ -83,7 +91,7 @@ export function registerClusterCommands(program: Command): void {
     .command('takeover')
     .description('Force this node to become cluster leader')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (options) => {
+    .action(async (options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster takeover requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -126,7 +134,7 @@ export function registerClusterCommands(program: Command): void {
     .command('promote <nodeId>')
     .description('Promote a specific node to become leader')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (nodeId, options) => {
+    .action(async (nodeId: string, options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster promote requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -168,7 +176,7 @@ export function registerClusterCommands(program: Command): void {
     .command('release')
     .description('Release leadership from this node')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (options) => {
+    .action(async (options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster release requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -210,7 +218,7 @@ export function registerClusterCommands(program: Command): void {
     .command('maintenance <action>')
     .description('Enable or disable maintenance mode (enable|disable)')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (action, options) => {
+    .action(async (action: string, options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster maintenance requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');

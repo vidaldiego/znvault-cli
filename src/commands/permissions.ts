@@ -1,7 +1,7 @@
 // Path: znvault-cli/src/commands/permissions.ts
 // Permissions commands - list and validate permissions from the API
 
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import { client } from '../lib/client.js';
@@ -19,6 +19,30 @@ interface PermissionsResponse {
   total: number;
 }
 
+interface ValidatePermissionsResponse {
+  valid: string[];
+  invalid: string[];
+  allValid: boolean;
+}
+
+// Command option interfaces
+interface ListOptions {
+  category?: string;
+  json?: boolean;
+}
+
+interface CategoriesOptions {
+  json?: boolean;
+}
+
+interface ValidateOptions {
+  json?: boolean;
+}
+
+interface SearchOptions {
+  json?: boolean;
+}
+
 export function registerPermissionsCommands(program: Command): void {
   const perms = program
     .command('permissions')
@@ -31,7 +55,7 @@ export function registerPermissionsCommands(program: Command): void {
     .description('List all available permissions')
     .option('-c, --category <category>', 'Filter by category')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ListOptions) => {
       const spinner = ora('Fetching permissions...').start();
 
       try {
@@ -50,7 +74,7 @@ export function registerPermissionsCommands(program: Command): void {
         // Group by category for display
         const byCategory = new Map<string, Permission[]>();
         for (const perm of result.permissions) {
-          const list = byCategory.get(perm.category) || [];
+          const list = byCategory.get(perm.category) ?? [];
           list.push(perm);
           byCategory.set(perm.category, list);
         }
@@ -58,9 +82,9 @@ export function registerPermissionsCommands(program: Command): void {
         // Display sorted by category
         const sortedCategories = [...byCategory.keys()].sort();
         for (const category of sortedCategories) {
-          const perms = byCategory.get(category) || [];
+          const categoryPerms = byCategory.get(category) ?? [];
           console.log(chalk.cyan.bold(`  ${category.toUpperCase()}`));
-          for (const perm of perms) {
+          for (const perm of categoryPerms) {
             const desc = perm.description ? chalk.gray(` - ${perm.description}`) : '';
             console.log(`    ${chalk.white(perm.permission)}${desc}`);
           }
@@ -78,7 +102,7 @@ export function registerPermissionsCommands(program: Command): void {
     .command('categories')
     .description('List permission categories')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: CategoriesOptions) => {
       const spinner = ora('Fetching categories...').start();
 
       try {
@@ -109,11 +133,11 @@ export function registerPermissionsCommands(program: Command): void {
     .command('validate <permissions...>')
     .description('Validate permission IDs')
     .option('--json', 'Output as JSON')
-    .action(async (permissions: string[], options) => {
+    .action(async (permissions: string[], options: ValidateOptions) => {
       const spinner = ora('Validating permissions...').start();
 
       try {
-        const result = await client.validatePermissions(permissions);
+        const result = await client.validatePermissions(permissions) as ValidatePermissionsResponse;
         spinner.stop();
 
         if (options.json) {
@@ -123,16 +147,16 @@ export function registerPermissionsCommands(program: Command): void {
 
         console.log();
         if (result.allValid) {
-          console.log(chalk.green.bold('✓ All permissions are valid'));
+          console.log(chalk.green.bold('All permissions are valid'));
         } else {
-          console.log(chalk.red.bold('✗ Some permissions are invalid'));
+          console.log(chalk.red.bold('Some permissions are invalid'));
         }
         console.log();
 
         if (result.valid.length > 0) {
           console.log(chalk.green('Valid:'));
           for (const perm of result.valid) {
-            console.log(`  ✓ ${perm}`);
+            console.log(`  ${perm}`);
           }
         }
 
@@ -140,7 +164,7 @@ export function registerPermissionsCommands(program: Command): void {
           console.log();
           console.log(chalk.red('Invalid:'));
           for (const perm of result.invalid) {
-            console.log(`  ✗ ${perm}`);
+            console.log(`  ${perm}`);
           }
         }
         console.log();
@@ -160,7 +184,7 @@ export function registerPermissionsCommands(program: Command): void {
     .command('search <query>')
     .description('Search permissions by name or description')
     .option('--json', 'Output as JSON')
-    .action(async (query: string, options) => {
+    .action(async (query: string, options: SearchOptions) => {
       const spinner = ora('Searching permissions...').start();
 
       try {

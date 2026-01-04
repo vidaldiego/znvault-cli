@@ -1,9 +1,44 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+
+interface TenantListOptions {
+  status?: string;
+  withUsage?: boolean;
+  json?: boolean;
+}
+
+interface TenantCreateOptions {
+  maxSecrets?: number;
+  maxKeys?: number;
+  email?: string;
+  json?: boolean;
+}
+
+interface TenantGetOptions {
+  withUsage?: boolean;
+  json?: boolean;
+}
+
+interface TenantUpdateOptions {
+  name?: string;
+  maxSecrets?: number;
+  maxKeys?: number;
+  email?: string;
+  status?: string;
+  json?: boolean;
+}
+
+interface TenantDeleteOptions {
+  yes?: boolean;
+}
+
+interface TenantUsageOptions {
+  json?: boolean;
+}
 
 export function registerTenantCommands(program: Command): void {
   const tenant = program
@@ -17,7 +52,7 @@ export function registerTenantCommands(program: Command): void {
     .option('--status <status>', 'Filter by status (active|suspended|archived)')
     .option('--with-usage', 'Include usage statistics')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: TenantListOptions) => {
       const spinner = ora('Fetching tenants...').start();
 
       try {
@@ -41,21 +76,19 @@ export function registerTenantCommands(program: Command): void {
         if (options.withUsage) {
           headers.push('Secrets', 'Users');
         }
-        headers.push('Created');
 
         output.table(
           headers,
           tenants.map(t => {
-            const row: (string | number | boolean)[] = [
+            const row: Array<string | number | boolean> = [
               t.id,
               t.name,
               t.status,
             ];
             if (options.withUsage && t.usage) {
-              row.push(t.usage.secretsCount || 0);
-              row.push(t.usage.usersCount || 0);
+              row.push(t.usage.secretsCount);
+              row.push(t.usage.usersCount);
             }
-            row.push(output.formatRelativeTime(t.createdAt));
             return row;
           })
         );
@@ -78,7 +111,7 @@ export function registerTenantCommands(program: Command): void {
     .option('--max-keys <number>', 'Maximum KMS keys allowed', parseInt)
     .option('--email <email>', 'Contact email')
     .option('--json', 'Output as JSON')
-    .action(async (id, name, options) => {
+    .action(async (id: string, name: string, options: TenantCreateOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Tenant creation requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -104,8 +137,8 @@ export function registerTenantCommands(program: Command): void {
             'ID': result.id,
             'Name': result.name,
             'Status': result.status,
-            'Max Secrets': result.maxSecrets || 'Unlimited',
-            'Max KMS Keys': result.maxKmsKeys || 'Unlimited',
+            'Max Secrets': result.maxSecrets ?? 'Unlimited',
+            'Max KMS Keys': result.maxKmsKeys ?? 'Unlimited',
             'Created': output.formatDate(result.createdAt),
           });
         }
@@ -122,7 +155,7 @@ export function registerTenantCommands(program: Command): void {
     .description('Get tenant details')
     .option('--with-usage', 'Include usage statistics')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: TenantGetOptions) => {
       const spinner = ora('Fetching tenant...').start();
 
       try {
@@ -144,9 +177,9 @@ export function registerTenantCommands(program: Command): void {
           'ID': result.id,
           'Name': result.name,
           'Status': result.status,
-          'Max Secrets': result.maxSecrets || 'Unlimited',
-          'Max KMS Keys': result.maxKmsKeys || 'Unlimited',
-          'Contact Email': result.contactEmail || '-',
+          'Max Secrets': result.maxSecrets ?? 'Unlimited',
+          'Max KMS Keys': result.maxKmsKeys ?? 'Unlimited',
+          'Contact Email': result.contactEmail ?? '-',
           'Created': output.formatDate(result.createdAt),
           'Updated': output.formatDate(result.updatedAt),
         });
@@ -154,10 +187,10 @@ export function registerTenantCommands(program: Command): void {
         if (result.usage) {
           output.section('Usage');
           output.keyValue({
-            'Secrets': result.usage.secretsCount || 0,
-            'KMS Keys': result.usage.kmsKeysCount || 0,
-            'Users': result.usage.usersCount || 0,
-            'API Keys': result.usage.apiKeysCount || 0,
+            'Secrets': result.usage.secretsCount,
+            'KMS Keys': result.usage.kmsKeysCount,
+            'Users': result.usage.usersCount,
+            'API Keys': result.usage.apiKeysCount,
           });
         }
 
@@ -181,7 +214,7 @@ export function registerTenantCommands(program: Command): void {
     .option('--email <email>', 'Contact email')
     .option('--status <status>', 'Tenant status (active|suspended)')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: TenantUpdateOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Tenant update requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -213,7 +246,7 @@ export function registerTenantCommands(program: Command): void {
             'ID': result.id,
             'Name': result.name,
             'Status': result.status,
-            'Max Secrets': result.maxSecrets || 'Unlimited',
+            'Max Secrets': result.maxSecrets ?? 'Unlimited',
             'Updated': output.formatDate(result.updatedAt),
           });
         }
@@ -229,7 +262,7 @@ export function registerTenantCommands(program: Command): void {
     .command('delete <id>')
     .description('Archive a tenant (soft delete)')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (id, options) => {
+    .action(async (id: string, options: TenantDeleteOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Tenant deletion requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -267,7 +300,7 @@ export function registerTenantCommands(program: Command): void {
     .command('usage <id>')
     .description('Get tenant usage statistics')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: TenantUsageOptions) => {
       const spinner = ora('Fetching usage...').start();
 
       try {
@@ -281,10 +314,10 @@ export function registerTenantCommands(program: Command): void {
 
         output.section(`Usage for Tenant: ${id}`);
         output.keyValue({
-          'Secrets': usage.secretsCount || 0,
-          'KMS Keys': usage.kmsKeysCount || 0,
-          'Users': usage.usersCount || 0,
-          'API Keys': usage.apiKeysCount || 0,
+          'Secrets': usage.secretsCount,
+          'KMS Keys': usage.kmsKeysCount,
+          'Users': usage.usersCount,
+          'API Keys': usage.apiKeysCount,
         });
         console.log();
       } catch (err) {

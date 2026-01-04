@@ -9,10 +9,25 @@
  */
 
 import WebSocket from 'ws';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createUpdateChecker } from './update-checker.js';
 import { createUpdateInstaller } from './update-installer.js';
-import type { UpdateConfig, UpdateProgress, MaintenanceWindow } from '../types/update.js';
+import type { UpdateConfig, UpdateProgress, MaintenanceWindow, ArtifactInfo } from '../types/update.js';
 import * as mode from '../lib/mode.js';
+
+interface PackageJson {
+  version?: string;
+}
+
+interface WebSocketMessage {
+  type: string;
+  data?: {
+    event?: string;
+    version?: string;
+  };
+}
 
 /**
  * Get current version from package.json
@@ -21,8 +36,10 @@ function getCurrentVersion(): string {
   // This should match the implementation in update.ts
   // In a real scenario, we'd share this utility
   try {
-    const pkg = require('../../package.json');
-    return pkg.version || 'unknown';
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const pkgPath = path.join(__dirname, '../../package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as PackageJson;
+    return pkg.version ?? 'unknown';
   } catch {
     return 'unknown';
   }
@@ -50,8 +67,8 @@ function isWithinMaintenanceWindow(window: MaintenanceWindow): boolean {
       hour12: false,
     });
     const parts = formatter.formatToParts(now);
-    currentHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
-    currentMin = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+    currentHour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    currentMin = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
   } catch {
     // Fallback to local time
     currentHour = now.getHours();
@@ -77,7 +94,7 @@ export class AutoUpdateDaemon {
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private isShuttingDown = false;
-  private pendingUpdate: { version: string; artifact: any } | null = null;
+  private pendingUpdate: { version: string; artifact: ArtifactInfo } | null = null;
 
   constructor(config: UpdateConfig) {
     this.config = config;
@@ -117,8 +134,8 @@ export class AutoUpdateDaemon {
 
     // Start periodic checks
     this.checkTimer = setInterval(() => {
-      this.checkForUpdates().catch(err => {
-        this.logError(`Check failed: ${err.message}`);
+      this.checkForUpdates().catch((err: unknown) => {
+        this.logError(`Check failed: ${err instanceof Error ? err.message : String(err)}`);
       });
     }, this.config.checkInterval);
 
@@ -128,8 +145,8 @@ export class AutoUpdateDaemon {
     }
 
     // Handle shutdown signals
-    process.on('SIGINT', () => this.shutdown());
-    process.on('SIGTERM', () => this.shutdown());
+    process.on('SIGINT', () => { this.shutdown(); });
+    process.on('SIGTERM', () => { this.shutdown(); });
   }
 
   /**
@@ -155,10 +172,12 @@ export class AutoUpdateDaemon {
       this.log(`Update available: ${currentVersion} -> ${result.latestVersion}`);
 
       // Store pending update
-      this.pendingUpdate = {
-        version: result.latestVersion,
-        artifact: result.artifact,
-      };
+      if (result.artifact) {
+        this.pendingUpdate = {
+          version: result.latestVersion,
+          artifact: result.artifact,
+        };
+      }
 
       // Check if we can install now
       await this.tryInstallPendingUpdate();
@@ -198,7 +217,7 @@ export class AutoUpdateDaemon {
     const { version, artifact } = this.pendingUpdate;
     this.log(`Installing update to version ${version}...`);
 
-    const progressHandler = (progress: UpdateProgress) => {
+    const progressHandler = (progress: UpdateProgress): void => {
       this.log(`${progress.stage}: ${progress.message}`);
     };
 
@@ -208,7 +227,7 @@ export class AutoUpdateDaemon {
       // Check permissions
       const { canInstall, reason } = installer.canInstall();
       if (!canInstall) {
-        this.logError(`Cannot install: ${reason}`);
+        this.logError(`Cannot install: ${reason ?? 'Unknown reason'}`);
         return;
       }
 
@@ -256,19 +275,29 @@ export class AutoUpdateDaemon {
         this.log('Connected to vault WebSocket');
       });
 
-      this.ws.on('message', async (data) => {
+      this.ws.on('message', (rawData: WebSocket.RawData) => {
         try {
-          const msg = JSON.parse(data.toString());
+          let dataStr: string;
+          if (Buffer.isBuffer(rawData)) {
+            dataStr = rawData.toString('utf-8');
+          } else if (ArrayBuffer.isView(rawData)) {
+            dataStr = Buffer.from(rawData.buffer, rawData.byteOffset, rawData.byteLength).toString('utf-8');
+          } else if (Array.isArray(rawData)) {
+            dataStr = Buffer.concat(rawData).toString('utf-8');
+          } else {
+            dataStr = '';
+          }
+          const msg = JSON.parse(dataStr) as WebSocketMessage;
 
           if (msg.type === 'event' && msg.data?.event === 'agent.update.available') {
-            this.log(`Received update notification: ${msg.data.version}`);
+            this.log(`Received update notification: ${msg.data.version ?? 'unknown'}`);
             // Trigger immediate check
-            await this.checkForUpdates();
+            void this.checkForUpdates();
           } else if (msg.type === 'pong') {
             // Heartbeat response
           }
         } catch (err) {
-          this.logError(`Failed to parse message: ${err}`);
+          this.logError(`Failed to parse message: ${err instanceof Error ? err.message : String(err)}`);
         }
       });
 
@@ -302,7 +331,7 @@ export class AutoUpdateDaemon {
     this.log('Reconnecting in 30 seconds...');
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connectWebSocket();
+      void this.connectWebSocket();
     }, 30000);
   }
 

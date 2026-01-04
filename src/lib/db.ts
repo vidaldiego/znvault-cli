@@ -18,6 +18,10 @@ import type {
 
 const { Client } = pg;
 
+interface ManifestFile {
+  version?: string;
+}
+
 /**
  * Database client for direct PostgreSQL operations.
  * Used for local mode (running on vault nodes) and emergency operations.
@@ -68,7 +72,7 @@ export class LocalDBClient {
 
   private async queryOne<T>(sql: string, params?: unknown[]): Promise<T | null> {
     const rows = await this.query<T>(sql, params);
-    return rows[0] || null;
+    return rows[0] ?? null;
   }
 
   // ============ Health ============
@@ -84,7 +88,7 @@ export class LocalDBClient {
 
     // Check HA from environment
     const haEnabled = process.env.HA_ENABLED === 'true';
-    const nodeId = process.env.HA_NODE_ID || 'standalone';
+    const nodeId = process.env.HA_NODE_ID ?? 'standalone';
 
     // Get PostgreSQL status
     const pgStatus = await this.getPostgresStatus();
@@ -105,7 +109,7 @@ export class LocalDBClient {
       status: 'ok',
       version,
       uptime: process.uptime(),
-      timestamp: dbTime?.now.toISOString() || new Date().toISOString(),
+      timestamp: dbTime?.now.toISOString() ?? new Date().toISOString(),
       database: pgStatus,
       redis: redisStatus.status !== 'unavailable' ? redisStatus : undefined,
       ha: haEnabled ? {
@@ -127,14 +131,14 @@ export class LocalDBClient {
       ];
       for (const manifestPath of manifestPaths) {
         if (fs.existsSync(manifestPath)) {
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-          return manifest.version || '1.2.9';
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as ManifestFile;
+          return manifest.version ?? '1.2.9';
         }
       }
     } catch {
       // Ignore
     }
-    return process.env.npm_package_version || '1.2.9';
+    return process.env.npm_package_version ?? '1.2.9';
   }
 
   private async getPostgresStatus(): Promise<{ status: string; role?: string; replicationLag?: number }> {
@@ -173,7 +177,7 @@ export class LocalDBClient {
 
   private async getRedisStatus(): Promise<{ status: string; sentinelNodes?: number; master?: string }> {
     const sentinelNodes = process.env.REDIS_SENTINEL_NODES;
-    const sentinelMaster = process.env.REDIS_SENTINEL_MASTER || 'znvault-master';
+    const sentinelMaster = process.env.REDIS_SENTINEL_MASTER ?? 'znvault-master';
 
     if (!sentinelNodes) {
       // Check for simple Redis URL
@@ -210,7 +214,7 @@ export class LocalDBClient {
             healthyNodes++;
             if (!masterHost) {
               const lines = result.trim().split('\n');
-              masterHost = lines[0] || '';
+              masterHost = lines[0] ?? '';
             }
           }
         } catch {
@@ -230,7 +234,7 @@ export class LocalDBClient {
 
   private async getClusterInfoFromRedis(): Promise<{ nodeCount: number; leaderNodeId: string | null }> {
     const sentinelNodes = process.env.REDIS_SENTINEL_NODES;
-    const sentinelMaster = process.env.REDIS_SENTINEL_MASTER || 'znvault-master';
+    const sentinelMaster = process.env.REDIS_SENTINEL_MASTER ?? 'znvault-master';
 
     if (!sentinelNodes) {
       return { nodeCount: 1, leaderNodeId: null };
@@ -249,7 +253,7 @@ export class LocalDBClient {
       const masterHost = masterResult.trim().split('\n')[0];
 
       // Try to get cluster nodes from Redis
-      const masterPort = masterResult.trim().split('\n')[1] || '6379';
+      const masterPort = masterResult.trim().split('\n')[1] ?? '6379';
       const nodesResult = execSync(
         `redis-cli -h ${masterHost} -p ${masterPort} HGETALL 'zn-vault:nodes' 2>/dev/null`,
         { encoding: 'utf-8', timeout: 3000 }
@@ -279,7 +283,7 @@ export class LocalDBClient {
 
     // Check HA from environment
     const haEnabled = process.env.HA_ENABLED === 'true';
-    const nodeId = process.env.HA_NODE_ID || 'unknown';
+    const nodeId = process.env.HA_NODE_ID ?? 'unknown';
 
     // Get cluster nodes from ha_nodes table if it exists
     let nodes: ClusterNode[] = [];
@@ -303,7 +307,7 @@ export class LocalDBClient {
         port: n.advertised_port,
         isLeader: n.is_leader,
         isHealthy: n.status === 'healthy',
-        lastHeartbeat: n.last_heartbeat?.toISOString() || '',
+        lastHeartbeat: n.last_heartbeat.toISOString(),
       }));
     } catch {
       // Table might not exist in non-HA setups
@@ -316,7 +320,7 @@ export class LocalDBClient {
       enabled: haEnabled,
       nodeId,
       isLeader: leader?.nodeId === nodeId,
-      leaderNodeId: leader?.nodeId || null,
+      leaderNodeId: leader?.nodeId ?? null,
       nodes,
     };
   }
@@ -422,11 +426,11 @@ export class LocalDBClient {
     );
 
     return {
-      secretsCount: parseInt(secrets?.count || '0', 10),
-      kmsKeysCount: parseInt(kmsKeys?.count || '0', 10),
+      secretsCount: parseInt(secrets?.count ?? '0', 10),
+      kmsKeysCount: parseInt(kmsKeys?.count ?? '0', 10),
       storageUsedMb: 0, // Would need to calculate
-      usersCount: parseInt(users?.count || '0', 10),
-      apiKeysCount: parseInt(apiKeys?.count || '0', 10),
+      usersCount: parseInt(users?.count ?? '0', 10),
+      apiKeysCount: parseInt(apiKeys?.count ?? '0', 10),
     };
   }
 
@@ -604,7 +608,7 @@ export class LocalDBClient {
       reason: row.reason ?? undefined,
       triggeredAt: row.triggered_at?.toISOString(),
       triggeredBy: row.triggered_by ?? undefined,
-      escalationCount: row.escalation_count || 0,
+      escalationCount: row.escalation_count,
     };
   }
 
@@ -646,7 +650,7 @@ export class LocalDBClient {
     }
 
     sql += ` ORDER BY created_at DESC LIMIT $${paramIndex}`;
-    params.push(options?.limit || 100);
+    params.push(options?.limit ?? 100);
 
     const rows = await this.query<{
       id: string;
@@ -716,7 +720,7 @@ export class LocalDBClient {
     }
 
     sql += ` ORDER BY timestamp DESC LIMIT $${paramIndex}`;
-    params.push(options?.limit || 100);
+    params.push(options?.limit ?? 100);
 
     const rows = await this.query<{
       id: number;
@@ -733,9 +737,9 @@ export class LocalDBClient {
     return rows.map(r => ({
       id: r.id,
       ts: r.timestamp.toISOString(),
-      clientCn: r.client_cn || '',
+      clientCn: r.client_cn ?? '',
       action: r.action,
-      resource: r.resource_type ? `${r.resource_type}/${r.resource_id || ''}` : '',
+      resource: r.resource_type ? `${r.resource_type}/${r.resource_id ?? ''}` : '',
       statusCode: r.status_code,
       tenantId: r.tenant_id ?? undefined,
       ip: r.ip_address ?? undefined,
@@ -745,7 +749,7 @@ export class LocalDBClient {
   async verifyAuditChain(): Promise<AuditVerifyResult> {
     // Get total count
     const countResult = await this.queryOne<{ count: string }>('SELECT COUNT(*) as count FROM audit_log');
-    const total = parseInt(countResult?.count || '0', 10);
+    const total = parseInt(countResult?.count ?? '0', 10);
 
     if (total === 0) {
       return {
@@ -779,7 +783,7 @@ export class LocalDBClient {
       );
       return {
         success: true,
-        message: `Connected to database '${result?.db}' at ${result?.time}`,
+        message: `Connected to database '${result?.db ?? 'unknown'}' at ${result?.time.toISOString() ?? 'unknown'}`,
       };
     } catch (err) {
       return {

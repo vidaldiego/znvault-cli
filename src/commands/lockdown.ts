@@ -1,9 +1,33 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+
+interface LockdownStatusOptions {
+  json?: boolean;
+}
+
+interface LockdownTriggerOptions {
+  yes?: boolean;
+}
+
+interface LockdownClearOptions {
+  yes?: boolean;
+}
+
+interface LockdownHistoryOptions {
+  limit: string;
+  json?: boolean;
+}
+
+interface LockdownThreatsOptions {
+  category?: string;
+  since?: string;
+  limit: string;
+  json?: boolean;
+}
 
 export function registerLockdownCommands(program: Command): void {
   const lockdown = program
@@ -15,7 +39,7 @@ export function registerLockdownCommands(program: Command): void {
     .command('status')
     .description('Show current lockdown status')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: LockdownStatusOptions) => {
       const spinner = ora('Getting lockdown status...').start();
 
       try {
@@ -32,10 +56,10 @@ export function registerLockdownCommands(program: Command): void {
         const statusDisplay = {
           'Scope': status.scope,
           'Status': output.formatStatus(status.status),
-          'Tenant': status.tenantId || 'N/A (System)',
-          'Reason': status.reason || '-',
+          'Tenant': status.tenantId ?? 'N/A (System)',
+          'Reason': status.reason ?? '-',
           'Triggered At': status.triggeredAt ? output.formatDate(status.triggeredAt) : '-',
-          'Triggered By': status.triggeredBy || '-',
+          'Triggered By': status.triggeredBy ?? '-',
           'Escalation Count': status.escalationCount,
         };
 
@@ -65,7 +89,7 @@ export function registerLockdownCommands(program: Command): void {
     .command('trigger <level> <reason>')
     .description('Manually trigger a lockdown (level 1-4)')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (level, reason, options) => {
+    .action(async (level: string, reason: string, options: LockdownTriggerOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Lockdown trigger requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -118,7 +142,7 @@ export function registerLockdownCommands(program: Command): void {
     .command('clear <reason>')
     .description('Clear the current lockdown')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (reason, options) => {
+    .action(async (reason: string, options: LockdownClearOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Lockdown clear requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -161,7 +185,7 @@ export function registerLockdownCommands(program: Command): void {
     .description('Show lockdown history')
     .option('--limit <number>', 'Number of entries to show', '50')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: LockdownHistoryOptions) => {
       const spinner = ora('Fetching lockdown history...').start();
 
       try {
@@ -184,8 +208,8 @@ export function registerLockdownCommands(program: Command): void {
             output.formatRelativeTime(h.ts),
             h.previousStatus,
             h.newStatus,
-            (h.transitionReason || '-').substring(0, 40),
-            h.changedBySystem ? 'System' : (h.changedByUserId?.substring(0, 8) || '-'),
+            h.transitionReason.substring(0, 40),
+            h.changedBySystem ? 'System' : (h.changedByUserId?.substring(0, 8) ?? '-'),
           ])
         );
 
@@ -207,7 +231,7 @@ export function registerLockdownCommands(program: Command): void {
     .option('--since <date>', 'Show threats since date (ISO format)')
     .option('--limit <number>', 'Number of entries to show', '100')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: LockdownThreatsOptions) => {
       const spinner = ora('Fetching threats...').start();
 
       try {
@@ -244,10 +268,10 @@ export function registerLockdownCommands(program: Command): void {
         output.info(`Showing ${threats.length} threats`);
 
         // Show category summary
-        const categories = threats.reduce((acc, t) => {
-          acc[t.category] = (acc[t.category] || 0) + 1;
+        const categories = threats.reduce<Record<string, number>>((acc, t) => {
+          acc[t.category] = (acc[t.category] ?? 0) + 1;
           return acc;
-        }, {} as Record<string, number>);
+        }, {});
 
         if (Object.keys(categories).length > 1) {
           output.section('By Category');

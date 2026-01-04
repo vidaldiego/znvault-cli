@@ -1,9 +1,44 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+
+// Option interfaces for each command
+interface ListUserOptions {
+  tenant?: string;
+  role?: string;
+  status?: string;
+  json?: boolean;
+}
+
+interface CreateUserOptions {
+  email?: string;
+  tenant?: string;
+  role?: 'user' | 'admin';
+  json?: boolean;
+}
+
+interface GetUserOptions {
+  json?: boolean;
+}
+
+interface UpdateUserOptions {
+  email?: string;
+  password?: string;
+  role?: string;
+  status?: string;
+  json?: boolean;
+}
+
+interface DeleteUserOptions {
+  yes?: boolean;
+}
+
+interface TotpDisableOptions {
+  yes?: boolean;
+}
 
 export function registerUserCommands(program: Command): void {
   const user = program
@@ -18,7 +53,7 @@ export function registerUserCommands(program: Command): void {
     .option('--role <role>', 'Filter by role (user|admin|superadmin)')
     .option('--status <status>', 'Filter by status (active|disabled|locked)')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ListUserOptions) => {
       const spinner = ora('Fetching users...').start();
 
       try {
@@ -44,9 +79,9 @@ export function registerUserCommands(program: Command): void {
           users.map(u => [
             u.id.substring(0, 8),
             u.username,
-            u.email || '-',
+            u.email ?? '-',
             u.role,
-            u.tenantId || '-',
+            u.tenantId ?? '-',
             u.status,
             u.totpEnabled,
             u.lastLogin ? output.formatRelativeTime(u.lastLogin) : 'Never',
@@ -71,7 +106,7 @@ export function registerUserCommands(program: Command): void {
     .option('--tenant <id>', 'Tenant ID')
     .option('--role <role>', 'User role (user|admin)', 'user')
     .option('--json', 'Output as JSON')
-    .action(async (username, password, options) => {
+    .action(async (username: string, password: string, options: CreateUserOptions) => {
       if (mode.getMode() === 'local') {
         output.error('User creation requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -96,9 +131,9 @@ export function registerUserCommands(program: Command): void {
           output.keyValue({
             'ID': result.id,
             'Username': result.username,
-            'Email': result.email || '-',
+            'Email': result.email ?? '-',
             'Role': result.role,
-            'Tenant': result.tenantId || '-',
+            'Tenant': result.tenantId ?? '-',
             'Status': result.status,
             'Created': output.formatDate(result.createdAt),
           });
@@ -115,7 +150,7 @@ export function registerUserCommands(program: Command): void {
     .command('get <id>')
     .description('Get user details')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: GetUserOptions) => {
       const spinner = ora('Fetching user...').start();
 
       try {
@@ -136,9 +171,9 @@ export function registerUserCommands(program: Command): void {
         output.keyValue({
           'ID': result.id,
           'Username': result.username,
-          'Email': result.email || '-',
+          'Email': result.email ?? '-',
           'Role': result.role,
-          'Tenant': result.tenantId || '-',
+          'Tenant': result.tenantId ?? '-',
           'Status': result.status,
           '2FA Enabled': result.totpEnabled,
           'Failed Attempts': result.failedAttempts,
@@ -166,7 +201,7 @@ export function registerUserCommands(program: Command): void {
     .option('--role <role>', 'New role (user|admin)')
     .option('--status <status>', 'New status (active|disabled)')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: UpdateUserOptions) => {
       if (mode.getMode() === 'local') {
         output.error('User update requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -212,7 +247,7 @@ export function registerUserCommands(program: Command): void {
     .command('delete <id>')
     .description('Delete a user')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (id, options) => {
+    .action(async (id: string, options: DeleteUserOptions) => {
       if (mode.getMode() === 'local') {
         output.error('User deletion requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -249,7 +284,7 @@ export function registerUserCommands(program: Command): void {
   user
     .command('unlock <id>')
     .description('Unlock a locked user account')
-    .action(async (id) => {
+    .action(async (id: string) => {
       const spinner = ora('Unlocking user...').start();
 
       try {
@@ -285,9 +320,9 @@ export function registerUserCommands(program: Command): void {
   user
     .command('reset-password <id> [newPassword]')
     .description('Reset user password')
-    .action(async (id, newPassword) => {
+    .action(async (id: string, newPassword?: string) => {
       try {
-        const password = newPassword || await promptNewPassword();
+        const password = newPassword ?? await promptNewPassword();
         const spinner = ora('Resetting password...').start();
 
         try {
@@ -327,7 +362,7 @@ export function registerUserCommands(program: Command): void {
     .command('totp-disable <id>')
     .description('Disable 2FA/TOTP for a user')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (id, options) => {
+    .action(async (id: string, options: TotpDisableOptions) => {
       try {
         if (!options.yes) {
           const confirmed = await promptConfirm(

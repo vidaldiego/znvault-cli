@@ -1,7 +1,17 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import * as mode from '../lib/mode.js';
 import * as output from '../lib/output.js';
+import * as visual from '../lib/visual.js';
+
+interface HealthOptions {
+  leader?: boolean;
+  json?: boolean;
+}
+
+interface StatusOptions {
+  json?: boolean;
+}
 
 export function registerHealthCommands(program: Command): void {
   // Health command
@@ -10,7 +20,7 @@ export function registerHealthCommands(program: Command): void {
     .description('Check vault server health')
     .option('--leader', 'Check leader node health')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: HealthOptions) => {
       const spinner = ora('Checking health...').start();
 
       try {
@@ -25,60 +35,54 @@ export function registerHealthCommands(program: Command): void {
           return;
         }
 
-        const statusColor = health.status === 'ok'
-          ? output.formatStatus('ok')
-          : output.formatStatus(health.status);
+        // Build status box data
+        const statusType = health.status === 'ok' ? 'success' :
+                          health.status === 'degraded' ? 'warning' : 'error';
 
-        console.log();
-        // Show mode indicator
-        console.log(`Mode:      ${mode.getModeDescription()}`);
-        console.log();
-        console.log(`Status:    ${statusColor}`);
-        console.log(`Version:   ${health.version}`);
-        if (health.uptime !== undefined) {
-          console.log(`Uptime:    ${formatUptime(health.uptime)}`);
-        }
-        console.log(`Timestamp: ${health.timestamp}`);
+        const healthData: Record<string, { value: string; status?: 'success' | 'warning' | 'error' | 'info' }> = {
+          'Status': { value: health.status.toUpperCase(), status: statusType },
+          'Version': { value: health.version },
+          'Uptime': { value: formatUptime(health.uptime) },
+          'Mode': { value: mode.getModeDescription() },
+        };
 
-        // Infrastructure section
-        console.log();
-        console.log('Infrastructure:');
-
+        // Add infrastructure status
         if (health.database) {
           const db = health.database as { status: string; role?: string; replicationLag?: number };
-          let dbInfo = output.formatStatus(db.status);
-          if (db.role) {
-            dbInfo += ` (${db.role})`;
-          }
-          if (db.replicationLag !== undefined && db.replicationLag > 0) {
-            dbInfo += ` - lag: ${formatBytes(db.replicationLag)}`;
-          }
-          console.log(`  PostgreSQL: ${dbInfo}`);
+          const dbStatus = db.status === 'connected' ? 'success' : 'error';
+          let dbValue = db.status === 'connected' ? 'Connected' : db.status;
+          if (db.role) dbValue += ` (${db.role})`;
+          healthData['PostgreSQL'] = { value: dbValue, status: dbStatus };
         }
 
         if (health.redis) {
           const redis = health.redis as { status: string; sentinelNodes?: number; master?: string };
-          let redisInfo = output.formatStatus(redis.status);
-          if (redis.sentinelNodes !== undefined) {
-            redisInfo += ` (${redis.sentinelNodes}/3 sentinels)`;
-          }
-          if (redis.master) {
-            redisInfo += ` - master: ${redis.master}`;
-          }
-          console.log(`  Redis:      ${redisInfo}`);
+          const redisStatus = redis.status === 'connected' ? 'success' : 'error';
+          let redisValue = redis.status === 'connected' ? 'Connected' : redis.status;
+          if (redis.sentinelNodes !== undefined) redisValue += ` (${redis.sentinelNodes}/3)`;
+          healthData['Redis'] = { value: redisValue, status: redisStatus };
         }
 
+        // Add HA info if available
         if (health.ha) {
-          console.log();
-          console.log('HA Cluster:');
-          console.log(`  Enabled:  ${output.formatBool(health.ha.enabled)}`);
-          console.log(`  Node ID:  ${health.ha.nodeId}`);
-          console.log(`  Leader:   ${output.formatBool(health.ha.isLeader)}`);
-          if (health.ha.clusterSize) {
-            console.log(`  Nodes:    ${health.ha.clusterSize}`);
+          healthData['HA Enabled'] = {
+            value: health.ha.enabled ? 'Yes' : 'No',
+            status: health.ha.enabled ? 'success' : 'info'
+          };
+          if (health.ha.enabled) {
+            healthData['Node ID'] = { value: health.ha.nodeId };
+            healthData['Is Leader'] = {
+              value: health.ha.isLeader ? 'Yes' : 'No',
+              status: health.ha.isLeader ? 'success' : 'info'
+            };
+            if (health.ha.clusterSize) {
+              healthData['Cluster Size'] = { value: String(health.ha.clusterSize) };
+            }
           }
         }
 
+        console.log();
+        console.log(visual.statusBox('SERVER HEALTH', healthData));
         console.log();
       } catch (err) {
         spinner.fail('Health check failed');
@@ -94,7 +98,7 @@ export function registerHealthCommands(program: Command): void {
     .command('status')
     .description('Show comprehensive system status')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: StatusOptions) => {
       const spinner = ora('Gathering status...').start();
 
       try {
@@ -118,57 +122,65 @@ export function registerHealthCommands(program: Command): void {
           return;
         }
 
-        // Mode section
         console.log();
-        console.log(`Mode: ${mode.getModeDescription()}`);
 
-        // Health section
-        output.section('Health');
+        // Health box
         if (health.status === 'fulfilled') {
           const h = health.value;
-          console.log(`  Status:    ${output.formatStatus(h.status)}`);
-          console.log(`  Version:   ${h.version}`);
-          if (h.uptime !== undefined) {
-            console.log(`  Uptime:    ${formatUptime(h.uptime)}`);
-          }
+          const healthType = h.status === 'ok' ? 'success' : h.status === 'degraded' ? 'warning' : 'error';
+          console.log(visual.statusBox('HEALTH', {
+            'Status': { value: h.status.toUpperCase(), status: healthType },
+            'Version': { value: h.version },
+            'Uptime': { value: formatUptime(h.uptime) },
+            'Mode': { value: mode.getModeDescription() },
+          }));
         } else {
-          output.error('Failed to get health status');
+          console.log(visual.box('Health status unavailable', { title: 'HEALTH', borderColor: 'red' }));
         }
 
-        // Cluster section
-        output.section('Cluster');
+        console.log();
+
+        // Cluster box
         if (cluster.status === 'fulfilled') {
           const c = cluster.value;
-          console.log(`  Enabled:   ${output.formatBool(c.enabled)}`);
-          console.log(`  Node ID:   ${c.nodeId}`);
-          console.log(`  Is Leader: ${output.formatBool(c.isLeader)}`);
-          console.log(`  Leader:    ${c.leaderNodeId || 'None'}`);
-
-          if (c.nodes && c.nodes.length > 0) {
-            console.log('  Nodes:');
-            for (const node of c.nodes) {
-              const status = node.isHealthy ? 'healthy' : 'unhealthy';
-              const leader = node.isLeader ? ' (leader)' : '';
-              console.log(`    - ${node.nodeId}: ${output.formatStatus(status)}${leader}`);
-            }
+          if (c.enabled && c.nodes.length > 0) {
+            const nodes = c.nodes.map(n => ({
+              id: n.nodeId,
+              role: n.isLeader ? 'LEADER' : 'FOLLOWER',
+              status: n.isHealthy ? 'healthy' : 'unhealthy',
+              isLeader: n.isLeader,
+            }));
+            console.log(visual.nodeStatus(nodes));
+          } else {
+            console.log(visual.statusBox('CLUSTER', {
+              'Enabled': { value: c.enabled ? 'Yes' : 'No', status: c.enabled ? 'success' : 'info' },
+              'Node ID': { value: c.nodeId },
+              'Is Leader': { value: c.isLeader ? 'Yes' : 'No', status: c.isLeader ? 'success' : 'info' },
+            }));
           }
         } else {
-          console.log('  Status: Not available');
+          console.log(visual.box('Cluster status unavailable', { title: 'CLUSTER', borderColor: 'yellow' }));
         }
 
-        // Lockdown section
-        output.section('Security');
+        console.log();
+
+        // Security box
         if (lockdown.status === 'fulfilled') {
           const l = lockdown.value;
-          console.log(`  Lockdown:  ${output.formatStatus(l.status)}`);
+          const securityStatus = l.status === 'NORMAL' ? 'success' :
+                                l.status === 'LOCKDOWN' || l.status === 'PANIC' ? 'error' : 'warning';
+          const securityData: Record<string, { value: string; status?: 'success' | 'warning' | 'error' | 'info' }> = {
+            'Mode': { value: l.status, status: securityStatus },
+          };
           if (l.reason) {
-            console.log(`  Reason:    ${l.reason}`);
+            securityData['Reason'] = { value: l.reason };
           }
           if (l.triggeredAt) {
-            console.log(`  Since:     ${output.formatDate(l.triggeredAt)}`);
+            securityData['Since'] = { value: output.formatDate(l.triggeredAt) ?? 'Unknown' };
           }
+          console.log(visual.statusBox('SECURITY', securityData));
         } else {
-          console.log('  Status: Not available');
+          console.log(visual.box('Security status unavailable', { title: 'SECURITY', borderColor: 'yellow' }));
         }
 
         console.log();
@@ -196,10 +208,3 @@ function formatUptime(seconds: number): string {
   return `${minutes}m`;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}

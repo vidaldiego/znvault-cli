@@ -1,9 +1,27 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import fs from 'node:fs';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import * as output from '../lib/output.js';
+
+interface AuditListOptions {
+  user?: string;
+  action?: string;
+  days: string;
+  limit: string;
+  json?: boolean;
+}
+
+interface AuditVerifyOptions {
+  json?: boolean;
+}
+
+interface AuditExportOptions {
+  format: 'json' | 'csv';
+  days: string;
+  output?: string;
+}
 
 export function registerAuditCommands(program: Command): void {
   const audit = program
@@ -19,7 +37,7 @@ export function registerAuditCommands(program: Command): void {
     .option('--days <number>', 'Show entries from last N days', '7')
     .option('--limit <number>', 'Number of entries to show', '100')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: AuditListOptions) => {
       const spinner = ora('Fetching audit logs...').start();
 
       try {
@@ -53,17 +71,17 @@ export function registerAuditCommands(program: Command): void {
             e.action,
             (e.resource || '-').substring(0, 30),
             e.statusCode,
-            e.ip || '-',
+            e.ip ?? '-',
           ])
         );
 
         output.info(`Showing ${entries.length} entries`);
 
         // Show action summary
-        const actions = entries.reduce((acc, e) => {
+        const actions = entries.reduce<Record<string, number>>((acc, e) => {
           acc[e.action] = (acc[e.action] || 0) + 1;
           return acc;
-        }, {} as Record<string, number>);
+        }, {});
 
         if (Object.keys(actions).length > 1) {
           output.section('By Action');
@@ -83,7 +101,7 @@ export function registerAuditCommands(program: Command): void {
     .command('verify')
     .description('Verify audit log chain integrity (HMAC)')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: AuditVerifyOptions) => {
       const spinner = ora('Verifying audit chain...').start();
 
       try {
@@ -106,7 +124,7 @@ export function registerAuditCommands(program: Command): void {
           output.keyValue({
             'Total Entries': result.totalEntries,
             'Verified Entries': result.verifiedEntries,
-            'First Broken Entry': result.firstBrokenEntry || '-',
+            'First Broken Entry': result.firstBrokenEntry ?? '-',
             'Message': result.message,
           });
           process.exit(1);
@@ -127,7 +145,7 @@ export function registerAuditCommands(program: Command): void {
     .option('--format <format>', 'Output format (json|csv)', 'json')
     .option('--days <number>', 'Export entries from last N days', '30')
     .option('--output <file>', 'Output file (default: stdout)')
-    .action(async (options) => {
+    .action(async (options: AuditExportOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Audit export requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');

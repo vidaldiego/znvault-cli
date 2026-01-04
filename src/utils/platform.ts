@@ -87,7 +87,7 @@ export function getInstallPath(): string {
  * Check if the current process has write access to the install path
  */
 export function canWriteToInstallPath(installPath?: string): boolean {
-  const targetPath = installPath || getInstallPath();
+  const targetPath = installPath ?? getInstallPath();
   const targetDir = path.dirname(targetPath);
 
   try {

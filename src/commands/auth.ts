@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import { client } from '../lib/client.js';
 import {
@@ -21,6 +21,61 @@ import {
 import { promptUsername, promptPassword, promptTotp } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 
+// ============================================================================
+// Option Interfaces
+// ============================================================================
+
+interface LoginOptions {
+  username?: string;
+  password?: string;
+  totp?: string;
+}
+
+interface LogoutOptions {
+  keepApikey?: boolean;
+}
+
+interface LoginApiKeyOptions {
+  username?: string;
+  password?: string;
+  totp?: string;
+  expires: string;
+  name?: string;
+  permissions?: string;
+  replace?: boolean;
+}
+
+interface JsonOutputOptions {
+  json?: boolean;
+}
+
+interface ConfigGetOptions {
+  json?: boolean;
+}
+
+interface ProfileListOptions {
+  json?: boolean;
+}
+
+interface ProfileCurrentOptions {
+  json?: boolean;
+}
+
+interface ProfileCreateOptions {
+  vaultUrl?: string;
+  insecure?: boolean;
+  copyFrom?: string;
+  use?: boolean;
+}
+
+interface ProfileDeleteOptions {
+  force?: boolean;
+}
+
+interface ProfileShowOptions {
+  json?: boolean;
+}
+
 export function registerAuthCommands(program: Command): void {
   // Login command
   program
@@ -29,11 +84,13 @@ export function registerAuthCommands(program: Command): void {
     .option('-u, --username <username>', 'Username')
     .option('-p, --password <password>', 'Password')
     .option('-t, --totp <code>', 'TOTP code (if 2FA enabled)')
-    .action(async (options) => {
+    .action(async (options: LoginOptions) => {
       try {
-        const username = options.username || await promptUsername();
-        const password = options.password || await promptPassword();
-        const totp = options.totp || await promptTotp();
+        const username = options.username ?? await promptUsername();
+        const password = options.password ?? await promptPassword();
+        // Only prompt for TOTP if not running in CI mode and credentials weren't provided via CLI
+        const isNonInteractive = process.env.CI === 'true' || (options.username && options.password);
+        const totp = options.totp ?? (isNonInteractive ? undefined : await promptTotp());
 
         const spinner = ora('Authenticating...').start();
 
@@ -45,7 +102,7 @@ export function registerAuthCommands(program: Command): void {
             'User ID': response.user.id,
             'Username': response.user.username,
             'Role': response.user.role,
-            'Tenant': response.user.tenantId || 'None (superadmin)',
+            'Tenant': response.user.tenantId ?? 'None (superadmin)',
           });
         } catch (err) {
           spinner.fail('Login failed');
@@ -62,7 +119,7 @@ export function registerAuthCommands(program: Command): void {
     .command('logout')
     .description('Clear stored credentials and API key')
     .option('--keep-apikey', 'Keep stored API key (only clear JWT credentials)')
-    .action((options) => {
+    .action((options: LogoutOptions) => {
       clearCredentials();
       if (!options.keepApikey) {
         clearApiKey();
@@ -81,7 +138,7 @@ export function registerAuthCommands(program: Command): void {
     .option('-n, --name <name>', 'API key name (default: znvault-cli-<profile>)')
     .option('-P, --permissions <perms>', 'Comma-separated permissions (defaults to common CLI permissions)')
     .option('--replace', 'Replace existing API key if one exists')
-    .action(async (options) => {
+    .action(async (options: LoginApiKeyOptions) => {
       const profileName = getActiveProfileName();
 
       // Check if API key already exists
@@ -93,9 +150,11 @@ export function registerAuthCommands(program: Command): void {
       }
 
       try {
-        const username = options.username || await promptUsername();
-        const password = options.password || await promptPassword();
-        const totp = options.totp || await promptTotp();
+        const username = options.username ?? await promptUsername();
+        const password = options.password ?? await promptPassword();
+        // Only prompt for TOTP if not running in CI mode and credentials weren't provided via CLI
+        const isNonInteractive = process.env.CI === 'true' || (options.username && options.password);
+        const totp = options.totp ?? (isNonInteractive ? undefined : await promptTotp());
 
         const spinner = ora('Authenticating...').start();
 
@@ -106,7 +165,7 @@ export function registerAuthCommands(program: Command): void {
 
           // Create API key
           const expiresInDays = parseInt(options.expires, 10);
-          const keyName = options.name || `znvault-cli-${profileName}`;
+          const keyName = options.name ?? `znvault-cli-${profileName}`;
 
           // Default permissions for CLI usage (read secrets, configs, basic operations)
           const defaultPermissions = [
@@ -169,7 +228,7 @@ export function registerAuthCommands(program: Command): void {
     .command('whoami')
     .description('Show current authenticated user')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: JsonOutputOptions) => {
       const credentials = getCredentials();
       const storedApiKey = getStoredApiKey();
       const profileName = getActiveProfileName();
@@ -212,7 +271,7 @@ export function registerAuthCommands(program: Command): void {
         userId: credentials.userId,
         username: credentials.username,
         role: credentials.role,
-        tenantId: credentials.tenantId || 'None',
+        tenantId: credentials.tenantId ?? 'None',
         tokenExpires: new Date(credentials.expiresAt).toLocaleString(),
       };
 
@@ -231,7 +290,7 @@ export function registerAuthCommands(program: Command): void {
   configCmd
     .command('set <key> <value>')
     .description('Set a configuration value (url, insecure, timeout, defaultTenant)')
-    .action((key, value) => {
+    .action((key: string, value: string) => {
       const validKeys = ['url', 'insecure', 'timeout', 'defaultTenant'];
       if (!validKeys.includes(key)) {
         output.error(`Invalid config key. Valid keys: ${validKeys.join(', ')}`);
@@ -257,7 +316,7 @@ export function registerAuthCommands(program: Command): void {
     .command('get [key]')
     .description('Get configuration value(s)')
     .option('--json', 'Output as JSON')
-    .action((key, options) => {
+    .action((key: string | undefined, options: ConfigGetOptions) => {
       const config = getAllConfig();
 
       if (key) {
@@ -265,7 +324,7 @@ export function registerAuthCommands(program: Command): void {
           output.error(`Unknown config key: ${key}`);
           process.exit(1);
         }
-        console.log(config[key as keyof typeof config]);
+        console.log(config[key]);
       } else {
         if (options.json) {
           output.json(config);
@@ -296,7 +355,7 @@ export function registerAuthCommands(program: Command): void {
     .alias('ls')
     .description('List all profiles')
     .option('--json', 'Output as JSON')
-    .action((options) => {
+    .action((options: ProfileListOptions) => {
       const profiles = listProfiles();
 
       if (profiles.length === 0) {
@@ -323,7 +382,7 @@ export function registerAuthCommands(program: Command): void {
     .command('current')
     .description('Show current active profile')
     .option('--json', 'Output as JSON')
-    .action((options) => {
+    .action((options: ProfileCurrentOptions) => {
       const profileName = getActiveProfileName();
       const profile = getProfile(profileName);
 
@@ -360,7 +419,7 @@ export function registerAuthCommands(program: Command): void {
     .option('-k, --insecure', 'Skip TLS certificate verification')
     .option('--copy-from <profile>', 'Copy settings from existing profile')
     .option('--use', 'Switch to this profile after creating')
-    .action((name, options) => {
+    .action((name: string, options: ProfileCreateOptions) => {
       try {
         createProfile(name, {
           url: options.vaultUrl,
@@ -384,7 +443,7 @@ export function registerAuthCommands(program: Command): void {
     .command('use <name>')
     .alias('switch')
     .description('Switch to a different profile')
-    .action((name) => {
+    .action((name: string) => {
       try {
         switchProfile(name);
         const profile = getProfile(name);
@@ -407,7 +466,7 @@ export function registerAuthCommands(program: Command): void {
     .alias('rm')
     .description('Delete a profile')
     .option('-f, --force', 'Skip confirmation')
-    .action(async (name, options) => {
+    .action((name: string, options: ProfileDeleteOptions) => {
       try {
         if (!options.force) {
           const profile = getProfile(name);
@@ -428,7 +487,7 @@ export function registerAuthCommands(program: Command): void {
   profileCmd
     .command('rename <old-name> <new-name>')
     .description('Rename a profile')
-    .action((oldName, newName) => {
+    .action((oldName: string, newName: string) => {
       try {
         renameProfile(oldName, newName);
         output.success(`Renamed profile '${oldName}' to '${newName}'`);
@@ -443,8 +502,8 @@ export function registerAuthCommands(program: Command): void {
     .command('show [name]')
     .description('Show profile details')
     .option('--json', 'Output as JSON')
-    .action((name, options) => {
-      const profileName = name || getActiveProfileName();
+    .action((name: string | undefined, options: ProfileShowOptions) => {
+      const profileName = name ?? getActiveProfileName();
       const profile = getProfile(profileName);
 
       if (!profile) {
@@ -457,14 +516,14 @@ export function registerAuthCommands(program: Command): void {
         url: profile.url,
         insecure: profile.insecure,
         timeout: profile.timeout,
-        defaultTenant: profile.defaultTenant || 'None',
+        defaultTenant: profile.defaultTenant ?? 'None',
         authMethod: profile.apiKey ? 'API Key' : profile.credentials ? 'JWT' : 'None',
         hasApiKey: !!profile.apiKey,
         apiKeyPrefix: profile.apiKey ? profile.apiKey.substring(0, 12) + '...' : undefined,
         hasCredentials: !!profile.credentials,
-        loggedInAs: profile.credentials?.username || 'Not logged in',
+        loggedInAs: profile.credentials?.username ?? 'Not logged in',
         role: profile.credentials?.role,
-        tenantId: profile.credentials?.tenantId || 'None',
+        tenantId: profile.credentials?.tenantId ?? 'None',
       };
 
       if (options.json) {

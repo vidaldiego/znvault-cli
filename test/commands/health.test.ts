@@ -63,6 +63,14 @@ vi.mock('../../src/lib/output.js', () => ({
   formatDate: vi.fn().mockReturnValue('2024-01-01'),
 }));
 
+vi.mock('../../src/lib/visual.js', () => ({
+  statusBox: vi.fn().mockReturnValue('mocked status box'),
+  box: vi.fn().mockReturnValue('mocked box'),
+  nodeStatus: vi.fn().mockReturnValue('mocked node status'),
+  cliBanner: vi.fn().mockReturnValue('mocked banner'),
+  helpHint: vi.fn().mockReturnValue('mocked hint'),
+}));
+
 describe('health commands', () => {
   let program: Command;
 
@@ -81,12 +89,12 @@ describe('health commands', () => {
   describe('health', () => {
     it('should display health status', async () => {
       const mode = await import('../../src/lib/mode.js');
-      const { formatStatus } = await import('../../src/lib/output.js');
+      const visual = await import('../../src/lib/visual.js');
 
       await program.parseAsync(['node', 'test', 'health']);
 
       expect(mode.health).toHaveBeenCalled();
-      expect(formatStatus).toHaveBeenCalled();
+      expect(visual.statusBox).toHaveBeenCalled();
     });
 
     it('should get leader health with --leader flag', async () => {
@@ -109,16 +117,16 @@ describe('health commands', () => {
   describe('status', () => {
     it('should display comprehensive status', async () => {
       const mode = await import('../../src/lib/mode.js');
-      const { section, formatStatus, formatBool } = await import('../../src/lib/output.js');
+      const visual = await import('../../src/lib/visual.js');
 
       await program.parseAsync(['node', 'test', 'status']);
 
       expect(mode.health).toHaveBeenCalled();
       expect(mode.clusterStatus).toHaveBeenCalled();
       expect(mode.getLockdownStatus).toHaveBeenCalled();
-      expect(section).toHaveBeenCalled();
-      expect(formatStatus).toHaveBeenCalled();
-      expect(formatBool).toHaveBeenCalled();
+      // Now uses visual module for boxed output
+      expect(visual.statusBox).toHaveBeenCalled();
+      expect(visual.nodeStatus).toHaveBeenCalled();
     });
 
     it('should output JSON when --json flag is used', async () => {

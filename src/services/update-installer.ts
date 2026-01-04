@@ -24,7 +24,7 @@ export class UpdateInstaller {
   private onProgress?: ProgressCallback;
 
   constructor(installPath?: string, onProgress?: ProgressCallback) {
-    this.installPath = installPath || getInstallPath();
+    this.installPath = installPath ?? getInstallPath();
     this.onProgress = onProgress;
   }
 
@@ -63,11 +63,11 @@ export class UpdateInstaller {
         if (res.statusCode !== 200) {
           file.close();
           fs.unlinkSync(destPath);
-          reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+          reject(new Error(`Download failed: HTTP ${String(res.statusCode)}`));
           return;
         }
 
-        const totalSize = parseInt(res.headers['content-length'] || '0', 10);
+        const totalSize = parseInt(res.headers['content-length'] ?? '0', 10);
         let downloadedSize = 0;
 
         res.on('data', (chunk: Buffer) => {
@@ -219,7 +219,7 @@ export class UpdateInstaller {
         await this.installDirectory(extractDir);
       } else {
         // Standalone binary: atomic replacement
-        await this.atomicReplace(newBinaryPath);
+        this.atomicReplace(newBinaryPath);
       }
 
       // 7. Complete
@@ -319,7 +319,7 @@ export class UpdateInstaller {
   /**
    * Atomically replace the binary with rollback on failure
    */
-  private async atomicReplace(newBinaryPath: string): Promise<void> {
+  private atomicReplace(newBinaryPath: string): void {
     const backupPath = `${this.installPath}.backup`;
     const installDir = path.dirname(this.installPath);
 

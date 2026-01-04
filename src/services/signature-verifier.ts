@@ -88,7 +88,6 @@ WHcbEBz8WFnmLA==
 
 export class SignatureVerifier {
   private publicKeyArmored: string | null = null;
-  private publicKeyFetched = false;
 
   /**
    * Verify SHA256 checksum of a file
@@ -120,15 +119,14 @@ export class SignatureVerifier {
     return new Promise((resolve, reject) => {
       https.get(url, { rejectUnauthorized: true }, (res) => {
         if (res.statusCode !== 200) {
-          reject(new Error(`Failed to fetch public key: HTTP ${res.statusCode}`));
+          reject(new Error(`Failed to fetch public key: HTTP ${String(res.statusCode)}`));
           return;
         }
 
         let data = '';
-        res.on('data', (chunk) => { data += chunk; });
+        res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
         res.on('end', () => {
           this.publicKeyArmored = data;
-          this.publicKeyFetched = true;
           resolve(data);
         });
       }).on('error', reject);
@@ -146,7 +144,7 @@ export class SignatureVerifier {
 
     try {
       return await this.fetchPublicKey();
-    } catch (err) {
+    } catch {
       console.warn('Failed to fetch public key from S3, using embedded key');
       this.publicKeyArmored = EMBEDDED_PUBLIC_KEY;
       return EMBEDDED_PUBLIC_KEY;
@@ -230,8 +228,6 @@ export class SignatureVerifier {
 let verifierInstance: SignatureVerifier | null = null;
 
 export function getSignatureVerifier(): SignatureVerifier {
-  if (!verifierInstance) {
-    verifierInstance = new SignatureVerifier();
-  }
+  verifierInstance ??= new SignatureVerifier();
   return verifierInstance;
 }

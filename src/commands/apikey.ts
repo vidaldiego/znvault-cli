@@ -1,12 +1,115 @@
 // Path: znvault-cli/src/commands/apikey.ts
 // CLI commands for independent API key management
 
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import Table from 'cli-table3';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
 import type { APIKey } from '../types/index.js';
+
+// ============================================================================
+// Option Interfaces
+// ============================================================================
+
+interface ListOptions {
+  tenant?: string;
+  json?: boolean;
+}
+
+interface CreateOptions {
+  expires: string;
+  permissions?: string;
+  description?: string;
+  ip?: string;
+  timeRange?: string;
+  methods?: string;
+  resources?: string;
+  aliases?: string;
+  tags?: string;
+  tenant?: string;
+  json?: boolean;
+}
+
+interface ShowOptions {
+  tenant?: string;
+  json?: boolean;
+}
+
+interface DeleteOptions {
+  tenant?: string;
+  force?: boolean;
+}
+
+interface RotateOptions {
+  name?: string;
+  tenant?: string;
+  json?: boolean;
+}
+
+interface EnableDisableOptions {
+  tenant?: string;
+}
+
+interface UpdatePermissionsOptions {
+  set?: string;
+  tenant?: string;
+  json?: boolean;
+}
+
+interface UpdateConditionsOptions {
+  ip?: string;
+  timeRange?: string;
+  methods?: string;
+  resources?: string;
+  aliases?: string;
+  tags?: string;
+  clearAll?: boolean;
+  tenant?: string;
+  json?: boolean;
+}
+
+interface ListPoliciesOptions {
+  tenant?: string;
+  json?: boolean;
+}
+
+interface AttachDetachPolicyOptions {
+  tenant?: string;
+}
+
+interface SelfOptions {
+  json?: boolean;
+}
+
+interface SelfRotateOptions {
+  name?: string;
+  json?: boolean;
+}
+
+// ============================================================================
+// Condition Type Definitions
+// ============================================================================
+
+interface TimeRangeCondition {
+  start: string;
+  end: string;
+  timezone?: string;
+}
+
+interface ApiKeyConditions {
+  ip?: string[];
+  timeRange?: TimeRangeCondition;
+  methods?: string[];
+  resources?: Record<string, string[]>;
+  aliases?: string[];
+  resourceTags?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
@@ -29,12 +132,12 @@ function formatExpiry(expiresAt: string): string {
 }
 
 function formatPermissions(permissions: string[]): string {
-  if (!permissions || permissions.length === 0) return 'None';
+  if (permissions.length === 0) return 'None';
   if (permissions.length <= 3) return permissions.join(', ');
   return `${permissions.slice(0, 2).join(', ')} +${permissions.length - 2} more`;
 }
 
-function formatConditionsSummary(conditions?: Record<string, unknown>): string {
+function formatConditionsSummary(conditions?: ApiKeyConditions): string {
   if (!conditions || Object.keys(conditions).length === 0) return '-';
 
   const parts: string[] = [];
@@ -50,6 +153,22 @@ function formatConditionsSummary(conditions?: Record<string, unknown>): string {
   return `${parts.slice(0, 2).join(', ')} +${parts.length - 2}`;
 }
 
+function displayConditions(cond: ApiKeyConditions): void {
+  if (cond.ip) console.log(`  - IP Allowlist: ${cond.ip.join(', ')}`);
+  if (cond.timeRange) {
+    const tr = cond.timeRange;
+    console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone ?? 'UTC'}`);
+  }
+  if (cond.methods) console.log(`  - Methods: ${cond.methods.join(', ')}`);
+  if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
+  if (cond.aliases) console.log(`  - Aliases: ${cond.aliases.join(', ')}`);
+  if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+}
+
+// ============================================================================
+// Command Registration
+// ============================================================================
+
 export function registerApiKeyCommands(program: Command): void {
   const apiKeyCmd = program
     .command('apikey')
@@ -63,7 +182,7 @@ export function registerApiKeyCommands(program: Command): void {
     .description('List API keys')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ListOptions) => {
       const spinner = ora('Fetching API keys...').start();
 
       try {
@@ -103,7 +222,7 @@ export function registerApiKeyCommands(program: Command): void {
             `${statusIcon} ${statusText}`,
             key.tenant_id,
             formatPermissions(key.permissions),
-            formatConditionsSummary(key.conditions),
+            formatConditionsSummary(key.conditions as ApiKeyConditions | undefined),
             `${expiryColor}${formatExpiry(key.expires_at)}${reset}`,
             key.rotation_count > 0 ? `${key.rotation_count}x` : '-',
           ]);
@@ -133,7 +252,7 @@ export function registerApiKeyCommands(program: Command): void {
     .option('--tags <tags>', 'Required resource tags: key=value,key2=value2')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name, options) => {
+    .action(async (name: string, options: CreateOptions) => {
       // Validate permissions
       if (!options.permissions) {
         output.error('--permissions is required. Use comma-separated permission strings.');
@@ -141,7 +260,7 @@ export function registerApiKeyCommands(program: Command): void {
         process.exit(1);
       }
 
-      const permissions = options.permissions.split(',').map((p: string) => p.trim());
+      const permissions = options.permissions.split(',').map((p) => p.trim());
 
       const spinner = ora('Creating API key...').start();
 
@@ -156,11 +275,11 @@ export function registerApiKeyCommands(program: Command): void {
 
         let ipAllowlist: string[] | undefined;
         if (options.ip) {
-          ipAllowlist = options.ip.split(',').map((ip: string) => ip.trim());
+          ipAllowlist = options.ip.split(',').map((ip) => ip.trim());
         }
 
         // Parse conditions
-        const conditions: Record<string, unknown> = {};
+        const conditions: ApiKeyConditions = {};
 
         // IP condition (from --ip flag, now also stored in conditions)
         if (ipAllowlist) {
@@ -169,7 +288,7 @@ export function registerApiKeyCommands(program: Command): void {
 
         // Time range condition
         if (options.timeRange) {
-          const match = options.timeRange.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+(.+))?$/);
+          const match = /^(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+(.+))?$/.exec(options.timeRange);
           if (!match) {
             spinner.fail('Invalid time range format');
             output.error('Use format: "HH:MM-HH:MM [TIMEZONE]"');
@@ -185,7 +304,7 @@ export function registerApiKeyCommands(program: Command): void {
 
         // HTTP methods condition
         if (options.methods) {
-          conditions.methods = options.methods.split(',').map((m: string) => m.trim().toUpperCase());
+          conditions.methods = options.methods.split(',').map((m) => m.trim().toUpperCase());
         }
 
         // Resource IDs condition
@@ -194,7 +313,7 @@ export function registerApiKeyCommands(program: Command): void {
           for (const part of options.resources.split(',')) {
             const [type, id] = part.split(':');
             if (type && id) {
-              if (!resources[type]) resources[type] = [];
+              resources[type] = resources[type] ?? [];
               resources[type].push(id);
             }
           }
@@ -205,7 +324,7 @@ export function registerApiKeyCommands(program: Command): void {
 
         // Alias patterns condition
         if (options.aliases) {
-          conditions.aliases = options.aliases.split(',').map((a: string) => a.trim());
+          conditions.aliases = options.aliases.split(',').map((a) => a.trim());
         }
 
         // Resource tags condition
@@ -250,9 +369,9 @@ export function registerApiKeyCommands(program: Command): void {
           'Prefix': result.apiKey.prefix,
           'Status': result.apiKey.enabled ? '\x1b[32m●\x1b[0m Active' : '\x1b[31m○\x1b[0m Disabled',
           'Tenant': result.apiKey.tenant_id,
-          'Description': result.apiKey.description || 'None',
+          'Description': result.apiKey.description ?? 'None',
           'Expires': formatDate(result.apiKey.expires_at),
-          'IP Allowlist': result.apiKey.ip_allowlist?.join(', ') || 'None',
+          'IP Allowlist': result.apiKey.ip_allowlist?.join(', ') ?? 'None',
         });
 
         if (result.apiKey.permissions.length > 0) {
@@ -263,18 +382,10 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         // Display conditions if any
-        if (result.apiKey.conditions && Object.keys(result.apiKey.conditions).length > 0) {
+        const apiKeyConditions = result.apiKey.conditions as ApiKeyConditions | undefined;
+        if (apiKeyConditions && Object.keys(apiKeyConditions).length > 0) {
           console.log('\nConditions:');
-          const cond = result.apiKey.conditions as Record<string, unknown>;
-          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
-          if (cond.timeRange) {
-            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
-            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
-          }
-          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
-          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
-          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
-          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+          displayConditions(apiKeyConditions);
         }
       } catch (err) {
         spinner.fail('Failed to create API key');
@@ -289,7 +400,7 @@ export function registerApiKeyCommands(program: Command): void {
     .description('Show API key details')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: ShowOptions) => {
       const spinner = ora('Fetching API key...').start();
 
       try {
@@ -325,15 +436,15 @@ export function registerApiKeyCommands(program: Command): void {
           'Prefix': key.prefix,
           'Status': statusIcon,
           'Tenant': key.tenant_id,
-          'Description': key.description || 'None',
-          'Created By': key.created_by_username || key.created_by || 'Unknown',
+          'Description': key.description ?? 'None',
+          'Created By': key.created_by_username ?? key.created_by ?? 'Unknown',
           'Created': formatDate(key.created_at),
           'Expires': formatDate(key.expires_at),
           'Days Until Expiry': daysLeft,
           'Last Used': key.last_used ? formatDate(key.last_used) : 'Never',
           'Rotation Count': key.rotation_count,
           'Last Rotation': key.last_rotation ? formatDate(key.last_rotation) : 'Never',
-          'IP Allowlist': key.ip_allowlist?.join(', ') || 'None (any IP)',
+          'IP Allowlist': key.ip_allowlist?.join(', ') ?? 'None (any IP)',
         });
 
         if (key.permissions.length > 0) {
@@ -344,18 +455,10 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         // Display conditions if any
-        if (key.conditions && Object.keys(key.conditions).length > 0) {
+        const keyConditions = key.conditions as ApiKeyConditions | undefined;
+        if (keyConditions && Object.keys(keyConditions).length > 0) {
           console.log('\nConditions:');
-          const cond = key.conditions as Record<string, unknown>;
-          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
-          if (cond.timeRange) {
-            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
-            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
-          }
-          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
-          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
-          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
-          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+          displayConditions(keyConditions);
         }
 
         if (!key.enabled) {
@@ -377,7 +480,7 @@ export function registerApiKeyCommands(program: Command): void {
     .description('Delete an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('-f, --force', 'Skip confirmation')
-    .action(async (id, options) => {
+    .action(async (id: string, options: DeleteOptions) => {
       if (!options.force) {
         output.warn(`This will permanently delete API key: ${id}`);
         output.warn('The key will stop working immediately.');
@@ -402,7 +505,7 @@ export function registerApiKeyCommands(program: Command): void {
     .option('-n, --name <name>', 'New name for the rotated key')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: RotateOptions) => {
       const spinner = ora('Rotating API key...').start();
 
       try {
@@ -439,7 +542,7 @@ export function registerApiKeyCommands(program: Command): void {
     .command('enable <id>')
     .description('Enable an API key (allow authentication)')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (id, options) => {
+    .action(async (id: string, options: EnableDisableOptions) => {
       const spinner = ora('Enabling API key...').start();
 
       try {
@@ -458,7 +561,7 @@ export function registerApiKeyCommands(program: Command): void {
     .command('disable <id>')
     .description('Disable an API key (block authentication without deleting)')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (id, options) => {
+    .action(async (id: string, options: EnableDisableOptions) => {
       const spinner = ora('Disabling API key...').start();
 
       try {
@@ -480,13 +583,13 @@ export function registerApiKeyCommands(program: Command): void {
     .option('-s, --set <perms>', 'Set permissions (comma-separated, replaces all)')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: UpdatePermissionsOptions) => {
       if (!options.set) {
         output.error('--set is required. Provide comma-separated permissions.');
         process.exit(1);
       }
 
-      const permissions = options.set.split(',').map((p: string) => p.trim());
+      const permissions = options.set.split(',').map((p) => p.trim());
 
       const spinner = ora('Updating permissions...').start();
 
@@ -523,23 +626,19 @@ export function registerApiKeyCommands(program: Command): void {
     .option('--clear-all', 'Remove all conditions')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
-      const conditions: Record<string, unknown> = {};
+    .action(async (id: string, options: UpdateConditionsOptions) => {
+      const conditions: ApiKeyConditions = {};
 
       // Handle --clear-all
-      if (options.clearAll) {
-        // Empty object clears all conditions
-      } else {
+      if (!options.clearAll) {
         // Parse individual conditions
         if (options.ip && options.ip !== 'clear') {
-          conditions.ip = options.ip.split(',').map((ip: string) => ip.trim());
+          conditions.ip = options.ip.split(',').map((ip) => ip.trim());
         }
 
         if (options.timeRange) {
-          if (options.timeRange === 'clear') {
-            // Don't include timeRange (will be removed)
-          } else {
-            const match = options.timeRange.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+(.+))?$/);
+          if (options.timeRange !== 'clear') {
+            const match = /^(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+(.+))?$/.exec(options.timeRange);
             if (!match) {
               output.error('Invalid time range format. Use: "HH:MM-HH:MM [TIMEZONE]"');
               process.exit(1);
@@ -553,7 +652,7 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         if (options.methods && options.methods !== 'clear') {
-          conditions.methods = options.methods.split(',').map((m: string) => m.trim().toUpperCase());
+          conditions.methods = options.methods.split(',').map((m) => m.trim().toUpperCase());
         }
 
         if (options.resources && options.resources !== 'clear') {
@@ -561,7 +660,7 @@ export function registerApiKeyCommands(program: Command): void {
           for (const part of options.resources.split(',')) {
             const [type, resId] = part.split(':');
             if (type && resId) {
-              if (!resources[type]) resources[type] = [];
+              resources[type] = resources[type] ?? [];
               resources[type].push(resId);
             }
           }
@@ -571,7 +670,7 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         if (options.aliases && options.aliases !== 'clear') {
-          conditions.aliases = options.aliases.split(',').map((a: string) => a.trim());
+          conditions.aliases = options.aliases.split(',').map((a) => a.trim());
         }
 
         if (options.tags && options.tags !== 'clear') {
@@ -599,18 +698,10 @@ export function registerApiKeyCommands(program: Command): void {
           return;
         }
 
-        if (key.conditions && Object.keys(key.conditions).length > 0) {
+        const keyConditions = key.conditions as ApiKeyConditions | undefined;
+        if (keyConditions && Object.keys(keyConditions).length > 0) {
           console.log('\nUpdated conditions:');
-          const cond = key.conditions as Record<string, unknown>;
-          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
-          if (cond.timeRange) {
-            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
-            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
-          }
-          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
-          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
-          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
-          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+          displayConditions(keyConditions);
         } else {
           console.log('\nAll conditions cleared.');
         }
@@ -627,7 +718,7 @@ export function registerApiKeyCommands(program: Command): void {
     .description('List ABAC policies attached to an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: ListPoliciesOptions) => {
       const spinner = ora('Fetching policies...').start();
 
       try {
@@ -671,7 +762,7 @@ export function registerApiKeyCommands(program: Command): void {
     .command('attach-policy <keyId> <policyId>')
     .description('Attach an ABAC policy to an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (keyId, policyId, options) => {
+    .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions) => {
       const spinner = ora('Attaching policy...').start();
 
       try {
@@ -689,7 +780,7 @@ export function registerApiKeyCommands(program: Command): void {
     .command('detach-policy <keyId> <policyId>')
     .description('Detach an ABAC policy from an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (keyId, policyId, options) => {
+    .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions) => {
       const spinner = ora('Detaching policy...').start();
 
       try {
@@ -707,7 +798,7 @@ export function registerApiKeyCommands(program: Command): void {
     .command('self')
     .description('Show info about the currently used API key')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: SelfOptions) => {
       const spinner = ora('Fetching API key info...').start();
 
       try {
@@ -727,7 +818,7 @@ export function registerApiKeyCommands(program: Command): void {
           'Prefix': result.apiKey.prefix,
           'Status': statusIcon,
           'Tenant': result.apiKey.tenant_id,
-          'Description': result.apiKey.description || 'None',
+          'Description': result.apiKey.description ?? 'None',
           'Expires': formatDate(result.apiKey.expires_at),
           'Days Until Expiry': result.expiresInDays,
           'Expiring Soon': result.isExpiringSoon ? 'Yes (!)' : 'No',
@@ -744,18 +835,10 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         // Display conditions if any
-        if (result.apiKey.conditions && Object.keys(result.apiKey.conditions).length > 0) {
+        const apiKeyConditions = result.apiKey.conditions as ApiKeyConditions | undefined;
+        if (apiKeyConditions && Object.keys(apiKeyConditions).length > 0) {
           console.log('\nConditions:');
-          const cond = result.apiKey.conditions as Record<string, unknown>;
-          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
-          if (cond.timeRange) {
-            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
-            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
-          }
-          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
-          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
-          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
-          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+          displayConditions(apiKeyConditions);
         }
 
         if (result.isExpiringSoon) {
@@ -775,7 +858,7 @@ export function registerApiKeyCommands(program: Command): void {
     .description('Rotate the currently used API key')
     .option('-n, --name <name>', 'New name for the rotated key')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: SelfRotateOptions) => {
       const spinner = ora('Rotating API key...').start();
 
       try {

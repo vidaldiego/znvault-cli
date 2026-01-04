@@ -1,28 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
 
-// Create mock instance that will be reused
-const mockDbInstance = {
-  testConnection: vi.fn().mockResolvedValue({ success: true, message: 'Connected to database' }),
-  getUserStatus: vi.fn().mockResolvedValue({
-    found: true,
-    user: {
-      id: 'user-1',
-      username: 'alice',
-      email: 'alice@example.com',
-      role: 'user',
-      status: 'active',
-      failedAttempts: 0,
-      totpEnabled: true,
-      lockedUntil: null,
-      lastLogin: new Date().toISOString(),
-    },
-  }),
-  resetPassword: vi.fn().mockResolvedValue({ success: true, message: 'Password reset successfully' }),
-  unlockUser: vi.fn().mockResolvedValue({ success: true, message: 'User unlocked successfully' }),
-  disableTotp: vi.fn().mockResolvedValue({ success: true, message: 'TOTP disabled successfully' }),
-  close: vi.fn().mockResolvedValue(undefined),
-};
+// Use vi.hoisted to define mocks before vi.mock hoisting
+const { mockDbInstance, mockPrompts } = vi.hoisted(() => ({
+  mockDbInstance: {
+    testConnection: vi.fn().mockResolvedValue({ success: true, message: 'Connected to database' }),
+    getUserStatus: vi.fn().mockResolvedValue({
+      found: true,
+      user: {
+        id: 'user-1',
+        username: 'alice',
+        email: 'alice@example.com',
+        role: 'user',
+        status: 'active',
+        failedAttempts: 0,
+        totpEnabled: true,
+        lockedUntil: null,
+        lastLogin: new Date().toISOString(),
+      },
+    }),
+    resetPassword: vi.fn().mockResolvedValue({ success: true, message: 'Password reset successfully' }),
+    unlockUser: vi.fn().mockResolvedValue({ success: true, message: 'User unlocked successfully' }),
+    disableTotp: vi.fn().mockResolvedValue({ success: true, message: 'TOTP disabled successfully' }),
+    close: vi.fn().mockResolvedValue(undefined),
+  },
+  mockPrompts: {
+    promptConfirm: vi.fn().mockResolvedValue(true),
+    promptNewPassword: vi.fn().mockResolvedValue('newPassword123'),
+  },
+}));
 
 // Mock dependencies
 vi.mock('ora', () => ({
@@ -31,14 +37,28 @@ vi.mock('ora', () => ({
   }),
 }));
 
-vi.mock('../../src/lib/prompts.js', () => ({
-  promptConfirm: vi.fn().mockResolvedValue(true),
-  promptNewPassword: vi.fn().mockResolvedValue('newPassword123'),
-}));
+vi.mock('../../src/lib/prompts.js', () => mockPrompts);
 
+// Vitest 4.x requires mocks used as constructors to look like classes/functions
 vi.mock('../../src/lib/db.js', () => ({
   isEmergencyDbAvailable: vi.fn().mockReturnValue(true),
-  EmergencyDBClient: vi.fn().mockImplementation(() => mockDbInstance),
+  LocalDBClient: class MockLocalDBClient {
+    testConnection = mockDbInstance.testConnection;
+    getUserStatus = mockDbInstance.getUserStatus;
+    resetPassword = mockDbInstance.resetPassword;
+    unlockUser = mockDbInstance.unlockUser;
+    disableTotp = mockDbInstance.disableTotp;
+    close = mockDbInstance.close;
+  },
+  // Keep EmergencyDBClient for backwards compatibility with older code
+  EmergencyDBClient: class MockEmergencyDBClient {
+    testConnection = mockDbInstance.testConnection;
+    getUserStatus = mockDbInstance.getUserStatus;
+    resetPassword = mockDbInstance.resetPassword;
+    unlockUser = mockDbInstance.unlockUser;
+    disableTotp = mockDbInstance.disableTotp;
+    close = mockDbInstance.close;
+  },
 }));
 
 vi.mock('../../src/lib/output.js', () => ({
@@ -104,22 +124,19 @@ describe('emergency commands', () => {
 
   describe('emergency reset-password', () => {
     it('should reset password directly in database', async () => {
-      const { promptConfirm } = await import('../../src/lib/prompts.js');
       const { info } = await import('../../src/lib/output.js');
 
       await program.parseAsync(['node', 'test', 'emergency', 'reset-password', 'alice', 'newSecretPass123']);
 
-      expect(promptConfirm).toHaveBeenCalled();
+      expect(mockPrompts.promptConfirm).toHaveBeenCalled();
       expect(mockDbInstance.resetPassword).toHaveBeenCalledWith('alice', 'newSecretPass123');
       expect(info).toHaveBeenCalled();
     });
 
     it('should skip confirmation with --yes flag', async () => {
-      const { promptConfirm } = await import('../../src/lib/prompts.js');
-
       await program.parseAsync(['node', 'test', 'emergency', 'reset-password', 'alice', 'newSecretPass123', '--yes']);
 
-      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(mockPrompts.promptConfirm).not.toHaveBeenCalled();
       expect(mockDbInstance.resetPassword).toHaveBeenCalled();
     });
   });

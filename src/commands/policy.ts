@@ -1,12 +1,99 @@
 // Path: znvault-cli/src/commands/policy.ts
 
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import * as fs from 'fs';
 import { client } from '../lib/client.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import type { CreatePolicyInput, UpdatePolicyInput, PolicyEffect } from '../types/index.js';
+
+// ============ Option Interfaces ============
+
+interface PolicyListOptions {
+  tenant?: string;
+  enabled?: boolean;
+  disabled?: boolean;
+  effect?: string;
+  search?: string;
+  json?: boolean;
+}
+
+interface PolicyGetOptions {
+  json?: boolean;
+}
+
+interface PolicyCreateOptions {
+  name: string;
+  effect: string;
+  actions: string;
+  description?: string;
+  priority: string;
+  tenant?: string;
+  resources?: string;
+  conditions?: string;
+  fromFile?: string;
+  json?: boolean;
+}
+
+interface PolicyUpdateOptions {
+  name?: string;
+  description?: string;
+  effect?: string;
+  actions?: string;
+  priority?: string;
+  resources?: string;
+  conditions?: string;
+  fromFile?: string;
+  json?: boolean;
+}
+
+interface PolicyDeleteOptions {
+  yes?: boolean;
+}
+
+interface PolicyValidateOptions {
+  name: string;
+  effect: string;
+  actions: string;
+  description?: string;
+  priority: string;
+  resources?: string;
+  conditions?: string;
+  fromFile?: string;
+}
+
+interface PolicyAttachmentsOptions {
+  json?: boolean;
+}
+
+interface PolicyUserPoliciesOptions {
+  json?: boolean;
+}
+
+interface PolicyRolePoliciesOptions {
+  json?: boolean;
+}
+
+interface PolicyTestOptions {
+  user: string;
+  action: string;
+  resourceType?: string;
+  resourceId?: string;
+  resourceTenant?: string;
+  ip?: string;
+  mfa?: boolean;
+  json?: boolean;
+}
+
+interface PolicyExportOptions {
+  output?: string;
+}
+
+interface PolicyImportOptions {
+  tenant?: string;
+  json?: boolean;
+}
 
 export function registerPolicyCommands(program: Command): void {
   const policy = program
@@ -23,7 +110,7 @@ export function registerPolicyCommands(program: Command): void {
     .option('--effect <effect>', 'Filter by effect (allow|deny)')
     .option('--search <term>', 'Search by name or description')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: PolicyListOptions) => {
       const spinner = ora('Fetching policies...').start();
 
       try {
@@ -54,7 +141,7 @@ export function registerPolicyCommands(program: Command): void {
             p.priority.toString(),
             p.actions.length > 2 ? `${p.actions.slice(0, 2).join(', ')}...` : p.actions.join(', '),
             p.isActive ? 'Enabled' : 'Disabled',
-            p.tenantId || '-',
+            p.tenantId ?? '-',
           ])
         );
 
@@ -71,7 +158,7 @@ export function registerPolicyCommands(program: Command): void {
     .command('get <id>')
     .description('Get policy details')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: PolicyGetOptions) => {
       const spinner = ora('Fetching policy...').start();
 
       try {
@@ -87,11 +174,11 @@ export function registerPolicyCommands(program: Command): void {
         output.keyValue({
           'ID': result.id,
           'Name': result.name,
-          'Description': result.description || '-',
+          'Description': result.description ?? '-',
           'Effect': result.effect.toUpperCase(),
           'Priority': result.priority.toString(),
           'Status': result.isActive ? 'Enabled' : 'Disabled',
-          'Tenant': result.tenantId || 'Global',
+          'Tenant': result.tenantId ?? 'Global',
           'Created': output.formatDate(result.createdAt),
           'Updated': output.formatDate(result.updatedAt),
         });
@@ -99,7 +186,7 @@ export function registerPolicyCommands(program: Command): void {
         console.log();
         output.section('Actions');
         for (const action of result.actions) {
-          console.log(`  • ${action}`);
+          console.log(`  - ${action}`);
         }
 
         if (result.resources && result.resources.length > 0) {
@@ -110,7 +197,7 @@ export function registerPolicyCommands(program: Command): void {
             if (resource.id) parts.push(`id: ${resource.id}`);
             if (resource.tenantId) parts.push(`tenant: ${resource.tenantId}`);
             if (resource.tags) parts.push(`tags: ${JSON.stringify(resource.tags)}`);
-            console.log(`  • ${parts.join(', ')}`);
+            console.log(`  - ${parts.join(', ')}`);
           }
         }
 
@@ -119,7 +206,7 @@ export function registerPolicyCommands(program: Command): void {
           output.section('Conditions');
           for (const condition of result.conditions) {
             const op = condition.operator ? ` ${condition.operator}` : '';
-            console.log(`  • ${condition.type}${op}: ${JSON.stringify(condition.value)}`);
+            console.log(`  - ${condition.type}${op}: ${JSON.stringify(condition.value)}`);
           }
         }
 
@@ -145,7 +232,7 @@ export function registerPolicyCommands(program: Command): void {
     .option('--conditions <json>', 'Conditions JSON array')
     .option('--from-file <path>', 'Load policy definition from JSON file')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: PolicyCreateOptions) => {
       try {
         let policyData: CreatePolicyInput;
 
@@ -165,10 +252,10 @@ export function registerPolicyCommands(program: Command): void {
           };
 
           if (options.resources) {
-            policyData.resources = JSON.parse(options.resources);
+            policyData.resources = JSON.parse(options.resources) as CreatePolicyInput['resources'];
           }
           if (options.conditions) {
-            policyData.conditions = JSON.parse(options.conditions);
+            policyData.conditions = JSON.parse(options.conditions) as CreatePolicyInput['conditions'];
           }
         }
 
@@ -207,7 +294,7 @@ export function registerPolicyCommands(program: Command): void {
     .option('--conditions <json>', 'New conditions JSON array')
     .option('--from-file <path>', 'Load updates from JSON file')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: PolicyUpdateOptions) => {
       try {
         let updates: UpdatePolicyInput;
 
@@ -221,8 +308,8 @@ export function registerPolicyCommands(program: Command): void {
           if (options.effect) updates.effect = options.effect as PolicyEffect;
           if (options.actions) updates.actions = options.actions.split(',').map((a: string) => a.trim());
           if (options.priority) updates.priority = parseInt(options.priority, 10);
-          if (options.resources) updates.resources = JSON.parse(options.resources);
-          if (options.conditions) updates.conditions = JSON.parse(options.conditions);
+          if (options.resources) updates.resources = JSON.parse(options.resources) as UpdatePolicyInput['resources'];
+          if (options.conditions) updates.conditions = JSON.parse(options.conditions) as UpdatePolicyInput['conditions'];
         }
 
         if (Object.keys(updates).length === 0) {
@@ -256,7 +343,7 @@ export function registerPolicyCommands(program: Command): void {
     .command('delete <id>')
     .description('Delete an ABAC policy')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (id, options) => {
+    .action(async (id: string, options: PolicyDeleteOptions) => {
       try {
         if (!options.yes) {
           const confirmed = await promptConfirm(
@@ -281,7 +368,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('enable <id>')
     .description('Enable an ABAC policy')
-    .action(async (id) => {
+    .action(async (id: string) => {
       const spinner = ora('Enabling policy...').start();
 
       try {
@@ -303,7 +390,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('disable <id>')
     .description('Disable an ABAC policy')
-    .action(async (id) => {
+    .action(async (id: string) => {
       const spinner = ora('Disabling policy...').start();
 
       try {
@@ -333,7 +420,7 @@ export function registerPolicyCommands(program: Command): void {
     .option('--resources <json>', 'Resources JSON array')
     .option('--conditions <json>', 'Conditions JSON array')
     .option('--from-file <path>', 'Load policy from JSON file')
-    .action(async (options) => {
+    .action(async (options: PolicyValidateOptions) => {
       try {
         let policyData: CreatePolicyInput;
 
@@ -350,10 +437,10 @@ export function registerPolicyCommands(program: Command): void {
           };
 
           if (options.resources) {
-            policyData.resources = JSON.parse(options.resources);
+            policyData.resources = JSON.parse(options.resources) as CreatePolicyInput['resources'];
           }
           if (options.conditions) {
-            policyData.conditions = JSON.parse(options.conditions);
+            policyData.conditions = JSON.parse(options.conditions) as CreatePolicyInput['conditions'];
           }
         }
 
@@ -367,7 +454,7 @@ export function registerPolicyCommands(program: Command): void {
           spinner.fail('Policy validation failed');
           if (result.errors) {
             for (const error of result.errors) {
-              output.error(`  • ${error}`);
+              output.error(`  - ${error}`);
             }
           }
           process.exit(1);
@@ -383,7 +470,7 @@ export function registerPolicyCommands(program: Command): void {
     .command('attachments <id>')
     .description('Show users and roles attached to a policy')
     .option('--json', 'Output as JSON')
-    .action(async (id, options) => {
+    .action(async (id: string, options: PolicyAttachmentsOptions) => {
       const spinner = ora('Fetching attachments...').start();
 
       try {
@@ -405,8 +492,8 @@ export function registerPolicyCommands(program: Command): void {
           output.table(
             ['User ID', 'Username', 'Attached At'],
             result.users.map(a => [
-              a.userId?.substring(0, 8) || '-',
-              a.username || '-',
+              a.userId?.substring(0, 8) ?? '-',
+              a.username ?? '-',
               output.formatDate(a.attachedAt),
             ])
           );
@@ -418,8 +505,8 @@ export function registerPolicyCommands(program: Command): void {
           output.table(
             ['Role ID', 'Role Name', 'Attached At'],
             result.roles.map(a => [
-              a.roleId?.substring(0, 8) || '-',
-              a.roleName || '-',
+              a.roleId?.substring(0, 8) ?? '-',
+              a.roleName ?? '-',
               output.formatDate(a.attachedAt),
             ])
           );
@@ -435,7 +522,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('attach-user <policyId> <userId>')
     .description('Attach a policy to a user')
-    .action(async (policyId, userId) => {
+    .action(async (policyId: string, userId: string) => {
       const spinner = ora('Attaching policy to user...').start();
 
       try {
@@ -452,7 +539,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('attach-role <policyId> <roleId>')
     .description('Attach a policy to a role')
-    .action(async (policyId, roleId) => {
+    .action(async (policyId: string, roleId: string) => {
       const spinner = ora('Attaching policy to role...').start();
 
       try {
@@ -469,7 +556,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('detach-user <policyId> <userId>')
     .description('Detach a policy from a user')
-    .action(async (policyId, userId) => {
+    .action(async (policyId: string, userId: string) => {
       const spinner = ora('Detaching policy from user...').start();
 
       try {
@@ -486,7 +573,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('detach-role <policyId> <roleId>')
     .description('Detach a policy from a role')
-    .action(async (policyId, roleId) => {
+    .action(async (policyId: string, roleId: string) => {
       const spinner = ora('Detaching policy from role...').start();
 
       try {
@@ -504,7 +591,7 @@ export function registerPolicyCommands(program: Command): void {
     .command('user-policies <userId>')
     .description('List policies attached to a user (directly or via roles)')
     .option('--json', 'Output as JSON')
-    .action(async (userId, options) => {
+    .action(async (userId: string, options: PolicyUserPoliciesOptions) => {
       const spinner = ora('Fetching user policies...').start();
 
       try {
@@ -545,7 +632,7 @@ export function registerPolicyCommands(program: Command): void {
     .command('role-policies <roleId>')
     .description('List policies attached to a role')
     .option('--json', 'Output as JSON')
-    .action(async (roleId, options) => {
+    .action(async (roleId: string, options: PolicyRolePoliciesOptions) => {
       const spinner = ora('Fetching role policies...').start();
 
       try {
@@ -593,7 +680,7 @@ export function registerPolicyCommands(program: Command): void {
     .option('--ip <ip>', 'Simulated client IP address')
     .option('--mfa', 'Simulate MFA verified')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: PolicyTestOptions) => {
       const spinner = ora('Testing policy evaluation...').start();
 
       try {
@@ -605,9 +692,9 @@ export function registerPolicyCommands(program: Command): void {
             id: options.resourceId,
             tenantId: options.resourceTenant,
           } : undefined,
-          requestContext: (options.ip || options.mfa) ? {
+          requestContext: (options.ip !== undefined || options.mfa !== undefined) ? {
             ip: options.ip,
-            mfaVerified: options.mfa || false,
+            mfaVerified: options.mfa ?? false,
           } : undefined,
         };
 
@@ -620,7 +707,7 @@ export function registerPolicyCommands(program: Command): void {
         }
 
         // Display result with color
-        const statusIcon = result.allowed ? '✓' : '✗';
+        const statusIcon = result.allowed ? '[OK]' : '[X]';
         const statusText = result.allowed ? 'ALLOWED' : 'DENIED';
         console.log();
         console.log(`  ${statusIcon} Access: ${statusText}`);
@@ -658,7 +745,7 @@ export function registerPolicyCommands(program: Command): void {
     .command('export <id>')
     .description('Export a policy as JSON')
     .option('-o, --output <path>', 'Output file path')
-    .action(async (id, options) => {
+    .action(async (id: string, options: PolicyExportOptions) => {
       const spinner = ora('Exporting policy...').start();
 
       try {
@@ -696,7 +783,7 @@ export function registerPolicyCommands(program: Command): void {
     .description('Import a policy from JSON file')
     .option('--tenant <id>', 'Override tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (path, options) => {
+    .action(async (path: string, options: PolicyImportOptions) => {
       try {
         const content = fs.readFileSync(path, 'utf-8');
         const policyData = JSON.parse(content) as CreatePolicyInput;

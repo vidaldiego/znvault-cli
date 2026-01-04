@@ -1,9 +1,22 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+
+interface ListOptions {
+  json?: boolean;
+}
+
+interface CreateOptions {
+  email?: string;
+  json?: boolean;
+}
+
+interface DisableOptions {
+  yes?: boolean;
+}
 
 export function registerSuperadminCommands(program: Command): void {
   const superadmin = program
@@ -15,7 +28,7 @@ export function registerSuperadminCommands(program: Command): void {
     .command('list')
     .description('List all superadmins')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: ListOptions) => {
       const spinner = ora('Fetching superadmins...').start();
 
       try {
@@ -37,7 +50,7 @@ export function registerSuperadminCommands(program: Command): void {
           admins.map(a => [
             a.id.substring(0, 8),
             a.username,
-            a.email || '-',
+            a.email ?? '-',
             a.status,
             a.totpEnabled,
             a.failedAttempts,
@@ -61,7 +74,7 @@ export function registerSuperadminCommands(program: Command): void {
     .description('Create a new superadmin')
     .option('--email <email>', 'Superadmin email')
     .option('--json', 'Output as JSON')
-    .action(async (username, password, options) => {
+    .action(async (username: string, password: string, options: CreateOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin creation requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -84,7 +97,7 @@ export function registerSuperadminCommands(program: Command): void {
           output.keyValue({
             'ID': result.id,
             'Username': result.username,
-            'Email': result.email || '-',
+            'Email': result.email ?? '-',
             'Status': result.status,
             'Created': output.formatDate(result.createdAt),
           });
@@ -100,7 +113,7 @@ export function registerSuperadminCommands(program: Command): void {
   superadmin
     .command('reset-password <username> [newPassword]')
     .description('Reset superadmin password')
-    .action(async (username, newPassword) => {
+    .action(async (username: string, newPassword?: string) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin password reset requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -108,7 +121,7 @@ export function registerSuperadminCommands(program: Command): void {
       }
 
       try {
-        const password = newPassword || await promptNewPassword();
+        const password = newPassword ?? await promptNewPassword();
         const spinner = ora('Resetting password...').start();
 
         try {
@@ -131,7 +144,7 @@ export function registerSuperadminCommands(program: Command): void {
   superadmin
     .command('unlock <username>')
     .description('Unlock a locked superadmin account')
-    .action(async (username) => {
+    .action(async (username: string) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin unlock requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -158,7 +171,7 @@ export function registerSuperadminCommands(program: Command): void {
     .command('disable <username>')
     .description('Disable a superadmin account')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (username, options) => {
+    .action(async (username: string, options: DisableOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin disable requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -198,7 +211,7 @@ export function registerSuperadminCommands(program: Command): void {
   superadmin
     .command('enable <username>')
     .description('Enable a disabled superadmin account')
-    .action(async (username) => {
+    .action(async (username: string) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin enable requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');

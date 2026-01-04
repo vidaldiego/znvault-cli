@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -65,8 +66,8 @@ export function isLocalModeAvailable(): boolean {
 /**
  * Parse environment file content into key-value pairs
  */
-function parseEnvFile(content: string): Record<string, string> {
-  const env: Record<string, string> = {};
+function parseEnvFile(content: string): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
 
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
@@ -75,14 +76,14 @@ function parseEnvFile(content: string): Record<string, string> {
     if (!trimmed || trimmed.startsWith('#')) continue;
 
     // Handle systemd format: Environment="KEY=VALUE"
-    const systemdMatch = trimmed.match(/^Environment="?([^"=]+)=(.+?)"?$/);
+    const systemdMatch = /^Environment="?([^"=]+)=(.+?)"?$/.exec(trimmed);
     if (systemdMatch) {
       env[systemdMatch[1]] = systemdMatch[2].replace(/^["']|["']$/g, '');
       continue;
     }
 
     // Handle standard format: KEY=VALUE or export KEY=VALUE
-    const match = trimmed.match(/^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/i);
+    const match = /^(?:export\s+)?([A-Z_][A-Z0-9_]*)=(.*)$/i.exec(trimmed);
     if (match) {
       let value = match[2];
       // Remove surrounding quotes
@@ -97,8 +98,8 @@ function parseEnvFile(content: string): Record<string, string> {
 /**
  * Read environment from service configuration files
  */
-function readServiceEnv(): Record<string, string> {
-  const combined: Record<string, string> = {};
+function readServiceEnv(): Record<string, string | undefined> {
+  const combined: Record<string, string | undefined> = {};
 
   // Try each possible env file location
   for (const envPath of SERVICE_ENV_PATHS) {
@@ -163,11 +164,11 @@ export function getLocalConfig(): LocalConfig | null {
   const databaseUrl = serviceEnv.DATABASE_URL;
   if (!databaseUrl) {
     // Try to construct from individual DB_* variables
-    const host = serviceEnv.DB_HOST || serviceEnv.POSTGRES_HOST;
-    const port = serviceEnv.DB_PORT || serviceEnv.POSTGRES_PORT || '5432';
-    const database = serviceEnv.DB_NAME || serviceEnv.POSTGRES_DB || 'znvault';
-    const user = serviceEnv.DB_USER || serviceEnv.POSTGRES_USER;
-    const password = serviceEnv.DB_PASSWORD || serviceEnv.POSTGRES_PASSWORD;
+    const host = serviceEnv.DB_HOST ?? serviceEnv.POSTGRES_HOST;
+    const port = serviceEnv.DB_PORT ?? serviceEnv.POSTGRES_PORT ?? '5432';
+    const database = serviceEnv.DB_NAME ?? serviceEnv.POSTGRES_DB ?? 'znvault';
+    const user = serviceEnv.DB_USER ?? serviceEnv.POSTGRES_USER;
+    const password = serviceEnv.DB_PASSWORD ?? serviceEnv.POSTGRES_PASSWORD;
 
     if (host && user && password) {
       return {
@@ -208,7 +209,6 @@ export function getLocalVaultVersion(): string | null {
 export function isVaultServiceRunning(): boolean {
   try {
     // Check if process is listening on expected port
-    const { execSync } = require('node:child_process');
     const result = execSync('systemctl is-active zn-vault 2>/dev/null || true', {
       encoding: 'utf-8',
       timeout: 5000,
@@ -262,6 +262,6 @@ export function getLocalModeStatus(): {
     available: true,
     reason: 'Running on vault node with root access',
     nodeId: config.nodeId,
-    vaultVersion: getLocalVaultVersion() || undefined,
+    vaultVersion: getLocalVaultVersion() ?? undefined,
   };
 }

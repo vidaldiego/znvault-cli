@@ -66,7 +66,7 @@ export async function promptInput(message: string, defaultValue?: string): Promi
  */
 export async function promptSelect<T extends string>(
   message: string,
-  choices: { name: string; value: T }[]
+  choices: Array<{ name: string; value: T }>
 ): Promise<T> {
   return select({
     message,

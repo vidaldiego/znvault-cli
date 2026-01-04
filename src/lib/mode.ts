@@ -1,6 +1,6 @@
 import { client } from './client.js';
-import { LocalDBClient, isLocalDbAvailable } from './db.js';
-import { isLocalModeAvailable, getLocalModeStatus, getLocalConfig } from './local.js';
+import { LocalDBClient } from './db.js';
+import { isLocalModeAvailable, getLocalModeStatus } from './local.js';
 import { hasApiKey, getCredentials, hasEnvCredentials } from './config.js';
 import type {
   HealthResponse,
@@ -94,9 +94,7 @@ export function getModeDescription(): string {
  * Get the local database client (singleton)
  */
 function getLocalClient(): LocalDBClient {
-  if (!_localClient) {
-    _localClient = new LocalDBClient();
-  }
+  _localClient ??= new LocalDBClient();
   return _localClient;
 }
 
@@ -163,8 +161,7 @@ export async function getTenant(id: string, withUsage?: boolean): Promise<Tenant
   if (getMode() === 'local') {
     return getLocalClient().getTenant(id, withUsage);
   }
-  const tenant = await client.getTenant(id, withUsage);
-  return tenant || null;
+  return client.getTenant(id, withUsage);
 }
 
 /**
@@ -486,10 +483,10 @@ export async function apiPatch<T = unknown>(endpoint: string, body: unknown): Pr
 /**
  * Get WebSocket URL for a given endpoint path
  */
-export async function getWebSocketUrl(wsPath: string): Promise<string> {
+export function getWebSocketUrl(wsPath: string): string {
   if (getMode() === 'local') {
     // In local mode, use env var or default localhost
-    const localUrl = process.env.ZNVAULT_BASE_URL || 'https://localhost:8443';
+    const localUrl = process.env.ZNVAULT_BASE_URL ?? 'https://localhost:8443';
     return localUrl.replace(/^https?:/, 'wss:') + wsPath;
   }
 

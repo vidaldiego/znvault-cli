@@ -49,6 +49,38 @@ interface RequestOptions {
   skipAuth?: boolean;
 }
 
+interface PermissionItem {
+  permission: string;
+  description: string;
+  category: string;
+}
+
+interface PermissionsResponse {
+  permissions: PermissionItem[];
+  categories: string[];
+  total: number;
+}
+
+interface ValidatePermissionsResponse {
+  valid: string[];
+  invalid: string[];
+  allValid: boolean;
+}
+
+interface ValidatePolicyResponse {
+  valid: boolean;
+  errors?: string[];
+}
+
+interface PolicyAttachmentsResponse {
+  users: PolicyAttachment[];
+  roles: PolicyAttachment[];
+}
+
+interface MessageResponse {
+  message: string;
+}
+
 class VaultClient {
   private baseUrl: string;
   private insecure: boolean;
@@ -85,14 +117,19 @@ class VaultClient {
     }
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
 
+    // Only set Content-Type for requests with a body
+    if (options.body !== undefined && options.body !== null) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     // Add authentication
     if (!options.skipAuth) {
-      if (hasApiKey()) {
-        headers['X-API-Key'] = getApiKey()!;
+      const apiKey = getApiKey();
+      if (hasApiKey() && apiKey) {
+        headers['X-API-Key'] = apiKey;
       } else {
         const credentials = getCredentials();
         if (credentials) {
@@ -102,15 +139,17 @@ class VaultClient {
           }
           const updatedCredentials = getCredentials();
           if (updatedCredentials) {
-            headers['Authorization'] = `Bearer ${updatedCredentials.accessToken}`;
+            headers.Authorization = `Bearer ${updatedCredentials.accessToken}`;
           }
         } else if (hasEnvCredentials()) {
           // Auto-login with env credentials
-          const envCreds = getEnvCredentials()!;
-          await this.login(envCreds.username, envCreds.password);
-          const newCredentials = getCredentials();
-          if (newCredentials) {
-            headers['Authorization'] = `Bearer ${newCredentials.accessToken}`;
+          const envCreds = getEnvCredentials();
+          if (envCreds) {
+            await this.login(envCreds.username, envCreds.password);
+            const newCredentials = getCredentials();
+            if (newCredentials) {
+              headers.Authorization = `Bearer ${newCredentials.accessToken}`;
+            }
           }
         }
       }
@@ -130,10 +169,10 @@ class VaultClient {
       const protocol = url.protocol === 'https:' ? https : http;
       const req = protocol.request(requestOptions, (res) => {
         let data = '';
-        res.on('data', (chunk) => (data += chunk));
+        res.on('data', (chunk: Buffer | string) => (data += String(chunk)));
         res.on('end', () => {
           try {
-            const parsed = data ? JSON.parse(data) : {};
+            const parsed: unknown = data ? JSON.parse(data) : {};
             if (res.statusCode && res.statusCode >= 400) {
               const error = parsed as ApiError;
               reject(new Error(error.message || `Request failed with status ${res.statusCode}`));
@@ -156,7 +195,7 @@ class VaultClient {
         reject(new Error('Request timeout'));
       });
 
-      if (options.body) {
+      if (options.body !== undefined && options.body !== null) {
         req.write(JSON.stringify(options.body));
       }
       req.end();
@@ -279,7 +318,7 @@ class VaultClient {
         pageSize: 1000,
       },
     });
-    return response.items;
+    return response.data;
   }
 
   async createTenant(data: {
@@ -297,11 +336,12 @@ class VaultClient {
   }
 
   async getTenant(id: string, withUsage?: boolean): Promise<TenantWithUsage> {
-    return this.request<TenantWithUsage>({
+    const response = await this.request<{ data: TenantWithUsage }>({
       method: 'GET',
       path: `/v1/tenants/${id}`,
       query: { withUsage },
     });
+    return response.data;
   }
 
   async updateTenant(id: string, data: {
@@ -319,17 +359,18 @@ class VaultClient {
   }
 
   async deleteTenant(id: string): Promise<void> {
-    await this.request<void>({
+    await this.request<unknown>({
       method: 'DELETE',
       path: `/v1/tenants/${id}`,
     });
   }
 
   async getTenantUsage(id: string): Promise<TenantUsage> {
-    return this.request<TenantUsage>({
+    const response = await this.request<{ data: TenantUsage }>({
       method: 'GET',
       path: `/v1/tenants/${id}/usage`,
     });
+    return response.data;
   }
 
   // ============ Users ============
@@ -349,7 +390,7 @@ class VaultClient {
         pageSize: 1000,
       },
     });
-    return response.items;
+    return response.data;
   }
 
   async createUser(data: {
@@ -387,30 +428,30 @@ class VaultClient {
   }
 
   async deleteUser(id: string): Promise<void> {
-    await this.request<void>({
+    await this.request<unknown>({
       method: 'DELETE',
       path: `/v1/users/${id}`,
     });
   }
 
-  async unlockUser(id: string): Promise<{ message: string }> {
-    return this.request({
+  async unlockUser(id: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'PUT',
       path: `/v1/users/${id}`,
       body: { status: 'active', failedAttempts: 0, lockedUntil: null },
     });
   }
 
-  async resetUserPassword(id: string, newPassword: string): Promise<{ message: string }> {
-    return this.request({
+  async resetUserPassword(id: string, newPassword: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/users/${id}/reset-password`,
       body: { newPassword },
     });
   }
 
-  async disableUserTotp(id: string): Promise<{ message: string }> {
-    return this.request({
+  async disableUserTotp(id: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/users/${id}/totp/disable`,
     });
@@ -445,30 +486,30 @@ class VaultClient {
     });
   }
 
-  async resetSuperadminPassword(username: string, password: string): Promise<{ message: string }> {
-    return this.request({
+  async resetSuperadminPassword(username: string, password: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/superadmins/${username}/password`,
       body: { password },
     });
   }
 
-  async unlockSuperadmin(username: string): Promise<{ message: string }> {
-    return this.request({
+  async unlockSuperadmin(username: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/superadmins/${username}/unlock`,
     });
   }
 
-  async disableSuperadmin(username: string): Promise<{ message: string }> {
-    return this.request({
+  async disableSuperadmin(username: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/superadmins/${username}/disable`,
     });
   }
 
-  async enableSuperadmin(username: string): Promise<{ message: string }> {
-    return this.request({
+  async enableSuperadmin(username: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/superadmins/${username}/enable`,
     });
@@ -503,9 +544,9 @@ class VaultClient {
     const response = await this.request<PaginatedResponse<LockdownHistoryEntry>>({
       method: 'GET',
       path: '/v1/admin/lockdown/history',
-      query: { limit: limit || 50 },
+      query: { limit: limit ?? 50 },
     });
-    return response.items;
+    return response.data;
   }
 
   async getThreats(options?: {
@@ -519,10 +560,10 @@ class VaultClient {
       query: {
         category: options?.category,
         since: options?.since,
-        limit: options?.limit || 100,
+        limit: options?.limit ?? 100,
       },
     });
-    return response.items;
+    return response.data;
   }
 
   // ============ Audit ============
@@ -542,10 +583,10 @@ class VaultClient {
         action: options?.action,
         start_date: options?.startDate,
         end_date: options?.endDate,
-        limit: options?.limit || 100,
+        limit: options?.limit ?? 100,
       },
     });
-    return response.items;
+    return response.data;
   }
 
   async verifyAuditChain(): Promise<AuditVerifyResult> {
@@ -564,7 +605,7 @@ class VaultClient {
       method: 'GET',
       path: '/v1/audit',
       query: {
-        format: options?.format || 'json',
+        format: options?.format ?? 'json',
         start_date: options?.startDate,
         end_date: options?.endDate,
         limit: 10000,
@@ -615,7 +656,7 @@ class VaultClient {
   }
 
   async deleteApiKey(id: string, tenantId?: string): Promise<void> {
-    await this.request<void>({
+    await this.request<unknown>({
       method: 'DELETE',
       path: `/auth/api-keys/${id}`,
       query: tenantId ? { tenantId } : undefined,
@@ -668,16 +709,8 @@ class VaultClient {
    * Get all available permissions from the database
    * This is the single source of truth for valid permission IDs
    */
-  async getPermissions(category?: string): Promise<{
-    permissions: Array<{
-      permission: string;
-      description: string;
-      category: string;
-    }>;
-    categories: string[];
-    total: number;
-  }> {
-    return this.request({
+  async getPermissions(category?: string): Promise<PermissionsResponse> {
+    return this.request<PermissionsResponse>({
       method: 'GET',
       path: '/v1/permissions',
       query: category ? { category } : undefined,
@@ -687,12 +720,8 @@ class VaultClient {
   /**
    * Validate a list of permission IDs against the database
    */
-  async validatePermissions(permissions: string[]): Promise<{
-    valid: string[];
-    invalid: string[];
-    allValid: boolean;
-  }> {
-    return this.request({
+  async validatePermissions(permissions: string[]): Promise<ValidatePermissionsResponse> {
+    return this.request<ValidatePermissionsResponse>({
       method: 'POST',
       path: '/v1/permissions/validate',
       body: { permissions },
@@ -707,16 +736,16 @@ class VaultClient {
     });
   }
 
-  async attachApiKeyPolicy(keyId: string, policyId: string, tenantId?: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>({
+  async attachApiKeyPolicy(keyId: string, policyId: string, tenantId?: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/auth/api-keys/${keyId}/policies/${policyId}`,
       query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  async detachApiKeyPolicy(keyId: string, policyId: string, tenantId?: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>({
+  async detachApiKeyPolicy(keyId: string, policyId: string, tenantId?: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'DELETE',
       path: `/auth/api-keys/${keyId}/policies/${policyId}`,
       query: tenantId ? { tenantId } : undefined,
@@ -757,7 +786,7 @@ class VaultClient {
         effect: options?.effect,
         search: options?.search,
         page: options?.page,
-        pageSize: options?.pageSize || 100,
+        pageSize: options?.pageSize ?? 100,
       },
     });
   }
@@ -786,7 +815,7 @@ class VaultClient {
   }
 
   async deletePolicy(id: string): Promise<void> {
-    await this.request<void>({
+    await this.request<unknown>({
       method: 'DELETE',
       path: `/v1/policies/${id}`,
     });
@@ -800,46 +829,46 @@ class VaultClient {
     });
   }
 
-  async validatePolicy(policy: CreatePolicyInput): Promise<{ valid: boolean; errors?: string[] }> {
-    return this.request({
+  async validatePolicy(policy: CreatePolicyInput): Promise<ValidatePolicyResponse> {
+    return this.request<ValidatePolicyResponse>({
       method: 'POST',
       path: '/v1/policies/validate',
       body: policy,
     });
   }
 
-  async getPolicyAttachments(policyId: string): Promise<{ users: PolicyAttachment[]; roles: PolicyAttachment[] }> {
-    return this.request({
+  async getPolicyAttachments(policyId: string): Promise<PolicyAttachmentsResponse> {
+    return this.request<PolicyAttachmentsResponse>({
       method: 'GET',
       path: `/v1/policies/${policyId}/attachments`,
     });
   }
 
-  async attachPolicyToUser(policyId: string, userId: string): Promise<{ message: string }> {
-    return this.request({
+  async attachPolicyToUser(policyId: string, userId: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/policies/${policyId}/attach/user`,
       body: { userId },
     });
   }
 
-  async attachPolicyToRole(policyId: string, roleId: string): Promise<{ message: string }> {
-    return this.request({
+  async attachPolicyToRole(policyId: string, roleId: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'POST',
       path: `/v1/policies/${policyId}/attach/role`,
       body: { roleId },
     });
   }
 
-  async detachPolicyFromUser(policyId: string, userId: string): Promise<{ message: string }> {
-    return this.request({
+  async detachPolicyFromUser(policyId: string, userId: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'DELETE',
       path: `/v1/policies/${policyId}/attach/user/${userId}`,
     });
   }
 
-  async detachPolicyFromRole(policyId: string, roleId: string): Promise<{ message: string }> {
-    return this.request({
+  async detachPolicyFromRole(policyId: string, roleId: string): Promise<MessageResponse> {
+    return this.request<MessageResponse>({
       method: 'DELETE',
       path: `/v1/policies/${policyId}/attach/role/${roleId}`,
     });
@@ -873,9 +902,19 @@ class VaultClient {
 
   /**
    * Generic GET request
+   * @param path - Path may include query string (e.g., '/v1/secrets?tenant=foo')
    */
   async get<T>(path: string): Promise<T> {
-    return this.request<T>({ method: 'GET', path });
+    // Handle paths that include query strings
+    const [basePath, queryString] = path.split('?');
+    const query: Record<string, string> = {};
+    if (queryString) {
+      const params = new URLSearchParams(queryString);
+      for (const [key, value] of params.entries()) {
+        query[key] = value;
+      }
+    }
+    return this.request<T>({ method: 'GET', path: basePath, query: Object.keys(query).length > 0 ? query : undefined });
   }
 
   /**
@@ -890,6 +929,13 @@ class VaultClient {
    */
   async delete<T>(path: string): Promise<T> {
     return this.request<T>({ method: 'DELETE', path });
+  }
+
+  /**
+   * Generic PUT request
+   */
+  async put<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>({ method: 'PUT', path, body });
   }
 
   /**
@@ -915,8 +961,9 @@ class VaultClient {
   async getAuthHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = {};
 
-    if (hasApiKey()) {
-      headers['X-API-Key'] = getApiKey()!;
+    const apiKey = getApiKey();
+    if (hasApiKey() && apiKey) {
+      headers['X-API-Key'] = apiKey;
     } else {
       const credentials = getCredentials();
       if (credentials) {
@@ -926,15 +973,17 @@ class VaultClient {
         }
         const updatedCredentials = getCredentials();
         if (updatedCredentials) {
-          headers['Authorization'] = `Bearer ${updatedCredentials.accessToken}`;
+          headers.Authorization = `Bearer ${updatedCredentials.accessToken}`;
         }
       } else if (hasEnvCredentials()) {
         // Auto-login with env credentials
-        const envCreds = getEnvCredentials()!;
-        await this.login(envCreds.username, envCreds.password);
-        const newCredentials = getCredentials();
-        if (newCredentials) {
-          headers['Authorization'] = `Bearer ${newCredentials.accessToken}`;
+        const envCreds = getEnvCredentials();
+        if (envCreds) {
+          await this.login(envCreds.username, envCreds.password);
+          const newCredentials = getCredentials();
+          if (newCredentials) {
+            headers.Authorization = `Bearer ${newCredentials.accessToken}`;
+          }
         }
       }
     }

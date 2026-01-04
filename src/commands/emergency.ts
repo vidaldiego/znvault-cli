@@ -1,9 +1,26 @@
-import { Command } from 'commander';
+import { type Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { EmergencyDBClient, isEmergencyDbAvailable } from '../lib/db.js';
+import { LocalDBClient, isEmergencyDbAvailable } from '../lib/db.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+
+// Option interfaces for each command
+interface UserStatusOptions {
+  json?: boolean;
+}
+
+interface ResetPasswordOptions {
+  yes?: boolean;
+}
+
+interface UnlockOptions {
+  yes?: boolean;
+}
+
+interface DisableTotpOptions {
+  yes?: boolean;
+}
 
 function checkEmergencyAccess(): void {
   if (!isEmergencyDbAvailable()) {
@@ -40,7 +57,7 @@ export function registerEmergencyCommands(program: Command): void {
       const spinner = ora('Testing database connection...').start();
 
       try {
-        const db = new EmergencyDBClient();
+        const db = new LocalDBClient();
         const result = await db.testConnection();
 
         if (result.success) {
@@ -63,36 +80,38 @@ export function registerEmergencyCommands(program: Command): void {
     .command('user-status <username>')
     .description('Get user status from database')
     .option('--json', 'Output as JSON')
-    .action(async (username, options) => {
+    .action(async (username: string, options: UserStatusOptions) => {
       checkEmergencyAccess();
 
       const spinner = ora('Fetching user status...').start();
 
       try {
-        const db = new EmergencyDBClient();
+        const db = new LocalDBClient();
         const result = await db.getUserStatus(username);
 
         spinner.stop();
 
-        if (!result.found) {
+        if (!result.found || !result.user) {
           output.error(`User '${username}' not found`);
           process.exit(1);
         }
 
+        const user = result.user;
+
         if (options.json) {
-          output.json(result.user);
+          output.json(user);
         } else {
           output.section('User Status');
           output.keyValue({
-            'ID': result.user!.id,
-            'Username': result.user!.username,
-            'Email': result.user!.email || '-',
-            'Role': result.user!.role,
-            'Status': output.formatStatus(result.user!.status),
-            'TOTP Enabled': result.user!.totpEnabled,
-            'Failed Attempts': result.user!.failedAttempts,
-            'Locked Until': result.user!.lockedUntil || '-',
-            'Last Login': result.user!.lastLogin || 'Never',
+            'ID': user.id,
+            'Username': user.username,
+            'Email': user.email ?? '-',
+            'Role': user.role,
+            'Status': output.formatStatus(user.status),
+            'TOTP Enabled': user.totpEnabled,
+            'Failed Attempts': user.failedAttempts,
+            'Locked Until': user.lockedUntil ?? '-',
+            'Last Login': user.lastLogin ?? 'Never',
           });
         }
       } catch (err) {
@@ -107,7 +126,7 @@ export function registerEmergencyCommands(program: Command): void {
     .command('reset-password <username> [newPassword]')
     .description('Reset user password directly in database')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (username, newPassword, options) => {
+    .action(async (username: string, newPassword: string | undefined, options: ResetPasswordOptions) => {
       checkEmergencyAccess();
 
       try {
@@ -128,11 +147,11 @@ export function registerEmergencyCommands(program: Command): void {
           }
         }
 
-        const password = newPassword || await promptNewPassword();
+        const password = newPassword ?? await promptNewPassword();
         const spinner = ora('Resetting password...').start();
 
         try {
-          const db = new EmergencyDBClient();
+          const db = new LocalDBClient();
           const result = await db.resetPassword(username, password);
 
           if (result.success) {
@@ -160,7 +179,7 @@ export function registerEmergencyCommands(program: Command): void {
     .command('unlock <username>')
     .description('Unlock a locked user account directly in database')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (username, options) => {
+    .action(async (username: string, options: UnlockOptions) => {
       checkEmergencyAccess();
 
       try {
@@ -177,7 +196,7 @@ export function registerEmergencyCommands(program: Command): void {
         const spinner = ora('Unlocking user...').start();
 
         try {
-          const db = new EmergencyDBClient();
+          const db = new LocalDBClient();
           const result = await db.unlockUser(username);
 
           if (result.success) {
@@ -203,7 +222,7 @@ export function registerEmergencyCommands(program: Command): void {
     .command('disable-totp <username>')
     .description('Disable TOTP/2FA for a user directly in database')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (username, options) => {
+    .action(async (username: string, options: DisableTotpOptions) => {
       checkEmergencyAccess();
 
       try {
@@ -223,7 +242,7 @@ export function registerEmergencyCommands(program: Command): void {
         const spinner = ora('Disabling TOTP...').start();
 
         try {
-          const db = new EmergencyDBClient();
+          const db = new LocalDBClient();
           const result = await db.disableTotp(username);
 
           if (result.success) {

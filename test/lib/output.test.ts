@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Mock output-mode to always return TUI mode (so tests get styled output)
+vi.mock('../../src/lib/output-mode.js', () => ({
+  isPlainMode: () => false,
+  isTuiMode: () => true,
+  getOutputMode: () => 'tui',
+  setOutputMode: vi.fn(),
+  resetOutputMode: vi.fn(),
+}));
+
 // Mock chalk to return plain strings for testing
 vi.mock('chalk', () => ({
   default: {
@@ -33,6 +42,23 @@ vi.mock('cli-table3', () => ({
       return [this.head.join(' | '), ...this.rows.map(r => r.join(' | '))].join('\n');
     }
   }
+}));
+
+// Mock ink (not used in basic tests but imported)
+vi.mock('ink', () => ({
+  render: vi.fn(() => ({ unmount: vi.fn() })),
+}));
+
+// Mock TUI components
+vi.mock('../../src/tui/components/Table.js', () => ({
+  Table: vi.fn(),
+}));
+
+vi.mock('../../src/tui/components/List.js', () => ({
+  List: vi.fn(),
+  Card: vi.fn(),
+  StatusIndicator: vi.fn(),
+  ProgressBar: vi.fn(),
 }));
 
 describe('output', () => {
