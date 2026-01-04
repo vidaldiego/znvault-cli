@@ -35,6 +35,10 @@
   ],
   "author": "ZincApp",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vidaldiego/znvault-cli"
+  },
   "dependencies": {
     "@types/bcryptjs": "^3.0.0",
     "@types/ws": "^8.18.1",
