@@ -1,0 +1,950 @@
+import https from 'node:https';
+import http from 'node:http';
+import {
+  getConfig,
+  getCredentials,
+  getApiKey,
+  hasApiKey,
+  storeCredentials,
+  isTokenExpired,
+  getEnvCredentials,
+  hasEnvCredentials,
+} from './config.js';
+import type {
+  HealthResponse,
+  ClusterStatus,
+  Tenant,
+  TenantWithUsage,
+  TenantUsage,
+  User,
+  Superadmin,
+  LockdownStatus,
+  ThreatEvent,
+  LockdownHistoryEntry,
+  AuditEntry,
+  AuditVerifyResult,
+  LoginResponse,
+  PaginatedResponse,
+  ApiError,
+  APIKey,
+  CreateAPIKeyResponse,
+  ListAPIKeysResponse,
+  RotateAPIKeyResponse,
+  APIKeySelfResponse,
+  APIKeyPolicyAttachment,
+  Policy,
+  PolicyListResponse,
+  CreatePolicyInput,
+  UpdatePolicyInput,
+  PolicyAttachment,
+  PolicyTestRequest,
+  PolicyTestResult,
+} from '../types/index.js';
+
+interface RequestOptions {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  path: string;
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined>;
+  skipAuth?: boolean;
+}
+
+class VaultClient {
+  private baseUrl: string;
+  private insecure: boolean;
+  private timeout: number;
+
+  constructor() {
+    const config = getConfig();
+    this.baseUrl = config.url;
+    this.insecure = config.insecure;
+    this.timeout = config.timeout;
+  }
+
+  /**
+   * Update client configuration
+   */
+  configure(url?: string, insecure?: boolean): void {
+    if (url) this.baseUrl = url;
+    if (insecure !== undefined) this.insecure = insecure;
+  }
+
+  /**
+   * Make an HTTP request
+   */
+  private async request<T>(options: RequestOptions): Promise<T> {
+    const url = new URL(this.baseUrl);
+    url.pathname = options.path;
+
+    if (options.query) {
+      for (const [key, value] of Object.entries(options.query)) {
+        if (value !== undefined) {
+          url.searchParams.set(key, String(value));
+        }
+      }
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    // Add authentication
+    if (!options.skipAuth) {
+      if (hasApiKey()) {
+        headers['X-API-Key'] = getApiKey()!;
+      } else {
+        const credentials = getCredentials();
+        if (credentials) {
+          // Check if token is expired and try to refresh
+          if (isTokenExpired() && credentials.refreshToken) {
+            await this.refreshToken();
+          }
+          const updatedCredentials = getCredentials();
+          if (updatedCredentials) {
+            headers['Authorization'] = `Bearer ${updatedCredentials.accessToken}`;
+          }
+        } else if (hasEnvCredentials()) {
+          // Auto-login with env credentials
+          const envCreds = getEnvCredentials()!;
+          await this.login(envCreds.username, envCreds.password);
+          const newCredentials = getCredentials();
+          if (newCredentials) {
+            headers['Authorization'] = `Bearer ${newCredentials.accessToken}`;
+          }
+        }
+      }
+    }
+
+    const requestOptions: https.RequestOptions = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + url.search,
+      method: options.method,
+      headers,
+      timeout: this.timeout,
+      rejectUnauthorized: !this.insecure,
+    };
+
+    return new Promise((resolve, reject) => {
+      const protocol = url.protocol === 'https:' ? https : http;
+      const req = protocol.request(requestOptions, (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          try {
+            const parsed = data ? JSON.parse(data) : {};
+            if (res.statusCode && res.statusCode >= 400) {
+              const error = parsed as ApiError;
+              reject(new Error(error.message || `Request failed with status ${res.statusCode}`));
+            } else {
+              resolve(parsed as T);
+            }
+          } catch {
+            if (res.statusCode && res.statusCode >= 400) {
+              reject(new Error(`Request failed with status ${res.statusCode}`));
+            } else {
+              resolve(data as unknown as T);
+            }
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+
+      if (options.body) {
+        req.write(JSON.stringify(options.body));
+      }
+      req.end();
+    });
+  }
+
+  // ============ Authentication ============
+
+  async login(username: string, password: string, totp?: string): Promise<LoginResponse> {
+    const response = await this.request<LoginResponse>({
+      method: 'POST',
+      path: '/auth/login',
+      body: { username, password, totp },
+      skipAuth: true,
+    });
+
+    // Store credentials
+    storeCredentials({
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      expiresAt: Date.now() + response.expiresIn * 1000,
+      userId: response.user.id,
+      username: response.user.username,
+      role: response.user.role,
+      tenantId: response.user.tenantId,
+    });
+
+    return response;
+  }
+
+  async refreshToken(): Promise<void> {
+    const credentials = getCredentials();
+    if (!credentials?.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await this.request<LoginResponse>({
+      method: 'POST',
+      path: '/auth/refresh',
+      body: { refreshToken: credentials.refreshToken },
+      skipAuth: true,
+    });
+
+    storeCredentials({
+      ...credentials,
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      expiresAt: Date.now() + response.expiresIn * 1000,
+    });
+  }
+
+  // ============ Health ============
+
+  async health(): Promise<HealthResponse> {
+    return this.request<HealthResponse>({
+      method: 'GET',
+      path: '/v1/health',
+      skipAuth: true,
+    });
+  }
+
+  async leaderHealth(): Promise<HealthResponse> {
+    return this.request<HealthResponse>({
+      method: 'GET',
+      path: '/v1/health/leader',
+      skipAuth: true,
+    });
+  }
+
+  // ============ Cluster ============
+
+  async clusterStatus(): Promise<ClusterStatus> {
+    return this.request<ClusterStatus>({
+      method: 'GET',
+      path: '/v1/admin/cluster',
+    });
+  }
+
+  async clusterTakeover(): Promise<{ success: boolean; message: string; nodeId: string }> {
+    return this.request({
+      method: 'POST',
+      path: '/v1/admin/cluster/takeover',
+    });
+  }
+
+  async clusterPromote(nodeId: string): Promise<{ success: boolean; message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/admin/cluster/nodes/${nodeId}/promote`,
+    });
+  }
+
+  async clusterRelease(): Promise<{ success: boolean; message: string }> {
+    return this.request({
+      method: 'POST',
+      path: '/v1/admin/cluster/release',
+    });
+  }
+
+  async clusterMaintenance(enable: boolean): Promise<{ success: boolean; maintenanceMode: boolean }> {
+    return this.request({
+      method: 'POST',
+      path: '/v1/admin/cluster/maintenance',
+      body: { enable },
+    });
+  }
+
+  // ============ Tenants ============
+
+  async listTenants(options?: {
+    status?: string;
+    withUsage?: boolean;
+  }): Promise<TenantWithUsage[]> {
+    const response = await this.request<PaginatedResponse<TenantWithUsage>>({
+      method: 'GET',
+      path: '/v1/tenants',
+      query: {
+        status: options?.status,
+        withUsage: options?.withUsage,
+        pageSize: 1000,
+      },
+    });
+    return response.items;
+  }
+
+  async createTenant(data: {
+    id: string;
+    name: string;
+    maxSecrets?: number;
+    maxKmsKeys?: number;
+    contactEmail?: string;
+  }): Promise<Tenant> {
+    return this.request<Tenant>({
+      method: 'POST',
+      path: '/v1/tenants',
+      body: data,
+    });
+  }
+
+  async getTenant(id: string, withUsage?: boolean): Promise<TenantWithUsage> {
+    return this.request<TenantWithUsage>({
+      method: 'GET',
+      path: `/v1/tenants/${id}`,
+      query: { withUsage },
+    });
+  }
+
+  async updateTenant(id: string, data: {
+    name?: string;
+    maxSecrets?: number;
+    maxKmsKeys?: number;
+    contactEmail?: string;
+    status?: 'active' | 'suspended';
+  }): Promise<Tenant> {
+    return this.request<Tenant>({
+      method: 'PATCH',
+      path: `/v1/tenants/${id}`,
+      body: data,
+    });
+  }
+
+  async deleteTenant(id: string): Promise<void> {
+    await this.request<void>({
+      method: 'DELETE',
+      path: `/v1/tenants/${id}`,
+    });
+  }
+
+  async getTenantUsage(id: string): Promise<TenantUsage> {
+    return this.request<TenantUsage>({
+      method: 'GET',
+      path: `/v1/tenants/${id}/usage`,
+    });
+  }
+
+  // ============ Users ============
+
+  async listUsers(options?: {
+    tenantId?: string;
+    role?: string;
+    status?: string;
+  }): Promise<User[]> {
+    const response = await this.request<PaginatedResponse<User>>({
+      method: 'GET',
+      path: '/v1/users',
+      query: {
+        tenantId: options?.tenantId,
+        role: options?.role,
+        status: options?.status,
+        pageSize: 1000,
+      },
+    });
+    return response.items;
+  }
+
+  async createUser(data: {
+    username: string;
+    password: string;
+    email?: string;
+    tenantId?: string;
+    role?: 'user' | 'admin';
+  }): Promise<User> {
+    return this.request<User>({
+      method: 'POST',
+      path: '/v1/users',
+      body: data,
+    });
+  }
+
+  async getUser(id: string): Promise<User> {
+    return this.request<User>({
+      method: 'GET',
+      path: `/v1/users/${id}`,
+    });
+  }
+
+  async updateUser(id: string, data: {
+    email?: string;
+    password?: string;
+    role?: 'user' | 'admin';
+    status?: 'active' | 'disabled';
+  }): Promise<User> {
+    return this.request<User>({
+      method: 'PUT',
+      path: `/v1/users/${id}`,
+      body: data,
+    });
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await this.request<void>({
+      method: 'DELETE',
+      path: `/v1/users/${id}`,
+    });
+  }
+
+  async unlockUser(id: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'PUT',
+      path: `/v1/users/${id}`,
+      body: { status: 'active', failedAttempts: 0, lockedUntil: null },
+    });
+  }
+
+  async resetUserPassword(id: string, newPassword: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/users/${id}/reset-password`,
+      body: { newPassword },
+    });
+  }
+
+  async disableUserTotp(id: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/users/${id}/totp/disable`,
+    });
+  }
+
+  // ============ Superadmins ============
+
+  async listSuperadmins(): Promise<Superadmin[]> {
+    const users = await this.listUsers({ role: 'superadmin' });
+    return users.map(u => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      status: u.status,
+      totpEnabled: u.totpEnabled,
+      failedAttempts: u.failedAttempts,
+      lockedUntil: u.lockedUntil,
+      lastLogin: u.lastLogin,
+      createdAt: u.createdAt,
+    }));
+  }
+
+  async createSuperadmin(data: {
+    username: string;
+    password: string;
+    email?: string;
+  }): Promise<Superadmin> {
+    return this.request<Superadmin>({
+      method: 'POST',
+      path: '/v1/superadmins',
+      body: data,
+    });
+  }
+
+  async resetSuperadminPassword(username: string, password: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/superadmins/${username}/password`,
+      body: { password },
+    });
+  }
+
+  async unlockSuperadmin(username: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/superadmins/${username}/unlock`,
+    });
+  }
+
+  async disableSuperadmin(username: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/superadmins/${username}/disable`,
+    });
+  }
+
+  async enableSuperadmin(username: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/superadmins/${username}/enable`,
+    });
+  }
+
+  // ============ Lockdown ============
+
+  async getLockdownStatus(): Promise<LockdownStatus> {
+    return this.request<LockdownStatus>({
+      method: 'GET',
+      path: '/v1/admin/lockdown/status',
+    });
+  }
+
+  async triggerLockdown(level: 1 | 2 | 3 | 4, reason: string): Promise<{ success: boolean; status: string }> {
+    return this.request({
+      method: 'POST',
+      path: '/v1/admin/lockdown/trigger',
+      body: { level, reason },
+    });
+  }
+
+  async clearLockdown(reason: string): Promise<{ success: boolean; previousStatus: string }> {
+    return this.request({
+      method: 'POST',
+      path: '/v1/admin/lockdown/clear',
+      body: { reason },
+    });
+  }
+
+  async getLockdownHistory(limit?: number): Promise<LockdownHistoryEntry[]> {
+    const response = await this.request<PaginatedResponse<LockdownHistoryEntry>>({
+      method: 'GET',
+      path: '/v1/admin/lockdown/history',
+      query: { limit: limit || 50 },
+    });
+    return response.items;
+  }
+
+  async getThreats(options?: {
+    category?: string;
+    since?: string;
+    limit?: number;
+  }): Promise<ThreatEvent[]> {
+    const response = await this.request<PaginatedResponse<ThreatEvent>>({
+      method: 'GET',
+      path: '/v1/admin/lockdown/threats',
+      query: {
+        category: options?.category,
+        since: options?.since,
+        limit: options?.limit || 100,
+      },
+    });
+    return response.items;
+  }
+
+  // ============ Audit ============
+
+  async listAudit(options?: {
+    user?: string;
+    action?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+  }): Promise<AuditEntry[]> {
+    const response = await this.request<PaginatedResponse<AuditEntry>>({
+      method: 'GET',
+      path: '/v1/audit',
+      query: {
+        client_cn: options?.user,
+        action: options?.action,
+        start_date: options?.startDate,
+        end_date: options?.endDate,
+        limit: options?.limit || 100,
+      },
+    });
+    return response.items;
+  }
+
+  async verifyAuditChain(): Promise<AuditVerifyResult> {
+    return this.request<AuditVerifyResult>({
+      method: 'GET',
+      path: '/v1/audit/verify',
+    });
+  }
+
+  async exportAudit(options?: {
+    format?: 'json' | 'csv';
+    startDate?: string;
+    endDate?: string;
+  }): Promise<string> {
+    return this.request<string>({
+      method: 'GET',
+      path: '/v1/audit',
+      query: {
+        format: options?.format || 'json',
+        start_date: options?.startDate,
+        end_date: options?.endDate,
+        limit: 10000,
+      },
+    });
+  }
+
+  // ============ API Keys (Independent, tenant-scoped) ============
+
+  async createApiKey(data: {
+    name: string;
+    description?: string;
+    expiresInDays?: number;
+    permissions: string[];
+    tenantId?: string;
+    ipAllowlist?: string[];
+    conditions?: Record<string, unknown>;
+  }): Promise<CreateAPIKeyResponse> {
+    return this.request<CreateAPIKeyResponse>({
+      method: 'POST',
+      path: '/auth/api-keys',
+      query: data.tenantId ? { tenantId: data.tenantId } : undefined,
+      body: {
+        name: data.name,
+        description: data.description,
+        expiresInDays: data.expiresInDays,
+        permissions: data.permissions,
+        ipAllowlist: data.ipAllowlist,
+        conditions: data.conditions,
+      },
+    });
+  }
+
+  async listApiKeys(tenantId?: string): Promise<ListAPIKeysResponse> {
+    return this.request<ListAPIKeysResponse>({
+      method: 'GET',
+      path: '/auth/api-keys',
+      query: tenantId ? { tenantId } : undefined,
+    });
+  }
+
+  async getApiKey(id: string, tenantId?: string): Promise<APIKey> {
+    return this.request<APIKey>({
+      method: 'GET',
+      path: `/auth/api-keys/${id}`,
+      query: tenantId ? { tenantId } : undefined,
+    });
+  }
+
+  async deleteApiKey(id: string, tenantId?: string): Promise<void> {
+    await this.request<void>({
+      method: 'DELETE',
+      path: `/auth/api-keys/${id}`,
+      query: tenantId ? { tenantId } : undefined,
+    });
+  }
+
+  async rotateApiKey(id: string, name?: string, tenantId?: string): Promise<RotateAPIKeyResponse> {
+    return this.request<RotateAPIKeyResponse>({
+      method: 'POST',
+      path: `/auth/api-keys/${id}/rotate`,
+      query: tenantId ? { tenantId } : undefined,
+      body: name ? { name } : {},
+    });
+  }
+
+  async updateApiKeyPermissions(id: string, permissions: string[], tenantId?: string): Promise<APIKey> {
+    return this.request<APIKey>({
+      method: 'PATCH',
+      path: `/auth/api-keys/${id}/permissions`,
+      query: tenantId ? { tenantId } : undefined,
+      body: { permissions },
+    });
+  }
+
+  async updateApiKeyConditions(id: string, conditions: Record<string, unknown>, tenantId?: string): Promise<APIKey> {
+    const response = await this.request<{ apiKey: APIKey; message: string }>({
+      method: 'PATCH',
+      path: `/auth/api-keys/${id}/conditions`,
+      query: tenantId ? { tenantId } : undefined,
+      body: { conditions },
+    });
+    return response.apiKey;
+  }
+
+  async setApiKeyEnabled(id: string, enabled: boolean, tenantId?: string): Promise<APIKey> {
+    const response = await this.request<{ apiKey: APIKey; message: string }>({
+      method: 'PATCH',
+      path: `/auth/api-keys/${id}/enabled`,
+      query: tenantId ? { tenantId } : undefined,
+      body: { enabled },
+    });
+    return response.apiKey;
+  }
+
+  // =========================================================================
+  // Permissions API
+  // =========================================================================
+
+  /**
+   * Get all available permissions from the database
+   * This is the single source of truth for valid permission IDs
+   */
+  async getPermissions(category?: string): Promise<{
+    permissions: Array<{
+      permission: string;
+      description: string;
+      category: string;
+    }>;
+    categories: string[];
+    total: number;
+  }> {
+    return this.request({
+      method: 'GET',
+      path: '/v1/permissions',
+      query: category ? { category } : undefined,
+    });
+  }
+
+  /**
+   * Validate a list of permission IDs against the database
+   */
+  async validatePermissions(permissions: string[]): Promise<{
+    valid: string[];
+    invalid: string[];
+    allValid: boolean;
+  }> {
+    return this.request({
+      method: 'POST',
+      path: '/v1/permissions/validate',
+      body: { permissions },
+    });
+  }
+
+  async getApiKeyPolicies(id: string, tenantId?: string): Promise<{ policies: APIKeyPolicyAttachment[] }> {
+    return this.request<{ policies: APIKeyPolicyAttachment[] }>({
+      method: 'GET',
+      path: `/auth/api-keys/${id}/policies`,
+      query: tenantId ? { tenantId } : undefined,
+    });
+  }
+
+  async attachApiKeyPolicy(keyId: string, policyId: string, tenantId?: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>({
+      method: 'POST',
+      path: `/auth/api-keys/${keyId}/policies/${policyId}`,
+      query: tenantId ? { tenantId } : undefined,
+    });
+  }
+
+  async detachApiKeyPolicy(keyId: string, policyId: string, tenantId?: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>({
+      method: 'DELETE',
+      path: `/auth/api-keys/${keyId}/policies/${policyId}`,
+      query: tenantId ? { tenantId } : undefined,
+    });
+  }
+
+  async getApiKeySelf(): Promise<APIKeySelfResponse> {
+    return this.request<APIKeySelfResponse>({
+      method: 'GET',
+      path: '/auth/api-keys/self',
+    });
+  }
+
+  async rotateApiKeySelf(name?: string): Promise<RotateAPIKeyResponse & { expiresInDays: number }> {
+    return this.request<RotateAPIKeyResponse & { expiresInDays: number }>({
+      method: 'POST',
+      path: '/auth/api-keys/self/rotate',
+      body: name ? { name } : {},
+    });
+  }
+
+  // ============ ABAC Policies ============
+
+  async listPolicies(options?: {
+    tenantId?: string;
+    enabled?: boolean;
+    effect?: 'allow' | 'deny';
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PolicyListResponse> {
+    return this.request<PolicyListResponse>({
+      method: 'GET',
+      path: '/v1/policies',
+      query: {
+        tenantId: options?.tenantId,
+        enabled: options?.enabled,
+        effect: options?.effect,
+        search: options?.search,
+        page: options?.page,
+        pageSize: options?.pageSize || 100,
+      },
+    });
+  }
+
+  async getPolicy(id: string): Promise<Policy> {
+    return this.request<Policy>({
+      method: 'GET',
+      path: `/v1/policies/${id}`,
+    });
+  }
+
+  async createPolicy(data: CreatePolicyInput): Promise<Policy> {
+    return this.request<Policy>({
+      method: 'POST',
+      path: '/v1/policies',
+      body: data,
+    });
+  }
+
+  async updatePolicy(id: string, data: UpdatePolicyInput): Promise<Policy> {
+    return this.request<Policy>({
+      method: 'PATCH',
+      path: `/v1/policies/${id}`,
+      body: data,
+    });
+  }
+
+  async deletePolicy(id: string): Promise<void> {
+    await this.request<void>({
+      method: 'DELETE',
+      path: `/v1/policies/${id}`,
+    });
+  }
+
+  async togglePolicy(id: string, enabled: boolean): Promise<Policy> {
+    return this.request<Policy>({
+      method: 'POST',
+      path: `/v1/policies/${id}/toggle`,
+      body: { enabled },
+    });
+  }
+
+  async validatePolicy(policy: CreatePolicyInput): Promise<{ valid: boolean; errors?: string[] }> {
+    return this.request({
+      method: 'POST',
+      path: '/v1/policies/validate',
+      body: policy,
+    });
+  }
+
+  async getPolicyAttachments(policyId: string): Promise<{ users: PolicyAttachment[]; roles: PolicyAttachment[] }> {
+    return this.request({
+      method: 'GET',
+      path: `/v1/policies/${policyId}/attachments`,
+    });
+  }
+
+  async attachPolicyToUser(policyId: string, userId: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/policies/${policyId}/attach/user`,
+      body: { userId },
+    });
+  }
+
+  async attachPolicyToRole(policyId: string, roleId: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'POST',
+      path: `/v1/policies/${policyId}/attach/role`,
+      body: { roleId },
+    });
+  }
+
+  async detachPolicyFromUser(policyId: string, userId: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'DELETE',
+      path: `/v1/policies/${policyId}/attach/user/${userId}`,
+    });
+  }
+
+  async detachPolicyFromRole(policyId: string, roleId: string): Promise<{ message: string }> {
+    return this.request({
+      method: 'DELETE',
+      path: `/v1/policies/${policyId}/attach/role/${roleId}`,
+    });
+  }
+
+  async getUserPolicies(userId: string): Promise<Policy[]> {
+    const response = await this.request<{ policies: Policy[] }>({
+      method: 'GET',
+      path: `/v1/users/${userId}/policies`,
+    });
+    return response.policies;
+  }
+
+  async getRolePolicies(roleId: string): Promise<Policy[]> {
+    const response = await this.request<{ policies: Policy[] }>({
+      method: 'GET',
+      path: `/v1/roles/${roleId}/policies`,
+    });
+    return response.policies;
+  }
+
+  async testPolicy(request: PolicyTestRequest): Promise<PolicyTestResult> {
+    return this.request<PolicyTestResult>({
+      method: 'POST',
+      path: '/v1/policies/test',
+      body: request,
+    });
+  }
+
+  // ============ Generic methods for arbitrary endpoints ============
+
+  /**
+   * Generic GET request
+   */
+  async get<T>(path: string): Promise<T> {
+    return this.request<T>({ method: 'GET', path });
+  }
+
+  /**
+   * Generic POST request
+   */
+  async post<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>({ method: 'POST', path, body });
+  }
+
+  /**
+   * Generic DELETE request
+   */
+  async delete<T>(path: string): Promise<T> {
+    return this.request<T>({ method: 'DELETE', path });
+  }
+
+  /**
+   * Generic PATCH request
+   */
+  async patch<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>({ method: 'PATCH', path, body });
+  }
+
+  /**
+   * Get WebSocket URL for a given endpoint path
+   */
+  getWebSocketUrl(wsPath: string): string {
+    const url = new URL(this.baseUrl);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.pathname = wsPath;
+    return url.toString();
+  }
+
+  /**
+   * Get authentication headers for WebSocket connection
+   */
+  async getAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {};
+
+    if (hasApiKey()) {
+      headers['X-API-Key'] = getApiKey()!;
+    } else {
+      const credentials = getCredentials();
+      if (credentials) {
+        // Check if token is expired and try to refresh
+        if (isTokenExpired() && credentials.refreshToken) {
+          await this.refreshToken();
+        }
+        const updatedCredentials = getCredentials();
+        if (updatedCredentials) {
+          headers['Authorization'] = `Bearer ${updatedCredentials.accessToken}`;
+        }
+      } else if (hasEnvCredentials()) {
+        // Auto-login with env credentials
+        const envCreds = getEnvCredentials()!;
+        await this.login(envCreds.username, envCreds.password);
+        const newCredentials = getCredentials();
+        if (newCredentials) {
+          headers['Authorization'] = `Bearer ${newCredentials.accessToken}`;
+        }
+      }
+    }
+
+    return headers;
+  }
+}
+
+// Export singleton instance
+export const client = new VaultClient();
+
+// Export class for testing
+export { VaultClient };

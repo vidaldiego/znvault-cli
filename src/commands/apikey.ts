@@ -1,0 +1,811 @@
+// Path: znvault-cli/src/commands/apikey.ts
+// CLI commands for independent API key management
+
+import { Command } from 'commander';
+import ora from 'ora';
+import Table from 'cli-table3';
+import { client } from '../lib/client.js';
+import * as output from '../lib/output.js';
+import type { APIKey } from '../types/index.js';
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleString();
+}
+
+function getDaysUntilExpiry(expiresAt: string): number {
+  const expires = new Date(expiresAt);
+  const now = new Date();
+  return Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatExpiry(expiresAt: string): string {
+  const days = getDaysUntilExpiry(expiresAt);
+  if (days < 0) return `Expired ${Math.abs(days)} days ago`;
+  if (days === 0) return 'Expires today';
+  if (days === 1) return 'Expires tomorrow';
+  if (days <= 7) return `Expires in ${days} days (!)`;
+  if (days <= 30) return `Expires in ${days} days`;
+  return `Expires in ${days} days`;
+}
+
+function formatPermissions(permissions: string[]): string {
+  if (!permissions || permissions.length === 0) return 'None';
+  if (permissions.length <= 3) return permissions.join(', ');
+  return `${permissions.slice(0, 2).join(', ')} +${permissions.length - 2} more`;
+}
+
+function formatConditionsSummary(conditions?: Record<string, unknown>): string {
+  if (!conditions || Object.keys(conditions).length === 0) return '-';
+
+  const parts: string[] = [];
+  if (conditions.ip) parts.push('IP');
+  if (conditions.timeRange) parts.push('Time');
+  if (conditions.methods) parts.push('Methods');
+  if (conditions.resources) parts.push('Resources');
+  if (conditions.aliases) parts.push('Aliases');
+  if (conditions.resourceTags) parts.push('Tags');
+
+  if (parts.length === 0) return '-';
+  if (parts.length <= 2) return parts.join(', ');
+  return `${parts.slice(0, 2).join(', ')} +${parts.length - 2}`;
+}
+
+export function registerApiKeyCommands(program: Command): void {
+  const apiKeyCmd = program
+    .command('apikey')
+    .alias('api-key')
+    .description('API key management (independent, tenant-scoped)');
+
+  // List API keys
+  apiKeyCmd
+    .command('list')
+    .alias('ls')
+    .description('List API keys')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const spinner = ora('Fetching API keys...').start();
+
+      try {
+        const result = await client.listApiKeys(options.tenant);
+        spinner.stop();
+
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
+        if (result.keys.length === 0) {
+          output.warn('No API keys found');
+          return;
+        }
+
+        // Show expiring soon warning
+        if (result.expiringSoon.length > 0) {
+          console.log(`\n⚠️  ${result.expiringSoon.length} key(s) expiring within 7 days\n`);
+        }
+
+        const table = new Table({
+          head: ['Name', 'Prefix', 'Status', 'Tenant', 'Permissions', 'Conditions', 'Expires', 'Rotations'],
+          style: { head: ['cyan'] },
+        });
+
+        for (const key of result.keys) {
+          const daysLeft = getDaysUntilExpiry(key.expires_at);
+          const expiryColor = daysLeft <= 7 ? '\x1b[31m' : daysLeft <= 30 ? '\x1b[33m' : '';
+          const reset = expiryColor ? '\x1b[0m' : '';
+          const statusIcon = key.enabled ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
+          const statusText = key.enabled ? 'Active' : 'Disabled';
+
+          table.push([
+            key.name,
+            key.prefix,
+            `${statusIcon} ${statusText}`,
+            key.tenant_id,
+            formatPermissions(key.permissions),
+            formatConditionsSummary(key.conditions),
+            `${expiryColor}${formatExpiry(key.expires_at)}${reset}`,
+            key.rotation_count > 0 ? `${key.rotation_count}x` : '-',
+          ]);
+        }
+
+        console.log(table.toString());
+        console.log(`\nTotal: ${result.keys.length} API key(s)`);
+      } catch (err) {
+        spinner.fail('Failed to list API keys');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Create API key
+  apiKeyCmd
+    .command('create <name>')
+    .description('Create a new API key with direct permissions')
+    .option('-e, --expires <days>', 'Days until expiration (1-3650, default: 90)', '90')
+    .option('-p, --permissions <perms>', 'Comma-separated permissions (required)')
+    .option('-d, --description <desc>', 'Description')
+    .option('--ip <ips>', 'Comma-separated IP allowlist (CIDR supported)')
+    .option('--time-range <range>', 'Time range restriction: "HH:MM-HH:MM [TIMEZONE]"')
+    .option('--methods <methods>', 'Comma-separated allowed HTTP methods: GET,POST,etc')
+    .option('--resources <ids>', 'Specific resource IDs (type:id,...): secrets:id1,certificates:id2')
+    .option('--aliases <patterns>', 'Comma-separated alias patterns (glob): prod/*,api/*')
+    .option('--tags <tags>', 'Required resource tags: key=value,key2=value2')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      // Validate permissions
+      if (!options.permissions) {
+        output.error('--permissions is required. Use comma-separated permission strings.');
+        output.info('Example: --permissions "secret:read:value,secret:list:values"');
+        process.exit(1);
+      }
+
+      const permissions = options.permissions.split(',').map((p: string) => p.trim());
+
+      const spinner = ora('Creating API key...').start();
+
+      try {
+        // Parse options
+        const expiresInDays = parseInt(options.expires, 10);
+        if (isNaN(expiresInDays) || expiresInDays < 1 || expiresInDays > 3650) {
+          spinner.fail('Invalid expiration');
+          output.error('Expiration must be between 1 and 3650 days');
+          process.exit(1);
+        }
+
+        let ipAllowlist: string[] | undefined;
+        if (options.ip) {
+          ipAllowlist = options.ip.split(',').map((ip: string) => ip.trim());
+        }
+
+        // Parse conditions
+        const conditions: Record<string, unknown> = {};
+
+        // IP condition (from --ip flag, now also stored in conditions)
+        if (ipAllowlist) {
+          conditions.ip = ipAllowlist;
+        }
+
+        // Time range condition
+        if (options.timeRange) {
+          const match = options.timeRange.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+(.+))?$/);
+          if (!match) {
+            spinner.fail('Invalid time range format');
+            output.error('Use format: "HH:MM-HH:MM [TIMEZONE]"');
+            output.info('Example: --time-range "09:00-17:00 America/New_York"');
+            process.exit(1);
+          }
+          conditions.timeRange = {
+            start: match[1],
+            end: match[2],
+            timezone: match[3] || 'UTC',
+          };
+        }
+
+        // HTTP methods condition
+        if (options.methods) {
+          conditions.methods = options.methods.split(',').map((m: string) => m.trim().toUpperCase());
+        }
+
+        // Resource IDs condition
+        if (options.resources) {
+          const resources: Record<string, string[]> = {};
+          for (const part of options.resources.split(',')) {
+            const [type, id] = part.split(':');
+            if (type && id) {
+              if (!resources[type]) resources[type] = [];
+              resources[type].push(id);
+            }
+          }
+          if (Object.keys(resources).length > 0) {
+            conditions.resources = resources;
+          }
+        }
+
+        // Alias patterns condition
+        if (options.aliases) {
+          conditions.aliases = options.aliases.split(',').map((a: string) => a.trim());
+        }
+
+        // Resource tags condition
+        if (options.tags) {
+          const tags: Record<string, string> = {};
+          for (const part of options.tags.split(',')) {
+            const [key, value] = part.split('=');
+            if (key && value) {
+              tags[key.trim()] = value.trim();
+            }
+          }
+          if (Object.keys(tags).length > 0) {
+            conditions.resourceTags = tags;
+          }
+        }
+
+        const result = await client.createApiKey({
+          name,
+          description: options.description,
+          expiresInDays,
+          permissions,
+          ipAllowlist,
+          conditions: Object.keys(conditions).length > 0 ? conditions : undefined,
+          tenantId: options.tenant,
+        });
+
+        spinner.succeed('API key created');
+
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
+        console.log('\n⚠️  IMPORTANT: Save this key now - it will not be shown again!\n');
+        console.log('────────────────────────────────────────────────────────────────');
+        console.log(`API Key: ${result.key}`);
+        console.log('────────────────────────────────────────────────────────────────\n');
+
+        output.keyValue({
+          'Key ID': result.apiKey.id,
+          'Name': result.apiKey.name,
+          'Prefix': result.apiKey.prefix,
+          'Status': result.apiKey.enabled ? '\x1b[32m●\x1b[0m Active' : '\x1b[31m○\x1b[0m Disabled',
+          'Tenant': result.apiKey.tenant_id,
+          'Description': result.apiKey.description || 'None',
+          'Expires': formatDate(result.apiKey.expires_at),
+          'IP Allowlist': result.apiKey.ip_allowlist?.join(', ') || 'None',
+        });
+
+        if (result.apiKey.permissions.length > 0) {
+          console.log('\nPermissions:');
+          for (const perm of result.apiKey.permissions) {
+            console.log(`  - ${perm}`);
+          }
+        }
+
+        // Display conditions if any
+        if (result.apiKey.conditions && Object.keys(result.apiKey.conditions).length > 0) {
+          console.log('\nConditions:');
+          const cond = result.apiKey.conditions as Record<string, unknown>;
+          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
+          if (cond.timeRange) {
+            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
+            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
+          }
+          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
+          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
+          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
+          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+        }
+      } catch (err) {
+        spinner.fail('Failed to create API key');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Show API key details
+  apiKeyCmd
+    .command('show <id>')
+    .description('Show API key details')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .option('--json', 'Output as JSON')
+    .action(async (id, options) => {
+      const spinner = ora('Fetching API key...').start();
+
+      try {
+        // First try to get by ID directly
+        let key: APIKey | undefined;
+        try {
+          key = await client.getApiKey(id, options.tenant);
+        } catch {
+          // Fall back to list and search
+          const result = await client.listApiKeys(options.tenant);
+          key = result.keys.find(k => k.id === id || k.prefix === id || k.name === id);
+        }
+
+        if (!key) {
+          spinner.fail('API key not found');
+          output.error(`No API key found matching: ${id}`);
+          process.exit(1);
+        }
+
+        spinner.stop();
+
+        if (options.json) {
+          output.json(key);
+          return;
+        }
+
+        const daysLeft = getDaysUntilExpiry(key.expires_at);
+        const statusIcon = key.enabled ? '\x1b[32m●\x1b[0m Active' : '\x1b[31m○\x1b[0m Disabled';
+
+        output.keyValue({
+          'Key ID': key.id,
+          'Name': key.name,
+          'Prefix': key.prefix,
+          'Status': statusIcon,
+          'Tenant': key.tenant_id,
+          'Description': key.description || 'None',
+          'Created By': key.created_by_username || key.created_by || 'Unknown',
+          'Created': formatDate(key.created_at),
+          'Expires': formatDate(key.expires_at),
+          'Days Until Expiry': daysLeft,
+          'Last Used': key.last_used ? formatDate(key.last_used) : 'Never',
+          'Rotation Count': key.rotation_count,
+          'Last Rotation': key.last_rotation ? formatDate(key.last_rotation) : 'Never',
+          'IP Allowlist': key.ip_allowlist?.join(', ') || 'None (any IP)',
+        });
+
+        if (key.permissions.length > 0) {
+          console.log('\nPermissions:');
+          for (const perm of key.permissions) {
+            console.log(`  - ${perm}`);
+          }
+        }
+
+        // Display conditions if any
+        if (key.conditions && Object.keys(key.conditions).length > 0) {
+          console.log('\nConditions:');
+          const cond = key.conditions as Record<string, unknown>;
+          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
+          if (cond.timeRange) {
+            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
+            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
+          }
+          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
+          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
+          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
+          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+        }
+
+        if (!key.enabled) {
+          console.log('\n⚠️  This key is disabled and cannot be used for authentication.');
+        } else if (daysLeft <= 7) {
+          console.log('\n⚠️  This key is expiring soon! Consider rotating it.');
+        }
+      } catch (err) {
+        spinner.fail('Failed to fetch API key');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Delete API key
+  apiKeyCmd
+    .command('delete <id>')
+    .alias('rm')
+    .description('Delete an API key')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .option('-f, --force', 'Skip confirmation')
+    .action(async (id, options) => {
+      if (!options.force) {
+        output.warn(`This will permanently delete API key: ${id}`);
+        output.warn('The key will stop working immediately.');
+      }
+
+      const spinner = ora('Deleting API key...').start();
+
+      try {
+        await client.deleteApiKey(id, options.tenant);
+        spinner.succeed(`API key deleted: ${id}`);
+      } catch (err) {
+        spinner.fail('Failed to delete API key');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Rotate API key
+  apiKeyCmd
+    .command('rotate <id>')
+    .description('Rotate an API key (creates new key, invalidates old)')
+    .option('-n, --name <name>', 'New name for the rotated key')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .option('--json', 'Output as JSON')
+    .action(async (id, options) => {
+      const spinner = ora('Rotating API key...').start();
+
+      try {
+        const result = await client.rotateApiKey(id, options.name, options.tenant);
+        spinner.succeed('API key rotated');
+
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
+        console.log('\n⚠️  IMPORTANT: Save this new key now - it will not be shown again!');
+        console.log('The old key has been invalidated.\n');
+        console.log('────────────────────────────────────────────────────────────────');
+        console.log(`New API Key: ${result.key}`);
+        console.log('────────────────────────────────────────────────────────────────\n');
+
+        output.keyValue({
+          'New Key ID': result.apiKey.id,
+          'Name': result.apiKey.name,
+          'Prefix': result.apiKey.prefix,
+          'Expires': formatDate(result.apiKey.expires_at),
+          'Rotation Count': result.apiKey.rotation_count,
+        });
+      } catch (err) {
+        spinner.fail('Failed to rotate API key');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Enable API key
+  apiKeyCmd
+    .command('enable <id>')
+    .description('Enable an API key (allow authentication)')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .action(async (id, options) => {
+      const spinner = ora('Enabling API key...').start();
+
+      try {
+        const key = await client.setApiKeyEnabled(id, true, options.tenant);
+        spinner.succeed(`API key enabled: ${key.name}`);
+        console.log('\nThe key can now be used for authentication.');
+      } catch (err) {
+        spinner.fail('Failed to enable API key');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Disable API key
+  apiKeyCmd
+    .command('disable <id>')
+    .description('Disable an API key (block authentication without deleting)')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .action(async (id, options) => {
+      const spinner = ora('Disabling API key...').start();
+
+      try {
+        const key = await client.setApiKeyEnabled(id, false, options.tenant);
+        spinner.succeed(`API key disabled: ${key.name}`);
+        console.log('\nThe key is now blocked from authentication.');
+        console.log('Use "znvault apikey enable" to re-enable it.');
+      } catch (err) {
+        spinner.fail('Failed to disable API key');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Update permissions
+  apiKeyCmd
+    .command('update-permissions <id>')
+    .description('Update API key permissions')
+    .option('-s, --set <perms>', 'Set permissions (comma-separated, replaces all)')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .option('--json', 'Output as JSON')
+    .action(async (id, options) => {
+      if (!options.set) {
+        output.error('--set is required. Provide comma-separated permissions.');
+        process.exit(1);
+      }
+
+      const permissions = options.set.split(',').map((p: string) => p.trim());
+
+      const spinner = ora('Updating permissions...').start();
+
+      try {
+        const key = await client.updateApiKeyPermissions(id, permissions, options.tenant);
+        spinner.succeed('Permissions updated');
+
+        if (options.json) {
+          output.json(key);
+          return;
+        }
+
+        console.log('\nUpdated permissions:');
+        for (const perm of key.permissions) {
+          console.log(`  - ${perm}`);
+        }
+      } catch (err) {
+        spinner.fail('Failed to update permissions');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Update conditions
+  apiKeyCmd
+    .command('update-conditions <id>')
+    .description('Update API key inline ABAC conditions')
+    .option('--ip <ips>', 'Comma-separated IP allowlist (CIDR supported)')
+    .option('--time-range <range>', 'Time range: "HH:MM-HH:MM [TIMEZONE]" or "clear"')
+    .option('--methods <methods>', 'Comma-separated HTTP methods or "clear"')
+    .option('--resources <ids>', 'Resource IDs (type:id,...) or "clear"')
+    .option('--aliases <patterns>', 'Alias patterns (glob) or "clear"')
+    .option('--tags <tags>', 'Resource tags (key=value,...) or "clear"')
+    .option('--clear-all', 'Remove all conditions')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .option('--json', 'Output as JSON')
+    .action(async (id, options) => {
+      const conditions: Record<string, unknown> = {};
+
+      // Handle --clear-all
+      if (options.clearAll) {
+        // Empty object clears all conditions
+      } else {
+        // Parse individual conditions
+        if (options.ip && options.ip !== 'clear') {
+          conditions.ip = options.ip.split(',').map((ip: string) => ip.trim());
+        }
+
+        if (options.timeRange) {
+          if (options.timeRange === 'clear') {
+            // Don't include timeRange (will be removed)
+          } else {
+            const match = options.timeRange.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+(.+))?$/);
+            if (!match) {
+              output.error('Invalid time range format. Use: "HH:MM-HH:MM [TIMEZONE]"');
+              process.exit(1);
+            }
+            conditions.timeRange = {
+              start: match[1],
+              end: match[2],
+              timezone: match[3] || 'UTC',
+            };
+          }
+        }
+
+        if (options.methods && options.methods !== 'clear') {
+          conditions.methods = options.methods.split(',').map((m: string) => m.trim().toUpperCase());
+        }
+
+        if (options.resources && options.resources !== 'clear') {
+          const resources: Record<string, string[]> = {};
+          for (const part of options.resources.split(',')) {
+            const [type, resId] = part.split(':');
+            if (type && resId) {
+              if (!resources[type]) resources[type] = [];
+              resources[type].push(resId);
+            }
+          }
+          if (Object.keys(resources).length > 0) {
+            conditions.resources = resources;
+          }
+        }
+
+        if (options.aliases && options.aliases !== 'clear') {
+          conditions.aliases = options.aliases.split(',').map((a: string) => a.trim());
+        }
+
+        if (options.tags && options.tags !== 'clear') {
+          const tags: Record<string, string> = {};
+          for (const part of options.tags.split(',')) {
+            const [key, value] = part.split('=');
+            if (key && value) {
+              tags[key.trim()] = value.trim();
+            }
+          }
+          if (Object.keys(tags).length > 0) {
+            conditions.resourceTags = tags;
+          }
+        }
+      }
+
+      const spinner = ora('Updating conditions...').start();
+
+      try {
+        const key = await client.updateApiKeyConditions(id, conditions, options.tenant);
+        spinner.succeed('Conditions updated');
+
+        if (options.json) {
+          output.json(key);
+          return;
+        }
+
+        if (key.conditions && Object.keys(key.conditions).length > 0) {
+          console.log('\nUpdated conditions:');
+          const cond = key.conditions as Record<string, unknown>;
+          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
+          if (cond.timeRange) {
+            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
+            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
+          }
+          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
+          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
+          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
+          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+        } else {
+          console.log('\nAll conditions cleared.');
+        }
+      } catch (err) {
+        spinner.fail('Failed to update conditions');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // List policies attached to an API key
+  apiKeyCmd
+    .command('list-policies <id>')
+    .description('List ABAC policies attached to an API key')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .option('--json', 'Output as JSON')
+    .action(async (id, options) => {
+      const spinner = ora('Fetching policies...').start();
+
+      try {
+        const result = await client.getApiKeyPolicies(id, options.tenant);
+        spinner.stop();
+
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
+        if (result.policies.length === 0) {
+          output.info('No ABAC policies attached to this API key');
+          return;
+        }
+
+        const table = new Table({
+          head: ['Policy ID', 'Policy Name', 'Attached At'],
+          style: { head: ['cyan'] },
+        });
+
+        for (const policy of result.policies) {
+          table.push([
+            policy.policyId,
+            policy.policyName,
+            formatDate(policy.attachedAt),
+          ]);
+        }
+
+        console.log(table.toString());
+        console.log(`\nTotal: ${result.policies.length} policy/policies`);
+      } catch (err) {
+        spinner.fail('Failed to fetch policies');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Attach policy to API key
+  apiKeyCmd
+    .command('attach-policy <keyId> <policyId>')
+    .description('Attach an ABAC policy to an API key')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .action(async (keyId, policyId, options) => {
+      const spinner = ora('Attaching policy...').start();
+
+      try {
+        await client.attachApiKeyPolicy(keyId, policyId, options.tenant);
+        spinner.succeed(`Policy ${policyId} attached to API key ${keyId}`);
+      } catch (err) {
+        spinner.fail('Failed to attach policy');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Detach policy from API key
+  apiKeyCmd
+    .command('detach-policy <keyId> <policyId>')
+    .description('Detach an ABAC policy from an API key')
+    .option('-t, --tenant <id>', 'Tenant ID')
+    .action(async (keyId, policyId, options) => {
+      const spinner = ora('Detaching policy...').start();
+
+      try {
+        await client.detachApiKeyPolicy(keyId, policyId, options.tenant);
+        spinner.succeed(`Policy ${policyId} detached from API key ${keyId}`);
+      } catch (err) {
+        spinner.fail('Failed to detach policy');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Self-info (when using API key auth)
+  apiKeyCmd
+    .command('self')
+    .description('Show info about the currently used API key')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const spinner = ora('Fetching API key info...').start();
+
+      try {
+        const result = await client.getApiKeySelf();
+        spinner.stop();
+
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
+        const statusIcon = result.apiKey.enabled ? '\x1b[32m●\x1b[0m Active' : '\x1b[31m○\x1b[0m Disabled';
+
+        output.keyValue({
+          'Key ID': result.apiKey.id,
+          'Name': result.apiKey.name,
+          'Prefix': result.apiKey.prefix,
+          'Status': statusIcon,
+          'Tenant': result.apiKey.tenant_id,
+          'Description': result.apiKey.description || 'None',
+          'Expires': formatDate(result.apiKey.expires_at),
+          'Days Until Expiry': result.expiresInDays,
+          'Expiring Soon': result.isExpiringSoon ? 'Yes (!)' : 'No',
+          'Last Used': result.apiKey.last_used ? formatDate(result.apiKey.last_used) : 'Never',
+          'Rotation Count': result.apiKey.rotation_count,
+          'Last Rotation': result.apiKey.last_rotation ? formatDate(result.apiKey.last_rotation) : 'Never',
+        });
+
+        if (result.apiKey.permissions.length > 0) {
+          console.log('\nPermissions:');
+          for (const perm of result.apiKey.permissions) {
+            console.log(`  - ${perm}`);
+          }
+        }
+
+        // Display conditions if any
+        if (result.apiKey.conditions && Object.keys(result.apiKey.conditions).length > 0) {
+          console.log('\nConditions:');
+          const cond = result.apiKey.conditions as Record<string, unknown>;
+          if (cond.ip) console.log(`  - IP Allowlist: ${(cond.ip as string[]).join(', ')}`);
+          if (cond.timeRange) {
+            const tr = cond.timeRange as { start: string; end: string; timezone?: string };
+            console.log(`  - Time Range: ${tr.start}-${tr.end} ${tr.timezone || 'UTC'}`);
+          }
+          if (cond.methods) console.log(`  - Methods: ${(cond.methods as string[]).join(', ')}`);
+          if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
+          if (cond.aliases) console.log(`  - Aliases: ${(cond.aliases as string[]).join(', ')}`);
+          if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+        }
+
+        if (result.isExpiringSoon) {
+          console.log('\n⚠️  This key is expiring soon! Run "znvault apikey self-rotate" to rotate it.');
+        }
+      } catch (err) {
+        spinner.fail('Failed to fetch API key info');
+        output.error(err instanceof Error ? err.message : String(err));
+        console.log('\nNote: This command only works when authenticated via API key (X-API-Key header).');
+        process.exit(1);
+      }
+    });
+
+  // Self-rotate (when using API key auth)
+  apiKeyCmd
+    .command('self-rotate')
+    .description('Rotate the currently used API key')
+    .option('-n, --name <name>', 'New name for the rotated key')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const spinner = ora('Rotating API key...').start();
+
+      try {
+        const result = await client.rotateApiKeySelf(options.name);
+        spinner.succeed('API key rotated');
+
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
+        console.log('\n⚠️  IMPORTANT: Save this new key now - it will not be shown again!');
+        console.log('The old key has been invalidated.\n');
+        console.log('────────────────────────────────────────────────────────────────');
+        console.log(`New API Key: ${result.key}`);
+        console.log('────────────────────────────────────────────────────────────────\n');
+
+        output.keyValue({
+          'New Key ID': result.apiKey.id,
+          'Name': result.apiKey.name,
+          'Prefix': result.apiKey.prefix,
+          'Expires': formatDate(result.apiKey.expires_at),
+          'Days Until Expiry': result.expiresInDays,
+          'Rotation Count': result.apiKey.rotation_count,
+        });
+      } catch (err) {
+        spinner.fail('Failed to rotate API key');
+        output.error(err instanceof Error ? err.message : String(err));
+        console.log('\nNote: This command only works when authenticated via API key (X-API-Key header).');
+        process.exit(1);
+      }
+    });
+}

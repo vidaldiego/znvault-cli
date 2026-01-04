@@ -1,0 +1,59 @@
+{
+  "name": "@zincapp/znvault-cli",
+  "version": "2.1.0",
+  "description": "Official CLI for ZN-Vault administration",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "znvault": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:prod": "tsc --sourceMap false",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "znvault",
+    "vault",
+    "secrets",
+    "cli",
+    "admin"
+  ],
+  "author": "ZincApp",
+  "license": "MIT",
+  "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/ws": "^8.18.1",
+    "bcryptjs": "^3.0.3",
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0",
+    "conf": "^13.0.1",
+    "inquirer": "^10.2.2",
+    "openpgp": "^6.0.0",
+    "ora": "^8.1.1",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.17.10",
+    "@types/pg": "^8.16.0",
+    "@vitest/coverage-v8": "^1.6.0",
+    "typescript": "^5.7.2",
+    "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
