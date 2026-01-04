@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Official CLI for ZN-Vault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -39,7 +39,7 @@
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
     "conf": "^13.0.1",
-    "inquirer": "^10.2.2",
+    "inquirer": "^13.1.0",
     "openpgp": "^6.0.0",
     "ora": "^8.1.1",
     "pg": "^8.16.3",
@@ -49,9 +49,9 @@
     "@types/inquirer": "^9.0.7",
     "@types/node": "^20.17.10",
     "@types/pg": "^8.16.0",
-    "@vitest/coverage-v8": "^1.6.0",
+    "@vitest/coverage-v8": "^4.0.16",
     "typescript": "^5.7.2",
-    "vitest": "^1.6.0"
+    "vitest": "^4.0.16"
   },
   "engines": {
     "node": ">=20.0.0"
