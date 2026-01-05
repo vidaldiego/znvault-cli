@@ -1,5 +1,7 @@
 import { type Command } from 'commander';
 import ora from 'ora';
+import React from 'react';
+import { render } from 'ink';
 import { client } from '../lib/client.js';
 import {
   getCredentials,
@@ -18,8 +20,9 @@ import {
   storeApiKey,
   getStoredApiKey,
 } from '../lib/config.js';
-import { promptUsername, promptPassword, promptTotp } from '../lib/prompts.js';
+import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+import { ProfileManager } from '../tui/ProfileManager.js';
 
 // ============================================================================
 // Option Interfaces
@@ -531,5 +534,71 @@ export function registerAuthCommands(program: Command): void {
       } else {
         output.keyValue(data);
       }
+    });
+
+  // Interactive profile selector
+  profileCmd
+    .command('select')
+    .description('Interactively select a profile to switch to')
+    .action(async () => {
+      const profiles = listProfiles();
+
+      if (profiles.length === 0) {
+        output.warn('No profiles configured. Create one with "znvault profile create <name>"');
+        return;
+      }
+
+      if (profiles.length === 1) {
+        output.info(`Only one profile available: ${profiles[0].name}`);
+        return;
+      }
+
+      // Build choices with profile info
+      const choices = profiles.map((p) => {
+        const activeMarker = p.active ? ' (current)' : '';
+        const authMarker = p.hasApiKey ? ' [API key]' : p.hasCredentials ? ' [JWT]' : '';
+        return {
+          name: `${p.name}${activeMarker}${authMarker} - ${p.url}`,
+          value: p.name,
+        };
+      });
+
+      try {
+        const selected = await promptSelect('Select profile', choices);
+
+        if (profiles.find(p => p.name === selected)?.active) {
+          output.info(`Already using profile '${selected}'`);
+          return;
+        }
+
+        switchProfile(selected);
+        const profile = getProfile(selected);
+        output.success(`Switched to profile '${selected}'`);
+        if (profile) {
+          console.log(`  URL: ${profile.url}`);
+          if (profile.apiKey) {
+            console.log(`  Auth: API key (${profile.apiKey.substring(0, 12)}...)`);
+          } else if (profile.credentials) {
+            console.log(`  Logged in as: ${profile.credentials.username}`);
+          }
+        }
+      } catch (err) {
+        // User cancelled (Ctrl+C)
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- message may be undefined
+        if ((err as Error).message?.includes('User force closed')) {
+          return;
+        }
+        throw err;
+      }
+    });
+
+  // TUI Profile Manager
+  profileCmd
+    .command('tui')
+    .alias('ui')
+    .description('Open interactive profile manager')
+    .action(() => {
+      const { waitUntilExit } = render(React.createElement(ProfileManager));
+      void waitUntilExit();
     });
 }

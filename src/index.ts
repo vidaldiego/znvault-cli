@@ -27,10 +27,11 @@ import { registerNotificationCommands } from './commands/notification.js';
 import { registerTuiCommands } from './commands/tui.js';
 import { registerSelfUpdateCommands } from './commands/self-update.js';
 import { client } from './lib/client.js';
-import { setRuntimeProfile } from './lib/config.js';
+import { setRuntimeProfile, getActiveProfileName, getConfig } from './lib/config.js';
 import { cliBanner, helpHint } from './lib/visual.js';
 import { runBackgroundUpdateCheck } from './lib/cli-update.js';
 import { setOutputMode } from './lib/output-mode.js';
+import { profileIndicator } from './lib/output.js';
 
 interface PackageJson {
   version?: string;
@@ -92,6 +93,10 @@ program
     if (opts.url !== undefined || opts.insecure !== undefined) {
       client.configure(opts.url, opts.insecure);
     }
+
+    // Show current profile indicator
+    const config = getConfig();
+    profileIndicator(getActiveProfileName(), config.url);
   });
 
 // Register all command groups

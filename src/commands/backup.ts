@@ -16,7 +16,7 @@ interface Backup {
   id: string;
   filename: string;
   storageIdentifier: string;
-  storageType: 'local' | 's3';
+  storageType: 'local' | 's3' | 'sftp';
   status: 'pending' | 'completed' | 'failed' | 'verified';
   dbSizeBytes: number;
   backupSizeBytes: number;
@@ -48,19 +48,45 @@ interface BackupStats {
   failedCount: number;
 }
 
+interface S3Config {
+  bucket?: string;
+  region?: string;
+  prefix?: string;
+  endpoint?: string;
+  hasCredentials?: boolean;
+}
+
+interface SftpConfig {
+  host?: string;
+  port?: number;
+  username?: string;
+  remotePath?: string;
+  hasCredentials?: boolean;
+}
+
+interface LocalConfig {
+  path?: string;
+}
+
+interface StorageConfig {
+  type: 'local' | 's3' | 'sftp';
+  local?: LocalConfig;
+  s3?: S3Config;
+  sftp?: SftpConfig;
+}
+
+interface EncryptionConfig {
+  enabled: boolean;
+  hasPassword?: boolean;
+}
+
 interface BackupConfig {
   enabled: boolean;
-  schedule?: string;
-  retention?: {
-    maxCount?: number;
-    maxAgeDays?: number;
-  };
-  storage?: {
-    type: 'local' | 's3';
-    path?: string;
-    bucket?: string;
-    prefix?: string;
-  };
+  intervalMs: number;
+  retentionDays: number;
+  retentionCount: number;
+  storage?: StorageConfig;
+  encryption?: EncryptionConfig;
 }
 
 interface BackupHealth {
@@ -83,9 +109,31 @@ interface GetOptions {
 
 interface ConfigOptions {
   enabled?: boolean;
-  schedule?: string;
-  maxCount?: string;
-  maxAgeDays?: string;
+  interval?: string;
+  retentionDays?: string;
+  retentionCount?: string;
+  json?: boolean;
+}
+
+interface S3StorageOptions {
+  bucket: string;
+  region?: string;
+  prefix?: string;
+  endpoint?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  json?: boolean;
+}
+
+interface LocalStorageOptions {
+  path: string;
+  json?: boolean;
+}
+
+interface EncryptionOptions {
+  enable?: boolean;
+  disable?: boolean;
+  passwordFile?: string;
   json?: boolean;
 }
 
@@ -137,6 +185,37 @@ function formatAge(dateStr?: string): string {
   if (diffDays > 0) return `${diffDays}d ago`;
   if (diffHours > 0) return `${diffHours}h ago`;
   return 'Just now';
+}
+
+function formatInterval(ms: number): string {
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${ms}ms`;
+}
+
+function parseInterval(interval: string): number {
+  // Support formats: 1h, 30m, 1h30m, 3600000 (ms)
+  const regex = /^(?:(\d+)h)?(?:(\d+)m)?$/i;
+  const match = regex.exec(interval);
+  if (match !== null) {
+    // Capture groups are undefined when not matched (runtime behavior)
+    const hoursStr = match[1] as string | undefined;
+    const minutesStr = match[2] as string | undefined;
+    // Both groups are optional - at least one must be present for a valid interval
+    if (hoursStr ?? minutesStr) {
+      const hours = hoursStr ? parseInt(hoursStr, 10) : 0;
+      const minutes = minutesStr ? parseInt(minutesStr, 10) : 0;
+      return (hours * 60 + minutes) * 60 * 1000;
+    }
+  }
+  // Try parsing as milliseconds
+  const ms = parseInt(interval, 10);
+  if (!isNaN(ms)) return ms;
+  throw new Error('Invalid interval format. Use: 1h, 30m, 1h30m, or milliseconds');
 }
 
 // ============================================================================
@@ -216,7 +295,7 @@ async function getBackup(id: string, options: GetOptions): Promise<void> {
       ['Backup Size', formatBytes(backup.backupSizeBytes)],
       ['Compression', backup.metadata?.compressionRatio ? `${(backup.metadata.compressionRatio * 100).toFixed(1)}%` : '-'],
       ['Encrypted', backup.encrypted ? 'Yes' : 'No'],
-      ['Checksum', backup.checksum || '-'],
+      ['Checksum', backup.checksum ?? '-'],
       ['Initiated By', backup.initiatedBy],
       ['Created', formatDate(backup.createdAt)],
       ['Completed', formatDate(backup.completedAt)],
@@ -382,7 +461,7 @@ async function showHealth(options: { json?: boolean }): Promise<void> {
     }
 
     console.log(`  Last Backup Age:    ${health.lastBackupAge ? `${health.lastBackupAge}h` : 'N/A'}`);
-    console.log(`  Last Backup Status: ${health.lastBackupStatus || 'N/A'}`);
+    console.log(`  Last Backup Status: ${health.lastBackupStatus ?? 'N/A'}`);
     console.log(`  Storage Accessible: ${health.storageAccessible ? 'Yes' : 'No'}`);
 
     if (health.warnings && health.warnings.length > 0) {
@@ -410,26 +489,66 @@ async function showConfig(options: { json?: boolean }): Promise<void> {
       return;
     }
 
-    const table = new Table({
+    // General settings
+    console.log('\n  GENERAL SETTINGS\n');
+    const generalTable = new Table({
       colWidths: [25, 45],
+      style: { head: [], border: [] },
     });
 
-    table.push(
+    generalTable.push(
       ['Enabled', config.enabled ? 'Yes' : 'No'],
-      ['Schedule', config.schedule || 'Not configured'],
-      ['Max Count', config.retention?.maxCount?.toString() || 'Unlimited'],
-      ['Max Age (days)', config.retention?.maxAgeDays?.toString() || 'Unlimited'],
-      ['Storage Type', config.storage?.type || 'local'],
+      ['Interval', formatInterval(config.intervalMs)],
+      ['Retention (days)', config.retentionDays.toString()],
+      ['Retention (count)', config.retentionCount.toString()],
     );
+    console.log(generalTable.toString());
 
-    if (config.storage?.type === 'local') {
-      table.push(['Storage Path', config.storage.path || '-']);
-    } else if (config.storage?.type === 's3') {
-      table.push(['S3 Bucket', config.storage.bucket || '-']);
-      table.push(['S3 Prefix', config.storage.prefix || '-']);
+    // Storage settings
+    console.log('\n  STORAGE CONFIGURATION\n');
+    const storageTable = new Table({
+      colWidths: [25, 45],
+      style: { head: [], border: [] },
+    });
+
+    const storageType = config.storage?.type ?? 'local';
+    storageTable.push(['Type', storageType.toUpperCase()]);
+
+    if (storageType === 'local') {
+      storageTable.push(['Path', config.storage?.local?.path ?? 'data/backups']);
+    } else if (storageType === 's3') {
+      const s3 = config.storage?.s3;
+      storageTable.push(['Bucket', s3?.bucket ?? '-']);
+      storageTable.push(['Region', s3?.region ?? 'us-east-1']);
+      storageTable.push(['Prefix', s3?.prefix ?? 'backups/']);
+      if (s3?.endpoint) {
+        storageTable.push(['Endpoint', s3.endpoint]);
+      }
+      storageTable.push(['Credentials', s3?.hasCredentials ? 'Configured' : 'Using IAM Role']);
+    } else {
+      // SFTP storage
+      const sftp = config.storage?.sftp;
+      storageTable.push(['Host', sftp?.host ?? '-']);
+      storageTable.push(['Port', sftp?.port?.toString() ?? '22']);
+      storageTable.push(['Username', sftp?.username ?? '-']);
+      storageTable.push(['Remote Path', sftp?.remotePath ?? '-']);
+      storageTable.push(['Credentials', sftp?.hasCredentials ? 'Configured' : 'Not configured']);
     }
+    console.log(storageTable.toString());
 
-    console.log(table.toString());
+    // Encryption settings
+    console.log('\n  ENCRYPTION\n');
+    const encryptionTable = new Table({
+      colWidths: [25, 45],
+      style: { head: [], border: [] },
+    });
+
+    encryptionTable.push(
+      ['Enabled', config.encryption?.enabled ? 'Yes' : 'No'],
+      ['Password File', config.encryption?.hasPassword ? 'Configured' : 'Not configured'],
+    );
+    console.log(encryptionTable.toString());
+    console.log();
   } catch (error) {
     spinner.fail('Failed to fetch config');
     output.error((error as Error).message);
@@ -441,32 +560,192 @@ async function updateConfig(options: ConfigOptions): Promise<void> {
   const body: Record<string, unknown> = {};
 
   if (options.enabled !== undefined) body.enabled = options.enabled;
-  if (options.schedule) body.schedule = options.schedule;
-  if (options.maxCount || options.maxAgeDays) {
-    body.retention = {};
-    if (options.maxCount) (body.retention as Record<string, number>).maxCount = parseInt(options.maxCount, 10);
-    if (options.maxAgeDays) (body.retention as Record<string, number>).maxAgeDays = parseInt(options.maxAgeDays, 10);
+  if (options.interval) {
+    try {
+      body.intervalMs = parseInterval(options.interval);
+    } catch (err) {
+      output.error((err as Error).message);
+      process.exit(1);
+    }
   }
+  if (options.retentionDays) body.retentionDays = parseInt(options.retentionDays, 10);
+  if (options.retentionCount) body.retentionCount = parseInt(options.retentionCount, 10);
 
   if (Object.keys(body).length === 0) {
-    output.info('No changes specified');
+    output.info('No changes specified. Use --help to see available options.');
     return;
   }
 
   const spinner = ora('Updating backup config...').start();
 
   try {
-    const result = await client.patch<BackupConfig>('/v1/admin/backups/config', body);
+    const result = await client.put<{ message: string; config: BackupConfig }>('/v1/admin/backups/config', body);
     spinner.stop();
 
     if (options.json) {
-      output.json(result);
+      output.json(result.config);
       return;
     }
 
     output.success('Backup configuration updated');
+    console.log(`  Enabled:         ${result.config.enabled ? 'Yes' : 'No'}`);
+    console.log(`  Interval:        ${formatInterval(result.config.intervalMs)}`);
+    console.log(`  Retention Days:  ${result.config.retentionDays}`);
+    console.log(`  Retention Count: ${result.config.retentionCount}`);
   } catch (error) {
     spinner.fail('Failed to update config');
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+// ============================================================================
+// Storage Configuration Commands
+// ============================================================================
+
+async function configureS3Storage(options: S3StorageOptions): Promise<void> {
+  const body = {
+    storage: {
+      type: 's3' as const,
+      s3: {
+        bucket: options.bucket,
+        region: options.region ?? 'us-east-1',
+        prefix: options.prefix ?? 'backups/',
+        endpoint: options.endpoint,
+        accessKeyId: options.accessKeyId,
+        secretAccessKey: options.secretAccessKey,
+      },
+    },
+  };
+
+  const spinner = ora('Configuring S3 storage...').start();
+
+  try {
+    const result = await client.put<{ message: string; config: BackupConfig; storageBackendUpdated: boolean }>('/v1/admin/backups/config', body);
+    spinner.stop();
+
+    if (options.json) {
+      output.json(result.config);
+      return;
+    }
+
+    output.success('S3 storage configured successfully');
+    console.log(`  Bucket:   ${options.bucket}`);
+    console.log(`  Region:   ${options.region ?? 'us-east-1'}`);
+    console.log(`  Prefix:   ${options.prefix ?? 'backups/'}`);
+    if (options.endpoint) {
+      console.log(`  Endpoint: ${options.endpoint}`);
+    }
+    console.log(`  Credentials: ${options.accessKeyId ? 'Provided' : 'Using IAM Role'}`);
+    if (result.storageBackendUpdated) {
+      console.log('\n  Storage backend updated and ready to use.');
+    }
+  } catch (error) {
+    spinner.fail('Failed to configure S3 storage');
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+async function configureLocalStorage(options: LocalStorageOptions): Promise<void> {
+  const body = {
+    storage: {
+      type: 'local' as const,
+      local: {
+        path: options.path,
+      },
+    },
+  };
+
+  const spinner = ora('Configuring local storage...').start();
+
+  try {
+    const result = await client.put<{ message: string; config: BackupConfig; storageBackendUpdated: boolean }>('/v1/admin/backups/config', body);
+    spinner.stop();
+
+    if (options.json) {
+      output.json(result.config);
+      return;
+    }
+
+    output.success('Local storage configured successfully');
+    console.log(`  Path: ${options.path}`);
+    if (result.storageBackendUpdated) {
+      console.log('\n  Storage backend updated and ready to use.');
+    }
+  } catch (error) {
+    spinner.fail('Failed to configure local storage');
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+async function configureEncryption(options: EncryptionOptions): Promise<void> {
+  if (options.enable === undefined && options.disable === undefined && !options.passwordFile) {
+    output.info('No changes specified. Use --enable, --disable, or --password-file');
+    return;
+  }
+
+  const body: { encryption: { enabled?: boolean; passwordFile?: string } } = {
+    encryption: {},
+  };
+
+  if (options.enable) {
+    body.encryption.enabled = true;
+  } else if (options.disable) {
+    body.encryption.enabled = false;
+  }
+
+  if (options.passwordFile) {
+    body.encryption.passwordFile = options.passwordFile;
+    // Enabling encryption if password file is provided
+    if (options.enable === undefined && options.disable === undefined) {
+      body.encryption.enabled = true;
+    }
+  }
+
+  const spinner = ora('Configuring encryption...').start();
+
+  try {
+    const result = await client.put<{ message: string; config: BackupConfig }>('/v1/admin/backups/config', body);
+    spinner.stop();
+
+    if (options.json) {
+      output.json(result.config);
+      return;
+    }
+
+    output.success('Encryption configuration updated');
+    console.log(`  Enabled:       ${result.config.encryption?.enabled ? 'Yes' : 'No'}`);
+    console.log(`  Password File: ${result.config.encryption?.hasPassword ? 'Configured' : 'Not configured'}`);
+  } catch (error) {
+    spinner.fail('Failed to configure encryption');
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+async function testStorage(): Promise<void> {
+  const spinner = ora('Testing storage backend...').start();
+
+  try {
+    const health = await client.get<BackupHealth>('/v1/admin/backups/health');
+    spinner.stop();
+
+    if (health.storageAccessible) {
+      output.success('Storage backend is accessible and working');
+    } else {
+      output.error('Storage backend is not accessible');
+      if (health.warnings && health.warnings.length > 0) {
+        console.log('\nIssues:');
+        for (const warning of health.warnings) {
+          console.log(`  - ${warning}`);
+        }
+      }
+      process.exit(1);
+    }
+  } catch (error) {
+    spinner.fail('Failed to test storage');
     output.error((error as Error).message);
     process.exit(1);
   }
@@ -537,15 +816,63 @@ export function registerBackupCommands(program: Command): void {
     .option('--json', 'Output as JSON')
     .action(showConfig);
 
-  // Update config
+  // Update general config
   backup
     .command('config-update')
-    .description('Update backup configuration')
+    .description('Update general backup settings')
     .option('--enabled', 'Enable automatic backups')
     .option('--no-enabled', 'Disable automatic backups')
-    .option('--schedule <cron>', 'Backup schedule (cron expression)')
-    .option('--max-count <n>', 'Maximum number of backups to retain')
-    .option('--max-age-days <n>', 'Maximum age of backups in days')
+    .option('--interval <interval>', 'Backup interval (e.g., 1h, 30m, 1h30m)')
+    .option('--retention-days <n>', 'Maximum age of backups in days')
+    .option('--retention-count <n>', 'Maximum number of backups to retain')
     .option('--json', 'Output as JSON')
     .action(updateConfig);
+
+  // ============================================================================
+  // Storage Configuration Subcommands
+  // ============================================================================
+
+  const storage = backup
+    .command('storage')
+    .description('Configure backup storage backend');
+
+  // Configure S3 storage
+  storage
+    .command('s3')
+    .description('Configure S3 or S3-compatible storage (MinIO, DigitalOcean Spaces, etc.)')
+    .requiredOption('--bucket <bucket>', 'S3 bucket name')
+    .option('--region <region>', 'AWS region (default: us-east-1)')
+    .option('--prefix <prefix>', 'Key prefix for backups (default: backups/)')
+    .option('--endpoint <url>', 'Custom endpoint URL for S3-compatible storage')
+    .option('--access-key-id <key>', 'AWS access key ID (omit to use IAM role)')
+    .option('--secret-access-key <secret>', 'AWS secret access key')
+    .option('--json', 'Output as JSON')
+    .action(configureS3Storage);
+
+  // Configure local storage
+  storage
+    .command('local')
+    .description('Configure local filesystem storage')
+    .requiredOption('--path <path>', 'Directory path for backup storage')
+    .option('--json', 'Output as JSON')
+    .action(configureLocalStorage);
+
+  // Test storage connectivity
+  storage
+    .command('test')
+    .description('Test storage backend connectivity')
+    .action(testStorage);
+
+  // ============================================================================
+  // Encryption Configuration
+  // ============================================================================
+
+  backup
+    .command('encryption')
+    .description('Configure backup encryption')
+    .option('--enable', 'Enable backup encryption')
+    .option('--disable', 'Disable backup encryption')
+    .option('--password-file <path>', 'Path to file containing encryption password')
+    .option('--json', 'Output as JSON')
+    .action(configureEncryption);
 }

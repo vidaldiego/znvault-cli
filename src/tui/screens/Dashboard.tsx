@@ -84,8 +84,9 @@ export function Dashboard({ data }: DashboardProps): React.ReactElement {
     }
   }
 
-  // Build cluster nodes
-  const clusterNodes = cluster?.nodes.map(n => ({
+  // Build cluster nodes (nodes may be undefined when cluster is not HA-enabled)
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  const clusterNodes = cluster?.nodes?.map(n => ({
     id: n.nodeId,
     role: n.isLeader ? 'LEADER' : 'FOLLOWER',
     status: n.isHealthy ? 'healthy' : 'unhealthy',

@@ -508,6 +508,18 @@ export function newline(): void {
   console.log();
 }
 
+/**
+ * Print the current profile indicator
+ * Shows at the start of each command to indicate which profile is active
+ */
+export function profileIndicator(profileName: string, url: string): void {
+  if (isPlainMode()) {
+    console.log(`[profile: ${profileName} -> ${url}]`);
+  } else {
+    console.log(chalk.dim(`Using profile ${chalk.cyan(profileName)} → ${chalk.gray(url)}`));
+  }
+}
+
 // Re-export mode detection for convenience
 export { isPlainMode } from './output-mode.js';
 export type { TableColumn } from '../tui/components/Table.js';
