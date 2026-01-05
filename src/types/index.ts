@@ -452,3 +452,85 @@ export interface PolicyListResponse {
   total: number;
   totalPages: number;
 }
+
+// Managed API Key types
+export type RotationMode = 'scheduled' | 'on-use' | 'on-bind';
+
+export interface ManagedKeyConfig {
+  rotationMode: RotationMode;
+  rotationInterval?: string;
+  gracePeriod: string;
+  notifyBefore?: string;
+  webhookUrl?: string;
+}
+
+export interface ManagedAPIKey {
+  id: string;
+  tenant_id: string;
+  created_by: string | null;
+  name: string;
+  description: string | null;
+  prefix: string;
+  expires_at: string;
+  last_used: string | null;
+  created_at: string;
+  ip_allowlist: string[] | null;
+  permissions: string[];
+  conditions?: Record<string, unknown>;
+  created_by_username?: string;
+  enabled: boolean;
+  rotation_count: number;
+  last_rotation: string | null;
+  // Managed key specific fields
+  is_managed: boolean;
+  rotation_mode: RotationMode;
+  rotation_interval?: string;
+  grace_period: string;
+  notify_before?: string;
+  webhook_url?: string;
+  next_rotation_at?: string;
+  last_bound_at?: string;
+  grace_key_expires_at?: string;
+}
+
+export interface ManagedKeyBindResponse {
+  id: string;
+  key: string;
+  prefix: string;
+  name: string;
+  expiresAt: string;
+  gracePeriod: string;
+  graceExpiresAt?: string;
+  rotationMode: RotationMode;
+  permissions: string[];
+  nextRotationAt?: string;
+  _notice?: string;
+}
+
+export interface ManagedKeyListResponse {
+  keys: ManagedAPIKey[];
+  total: number;
+}
+
+export interface CreateManagedKeyRequest {
+  name: string;
+  description?: string;
+  expiresInDays?: number;
+  permissions: string[];
+  tenantId?: string;
+  ipAllowlist?: string[];
+  conditions?: Record<string, unknown>;
+  managed: ManagedKeyConfig;
+}
+
+export interface CreateManagedKeyResponse {
+  apiKey: ManagedAPIKey;
+  message: string;
+}
+
+export interface UpdateManagedKeyConfigRequest {
+  rotationInterval?: string;
+  gracePeriod?: string;
+  notifyBefore?: string;
+  webhookUrl?: string;
+}

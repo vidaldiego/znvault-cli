@@ -95,6 +95,9 @@ export const TestConfig = {
       ...args,
     ];
 
+    // Use a consistent home directory for all test commands so credentials persist
+    const testHome = process.env.TEST_HOME || '/tmp/znvault-cli-test';
+
     const result: SpawnSyncReturns<Buffer> = spawnSync('node', fullArgs, {
       encoding: 'buffer',
       timeout: 30000,
@@ -102,6 +105,18 @@ export const TestConfig = {
         ...process.env,
         // Disable interactive prompts
         CI: 'true',
+        // Override any stored profile settings with test vault URL
+        ZNVAULT_URL: this.BASE_URL,
+        // Clear any API key from env to force JWT authentication
+        ZNVAULT_API_KEY: '',
+        // DO NOT set ZNVAULT_USERNAME/PASSWORD - use stored credentials from login
+        ZNVAULT_USERNAME: '',
+        ZNVAULT_PASSWORD: '',
+        // Use isolated config directory to avoid profile conflicts
+        HOME: testHome,
+        // Ensure XDG dirs also use test home
+        XDG_CONFIG_HOME: `${testHome}/.config`,
+        XDG_DATA_HOME: `${testHome}/.local/share`,
       },
     });
 
@@ -129,7 +144,12 @@ export const TestConfig = {
 
     try {
       // Find JSON in output (may have other text before/after)
-      const jsonMatch = result.stdout.match(/[\[{][\s\S]*[\]}]/);
+      // Match JSON object starting at beginning of a line (avoids matching [profile: ...])
+      const jsonObjMatch = result.stdout.match(/^\{[\s\S]*\}$/m);
+      // Match JSON array starting at beginning of a line
+      const jsonArrMatch = result.stdout.match(/^\[[\s\S]*\]$/m);
+
+      const jsonMatch = jsonObjMatch || jsonArrMatch;
       if (jsonMatch) {
         return {
           data: JSON.parse(jsonMatch[0]) as T,

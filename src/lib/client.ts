@@ -39,6 +39,12 @@ import type {
   PolicyAttachment,
   PolicyTestRequest,
   PolicyTestResult,
+  ManagedAPIKey,
+  ManagedKeyBindResponse,
+  ManagedKeyListResponse,
+  CreateManagedKeyRequest,
+  CreateManagedKeyResponse,
+  UpdateManagedKeyConfigRequest,
 } from '../types/index.js';
 
 interface RequestOptions {
@@ -79,6 +85,31 @@ interface PolicyAttachmentsResponse {
 
 interface MessageResponse {
   message: string;
+}
+
+/**
+ * Convert seconds to human-readable duration (e.g., 86400 -> "24h")
+ * Prefers hours for durations up to 7 days, then uses days
+ */
+function formatSecondsToHuman(seconds: number): string {
+  const WEEK_IN_SECONDS = 7 * 24 * 60 * 60;
+  const DAY_IN_SECONDS = 24 * 60 * 60;
+  const HOUR_IN_SECONDS = 60 * 60;
+  const MINUTE_IN_SECONDS = 60;
+
+  // Use days only for 7+ days and evenly divisible
+  if (seconds >= WEEK_IN_SECONDS && seconds % DAY_IN_SECONDS === 0) {
+    return `${seconds / DAY_IN_SECONDS}d`;
+  }
+  // Use hours if evenly divisible by hours
+  if (seconds >= HOUR_IN_SECONDS && seconds % HOUR_IN_SECONDS === 0) {
+    return `${seconds / HOUR_IN_SECONDS}h`;
+  }
+  // Use minutes if evenly divisible
+  if (seconds >= MINUTE_IN_SECONDS && seconds % MINUTE_IN_SECONDS === 0) {
+    return `${seconds / MINUTE_IN_SECONDS}m`;
+  }
+  return `${seconds}s`;
 }
 
 class VaultClient {
@@ -764,6 +795,320 @@ class VaultClient {
       method: 'POST',
       path: '/auth/api-keys/self/rotate',
       body: name ? { name } : {},
+    });
+  }
+
+  // ============ Managed API Keys ============
+
+  async createManagedApiKey(data: CreateManagedKeyRequest): Promise<CreateManagedKeyResponse> {
+    // Server returns apiKey with _seconds fields that need conversion
+    interface ServerCreateResponse {
+      apiKey: {
+        id: string;
+        name: string;
+        description: string | null;
+        prefix: string;
+        expires_at: string;
+        created_at: string;
+        tenant_id: string;
+        created_by: string;
+        permissions: string[];
+        conditions: Record<string, unknown>;
+        enabled: boolean;
+        rotation_count: number;
+        last_rotation: string | null;
+        is_managed: boolean;
+        rotation_mode: string;
+        rotation_interval_seconds?: number;
+        grace_period_seconds: number;
+        next_rotation_at: string;
+        notify_before?: string;
+        webhook_url?: string;
+        last_bound_at?: string;
+      };
+      message: string;
+    }
+
+    const response = await this.request<ServerCreateResponse>({
+      method: 'POST',
+      path: '/auth/api-keys',
+      query: data.tenantId ? { tenantId: data.tenantId } : undefined,
+      body: {
+        name: data.name,
+        description: data.description,
+        expiresInDays: data.expiresInDays,
+        permissions: data.permissions,
+        ipAllowlist: data.ipAllowlist,
+        conditions: data.conditions,
+        managed: data.managed,
+      },
+    });
+
+    // Transform server response to CLI format
+    const serverKey = response.apiKey;
+    return {
+      apiKey: {
+        id: serverKey.id,
+        tenant_id: serverKey.tenant_id,
+        created_by: serverKey.created_by,
+        name: serverKey.name,
+        description: serverKey.description,
+        prefix: serverKey.prefix,
+        expires_at: serverKey.expires_at,
+        last_used: null,
+        created_at: serverKey.created_at,
+        ip_allowlist: null,
+        permissions: serverKey.permissions,
+        conditions: serverKey.conditions,
+        created_by_username: undefined,
+        enabled: serverKey.enabled,
+        rotation_count: serverKey.rotation_count,
+        last_rotation: serverKey.last_rotation,
+        is_managed: serverKey.is_managed,
+        rotation_mode: serverKey.rotation_mode as 'scheduled' | 'on-use' | 'on-bind',
+        rotation_interval: serverKey.rotation_interval_seconds ? formatSecondsToHuman(serverKey.rotation_interval_seconds) : undefined,
+        grace_period: formatSecondsToHuman(serverKey.grace_period_seconds),
+        notify_before: serverKey.notify_before,
+        webhook_url: serverKey.webhook_url,
+        next_rotation_at: serverKey.next_rotation_at,
+        last_bound_at: serverKey.last_bound_at,
+      },
+      message: response.message,
+    };
+  }
+
+  async listManagedApiKeys(tenantId?: string): Promise<ManagedKeyListResponse> {
+    // Server returns keys with _seconds fields
+    interface ServerListKey {
+      id: string;
+      tenant_id: string;
+      created_by: string;
+      created_by_username?: string;
+      name: string;
+      description: string | null;
+      prefix: string;
+      expires_at: string;
+      last_used: string | null;
+      created_at: string;
+      permissions: string[];
+      conditions: Record<string, unknown>;
+      enabled: boolean;
+      rotation_count: number;
+      last_rotation: string | null;
+      is_managed: boolean;
+      rotation_mode: string;
+      rotation_interval_seconds?: number;
+      grace_period_seconds: number;
+      first_used_at?: string | null;
+      grace_expires_at?: string | null;
+      next_rotation_at?: string;
+      rotation_webhook_url?: string | null;
+      notify_before?: string;
+    }
+
+    interface ServerListResponse {
+      keys: ServerListKey[];
+      total?: number;
+    }
+
+    const response = await this.request<ServerListResponse>({
+      method: 'GET',
+      path: '/auth/api-keys/managed',
+      query: tenantId ? { tenantId } : undefined,
+    });
+
+    // Transform each key
+    return {
+      keys: response.keys.map(key => ({
+        id: key.id,
+        tenant_id: key.tenant_id,
+        created_by: key.created_by,
+        name: key.name,
+        description: key.description,
+        prefix: key.prefix,
+        expires_at: key.expires_at,
+        last_used: key.last_used,
+        created_at: key.created_at,
+        ip_allowlist: null,
+        permissions: key.permissions,
+        conditions: key.conditions,
+        created_by_username: key.created_by_username,
+        enabled: key.enabled,
+        rotation_count: key.rotation_count,
+        last_rotation: key.last_rotation,
+        is_managed: key.is_managed,
+        rotation_mode: key.rotation_mode as 'scheduled' | 'on-use' | 'on-bind',
+        rotation_interval: key.rotation_interval_seconds ? formatSecondsToHuman(key.rotation_interval_seconds) : undefined,
+        grace_period: formatSecondsToHuman(key.grace_period_seconds),
+        notify_before: key.notify_before,
+        webhook_url: key.rotation_webhook_url ?? undefined,
+        next_rotation_at: key.next_rotation_at,
+        last_bound_at: key.first_used_at ?? undefined,
+      })),
+      total: response.total ?? response.keys.length,
+    };
+  }
+
+  async getManagedApiKey(name: string, tenantId?: string): Promise<ManagedAPIKey> {
+    // Server returns ManagedKeyInfo in camelCase, transform to CLI's snake_case format
+    interface ServerManagedKeyInfo {
+      id: string;
+      name: string;
+      prefix: string;
+      tenantId: string;
+      isManaged: boolean;
+      rotationMode: string;
+      rotationIntervalSeconds?: number;
+      gracePeriodSeconds: number;
+      nextRotationAt?: string;
+      graceExpiresAt?: string;
+      firstUsedAt?: string;
+      lastRotatedAt?: string;
+      rotationCount: number;
+      hasNextKey: boolean;
+      enabled: boolean;
+      permissions: string[];
+      webhookUrl?: string;
+      description?: string;
+      expiresAt?: string;
+      createdAt?: string;
+      createdBy?: string;
+      createdByUsername?: string;
+      lastUsed?: string;
+      lastBoundAt?: string;
+      notifyBefore?: string;
+    }
+
+    const info = await this.request<ServerManagedKeyInfo>({
+      method: 'GET',
+      path: `/auth/api-keys/managed/${encodeURIComponent(name)}`,
+      query: tenantId ? { tenantId } : undefined,
+    });
+
+    // Transform to CLI's ManagedAPIKey format (snake_case)
+    return {
+      id: info.id,
+      tenant_id: info.tenantId,
+      created_by: info.createdBy ?? null,
+      name: info.name,
+      description: info.description ?? null,
+      prefix: info.prefix,
+      expires_at: info.expiresAt ?? '',
+      last_used: info.lastUsed ?? null,
+      created_at: info.createdAt ?? '',
+      ip_allowlist: null, // Not returned by server
+      permissions: info.permissions,
+      conditions: undefined,
+      created_by_username: info.createdByUsername,
+      enabled: info.enabled,
+      rotation_count: info.rotationCount,
+      last_rotation: info.lastRotatedAt ?? null,
+      is_managed: info.isManaged,
+      rotation_mode: info.rotationMode as 'scheduled' | 'on-use' | 'on-bind',
+      rotation_interval: info.rotationIntervalSeconds ? formatSecondsToHuman(info.rotationIntervalSeconds) : undefined,
+      grace_period: formatSecondsToHuman(info.gracePeriodSeconds),
+      notify_before: info.notifyBefore,
+      webhook_url: info.webhookUrl,
+      next_rotation_at: info.nextRotationAt,
+      last_bound_at: info.lastBoundAt,
+    };
+  }
+
+  async bindManagedApiKey(name: string, tenantId?: string): Promise<ManagedKeyBindResponse> {
+    return this.request<ManagedKeyBindResponse>({
+      method: 'POST',
+      path: `/auth/api-keys/managed/${encodeURIComponent(name)}/bind`,
+      query: tenantId ? { tenantId } : undefined,
+      body: {},
+    });
+  }
+
+  async rotateManagedApiKey(name: string, tenantId?: string): Promise<{ message: string; nextRotationAt?: string }> {
+    return this.request<{ message: string; nextRotationAt?: string }>({
+      method: 'POST',
+      path: `/auth/api-keys/managed/${encodeURIComponent(name)}/rotate`,
+      query: tenantId ? { tenantId } : undefined,
+      body: {},
+    });
+  }
+
+  async updateManagedApiKeyConfig(
+    name: string,
+    config: UpdateManagedKeyConfigRequest,
+    tenantId?: string
+  ): Promise<ManagedAPIKey> {
+    // Server returns ManagedKeyInfo directly in camelCase
+    interface ServerManagedKeyInfo {
+      id: string;
+      name: string;
+      prefix: string;
+      tenantId: string;
+      isManaged: boolean;
+      rotationMode: string;
+      rotationIntervalSeconds?: number;
+      gracePeriodSeconds: number;
+      nextRotationAt?: string;
+      graceExpiresAt?: string;
+      lastRotatedAt?: string;
+      rotationCount: number;
+      hasNextKey: boolean;
+      enabled: boolean;
+      permissions: string[];
+      webhookUrl?: string;
+      description?: string;
+      expiresAt?: string;
+      createdAt?: string;
+      createdBy?: string;
+      createdByUsername?: string;
+      lastUsed?: string;
+      lastBoundAt?: string;
+      notifyBefore?: string;
+    }
+
+    const info = await this.request<ServerManagedKeyInfo>({
+      method: 'PATCH',
+      path: `/auth/api-keys/managed/${encodeURIComponent(name)}/config`,
+      query: tenantId ? { tenantId } : undefined,
+      body: config,
+    });
+
+    // Transform to CLI's ManagedAPIKey format (snake_case)
+    return {
+      id: info.id,
+      tenant_id: info.tenantId,
+      created_by: info.createdBy ?? null,
+      name: info.name,
+      description: info.description ?? null,
+      prefix: info.prefix,
+      expires_at: info.expiresAt ?? '',
+      last_used: info.lastUsed ?? null,
+      created_at: info.createdAt ?? '',
+      ip_allowlist: null,
+      permissions: info.permissions,
+      conditions: undefined,
+      created_by_username: info.createdByUsername,
+      enabled: info.enabled,
+      rotation_count: info.rotationCount,
+      last_rotation: info.lastRotatedAt ?? null,
+      is_managed: info.isManaged,
+      rotation_mode: info.rotationMode as 'scheduled' | 'on-use' | 'on-bind',
+      rotation_interval: info.rotationIntervalSeconds ? formatSecondsToHuman(info.rotationIntervalSeconds) : undefined,
+      grace_period: formatSecondsToHuman(info.gracePeriodSeconds),
+      notify_before: info.notifyBefore,
+      webhook_url: info.webhookUrl,
+      next_rotation_at: info.nextRotationAt,
+      last_bound_at: info.lastBoundAt,
+    };
+  }
+
+  async deleteManagedApiKey(name: string, tenantId?: string): Promise<void> {
+    // First get the managed key to find its ID
+    const key = await this.getManagedApiKey(name, tenantId);
+    // Then delete via the standard API key delete endpoint
+    await this.request<unknown>({
+      method: 'DELETE',
+      path: `/auth/api-keys/${encodeURIComponent(key.id)}`,
+      query: tenantId ? { tenantId } : undefined,
     });
   }
 
