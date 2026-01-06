@@ -16,6 +16,8 @@ export interface Profile {
   defaultTenant?: string;
   credentials?: StoredCredentials;
   apiKey?: string;  // Stored API key for this profile
+  apiKeyId?: string;  // API key ID (for revocation on logout)
+  apiKeyName?: string;  // API key name (for display)
 }
 
 interface ConfigStore {
@@ -216,11 +218,26 @@ export function getApiKey(): string | undefined {
 /**
  * Store API key in current profile
  */
-export function storeApiKey(apiKey: string): void {
+export function storeApiKey(apiKey: string, keyId?: string, keyName?: string): void {
   const profileName = getActiveProfileName();
   const profile = getCurrentProfile();
   profile.apiKey = apiKey;
+  if (keyId) profile.apiKeyId = keyId;
+  if (keyName) profile.apiKeyName = keyName;
   saveProfile(profileName, profile);
+}
+
+/**
+ * Get stored API key info from current profile
+ */
+export function getStoredApiKeyInfo(): { key: string; id?: string; name?: string } | undefined {
+  const profile = getCurrentProfile();
+  if (!profile.apiKey) return undefined;
+  return {
+    key: profile.apiKey,
+    id: profile.apiKeyId,
+    name: profile.apiKeyName,
+  };
 }
 
 /**
@@ -230,6 +247,8 @@ export function clearApiKey(): void {
   const profileName = getActiveProfileName();
   const profile = getCurrentProfile();
   delete profile.apiKey;
+  delete profile.apiKeyId;
+  delete profile.apiKeyName;
   saveProfile(profileName, profile);
 }
 

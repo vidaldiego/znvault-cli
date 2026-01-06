@@ -19,6 +19,7 @@ import {
   getProfile,
   storeApiKey,
   getStoredApiKey,
+  getStoredApiKeyInfo,
 } from '../lib/config.js';
 import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
@@ -32,6 +33,8 @@ interface LoginOptions {
   username?: string;
   password?: string;
   totp?: string;
+  persistent?: boolean;
+  expires?: string;
 }
 
 interface LogoutOptions {
@@ -87,7 +90,11 @@ export function registerAuthCommands(program: Command): void {
     .option('-u, --username <username>', 'Username')
     .option('-p, --password <password>', 'Password')
     .option('-t, --totp <code>', 'TOTP code (if 2FA enabled)')
+    .option('--persistent', 'Create a long-lived API key for this profile (avoids re-login)')
+    .option('-e, --expires <days>', 'Days until API key expires (default: 365, only with --persistent)', '365')
     .action(async (options: LoginOptions) => {
+      const profileName = getActiveProfileName();
+
       try {
         const username = options.username ?? await promptUsername();
         const password = options.password ?? await promptPassword();
@@ -99,14 +106,74 @@ export function registerAuthCommands(program: Command): void {
 
         try {
           const response = await client.login(username, password, totp);
-          spinner.succeed(`Login successful (profile: ${getActiveProfileName()})`);
 
-          output.keyValue({
-            'User ID': response.user.id,
-            'Username': response.user.username,
-            'Role': response.user.role,
-            'Tenant': response.user.tenantId ?? 'None (superadmin)',
-          });
+          if (options.persistent) {
+            // Create persistent API key
+            spinner.text = 'Creating persistent API key...';
+
+            const hostname = require('os').hostname();
+            const keyName = `znvault-cli-${profileName}-${hostname}`;
+            const expiresInDays = parseInt(options.expires ?? '365', 10);
+
+            // Full permissions for CLI usage (inherits from authenticated user)
+            const permissions = [
+              'secret:read:value',
+              'secret:read:metadata',
+              'secret:write',
+              'secret:delete',
+              'secret:list:values',
+              'secret:list:metadata',
+              'config:read',
+              'config:write',
+              'config:list',
+              'certificate:read:value',
+              'certificate:read:metadata',
+              'certificate:write',
+              'certificate:list',
+              'kms:encrypt',
+              'kms:decrypt',
+              'kms:list',
+              'api_key:create',
+              'api_key:read',
+              'api_key:delete',
+            ];
+
+            const result = await client.createApiKey({
+              name: keyName,
+              description: `CLI persistent login: ${profileName} on ${hostname}`,
+              expiresInDays,
+              permissions,
+            });
+
+            // Store the API key with ID for later revocation
+            storeApiKey(result.key, result.apiKey.id, result.apiKey.name);
+
+            // Clear JWT credentials (we'll use API key from now on)
+            clearCredentials();
+
+            spinner.succeed(`Persistent login configured (profile: ${profileName})`);
+
+            output.keyValue({
+              'Username': response.user.username,
+              'Role': response.user.role,
+              'Tenant': response.user.tenantId ?? 'None (superadmin)',
+              'API Key': result.apiKey.name,
+              'Expires': new Date(result.apiKey.expires_at).toLocaleDateString(),
+            });
+
+            console.log('\nYou are now logged in persistently. Use "znvault logout" to revoke.');
+          } else {
+            spinner.succeed(`Login successful (profile: ${profileName})`);
+
+            output.keyValue({
+              'User ID': response.user.id,
+              'Username': response.user.username,
+              'Role': response.user.role,
+              'Tenant': response.user.tenantId ?? 'None (superadmin)',
+            });
+
+            console.log('\nTip: Use "znvault login --persistent" for long-lived sessions.');
+          }
         } catch (err) {
           spinner.fail('Login failed');
           throw err;
@@ -120,14 +187,30 @@ export function registerAuthCommands(program: Command): void {
   // Logout command
   program
     .command('logout')
-    .description('Clear stored credentials and API key')
+    .description('Clear stored credentials and revoke API key')
     .option('--keep-apikey', 'Keep stored API key (only clear JWT credentials)')
-    .action((options: LogoutOptions) => {
+    .option('--local', 'Only clear local credentials (do not revoke API key on server)')
+    .action(async (options: LogoutOptions & { local?: boolean }) => {
+      const profileName = getActiveProfileName();
+      const apiKeyInfo = getStoredApiKeyInfo();
+
+      // If we have an API key and should revoke it
+      if (apiKeyInfo?.id && !options.keepApikey && !options.local) {
+        const spinner = ora('Revoking API key...').start();
+        try {
+          await client.deleteApiKey(apiKeyInfo.id);
+          spinner.succeed(`Revoked API key: ${apiKeyInfo.name ?? apiKeyInfo.id}`);
+        } catch (err) {
+          // Key might already be revoked or expired
+          spinner.warn(`Could not revoke API key (may already be revoked): ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
       clearCredentials();
       if (!options.keepApikey) {
         clearApiKey();
       }
-      output.success(`Logged out successfully (profile: ${getActiveProfileName()})`);
+      output.success(`Logged out successfully (profile: ${profileName})`);
     });
 
   // Login with API key creation
@@ -196,8 +279,8 @@ export function registerAuthCommands(program: Command): void {
             permissions,
           });
 
-          // Store the API key in the profile
-          storeApiKey(result.key);
+          // Store the API key with ID for later revocation
+          storeApiKey(result.key, result.apiKey.id, result.apiKey.name);
 
           // Clear JWT credentials (we'll use the API key now)
           clearCredentials();

@@ -5,301 +5,363 @@ Official command-line interface for ZN-Vault secrets management.
 ## Installation
 
 ```bash
-# From source
+# Install from npm (recommended)
+npm install -g @zincapp/znvault-cli
+
+# Verify installation
+znvault --version
+
+# Or install from source
 cd znvault-cli
 npm install
 npm run build
 npm link
-
-# Verify
-znvault --version
 ```
 
 ## Quick Start
 
 ```bash
 # Create a profile for your vault server
-znvault profile create prod --vault-url https://vault.example.com -k --use
+znvault profile create prod --vault-url https://vault.example.com --use
 
-# Authenticate
+# Authenticate (session expires after JWT timeout)
 znvault login -u admin -p 'password'
+
+# Or use persistent login (creates long-lived API key)
+znvault login -u admin -p 'password' --persistent
+
+# Verify authentication
 znvault whoami
 
-# Check health
+# Check vault health
 znvault health
+```
+
+## Authentication
+
+The CLI supports multiple authentication methods:
+
+### Session Login (JWT-based)
+
+Standard login creates a JWT session that expires (typically 1 hour):
+
+```bash
+znvault login -u admin -p 'password'
+znvault login -u admin -p 'password' -t 123456  # With TOTP
+```
+
+### Persistent Login (API Key)
+
+Use `--persistent` to automatically create an API key for long-lived sessions:
+
+```bash
+# Create API key valid for 365 days (default)
+znvault login -u admin -p 'password' --persistent
+
+# Custom expiration (90 days)
+znvault login -u admin -p 'password' --persistent --expires 90
+
+# Logout revokes the API key on server
+znvault logout
+
+# Keep API key but clear local session
+znvault logout --local
+```
+
+### Direct API Key Login
+
+If you already have an API key:
+
+```bash
+# Store API key in profile
+znvault login-apikey --key znv_abc123...
+
+# Or via environment variable
+export ZNVAULT_API_KEY=znv_abc123...
+znvault whoami
+```
+
+### Environment Credentials
+
+For CI/CD pipelines:
+
+```bash
+export ZNVAULT_URL=https://vault.example.com
+export ZNVAULT_API_KEY=znv_abc123...
+znvault secret list
 ```
 
 ## Multi-Profile Support
 
-The CLI supports multiple configuration profiles, allowing you to manage different vault servers or user accounts easily.
-
-### Profile Commands
+Manage multiple vault servers or environments with profiles:
 
 ```bash
 # Create profiles for different environments
-znvault profile create prod --vault-url https://vault.example.com -k
-znvault profile create local --vault-url https://localhost:8443 -k
+znvault profile create prod --vault-url https://vault.example.com
+znvault profile create dev --vault-url https://localhost:8443 -k  # -k skips TLS verify
 
-# List all profiles
+# List profiles
 znvault profile list
 
 # Switch active profile
 znvault profile use prod
 
+# Use specific profile for one command
+znvault --profile dev health
+
 # Show current profile
 znvault profile current
 
-# Show profile details
-znvault profile show prod
-
-# Use a specific profile for a single command (without switching)
-znvault --profile local health
-
-# Delete a profile
+# Delete/rename profiles
 znvault profile delete old-profile
-
-# Rename a profile
 znvault profile rename staging qa
 ```
 
-### Profile Workflow Example
+### Profile Workflow
 
 ```bash
-# Setup profiles for different environments
-znvault profile create prod --vault-url https://vault.example.com -k
-znvault profile create dev --vault-url https://localhost:8443 -k
+# Setup and login to multiple environments
+znvault profile create prod --vault-url https://vault.example.com --use
+znvault login -u admin -p 'prod-pass' --persistent
 
-# Login to production
-znvault profile use prod
-znvault login -u admin -p 'prod-password'
+znvault profile create dev --vault-url https://localhost:8443 -k --use
+znvault login -u admin -p 'dev-pass' --persistent
 
-# Login to dev (separate session)
-znvault profile use dev
-znvault login -u admin -p 'dev-password'
+# Switch between them - credentials stored per profile
+znvault profile use prod && znvault whoami  # prod user
+znvault profile use dev && znvault whoami   # dev user
 
-# Now you can switch between them - credentials are stored per profile
-znvault profile use prod
-znvault whoami  # Shows prod user
-
-znvault profile use dev
-znvault whoami  # Shows dev user
-
-# Or use --profile flag for one-off commands
-znvault --profile prod tenant list
-znvault --profile dev tenant list
-```
-
-### Environment Variable Override
-
-You can also override the profile via environment variable:
-
-```bash
+# Override with environment variable
 ZNVAULT_PROFILE=prod znvault health
-```
-
-## Operating Modes
-
-The CLI operates in two modes:
-
-| Mode | When | Authentication | Use Case |
-|------|------|----------------|----------|
-| **API Mode** | Default | JWT login or API key | Remote administration |
-| **Local Mode** | On vault nodes with sudo | None (direct DB) | On-node operations |
-
-### API Mode (Remote)
-
-```bash
-znvault login -u admin -p 'Admin123456#'
-znvault health
-znvault tenant list
-```
-
-### Local Mode (On Vault Nodes)
-
-```bash
-# No login required
-sudo znvault health
-sudo znvault tenant list
-sudo znvault user unlock admin
 ```
 
 ## Command Reference
 
-### Configuration
-
-```bash
-znvault config set url <url>        # Set vault URL
-znvault config set insecure <bool>  # Skip TLS verification
-znvault config set apiKey <key>     # Set API key
-znvault config show                 # Show current config
-```
-
-### Authentication
-
-```bash
-znvault login -u <user> -p <pass>   # Login with credentials
-znvault whoami                       # Show current user
-```
-
 ### Health & Status
 
 ```bash
-znvault health                       # Check vault health
-znvault status                       # Detailed status
-znvault cluster status               # Cluster health (HA mode)
-```
-
-### Tenant Management
-
-```bash
-znvault tenant list                  # List tenants
-znvault tenant create <id>           # Create tenant
-znvault tenant delete <id>           # Delete tenant
-```
-
-### User Management
-
-```bash
-znvault user list [--tenant <id>]    # List users
-znvault user unlock <username>       # Unlock user
-znvault user reset-password <user>   # Reset password
-znvault user totp-disable <user>     # Disable TOTP
+znvault health                    # Quick health check
+znvault status                    # Detailed system status
+znvault cluster status            # HA cluster health
+znvault cluster takeover --yes    # Force leadership (HA)
 ```
 
 ### Secret Management
 
 ```bash
-znvault secret list [--tenant <id>]           # List secrets
-znvault secret get <alias>                     # Get secret
-znvault secret create <alias> --data <json>    # Create secret
-znvault secret delete <alias>                  # Delete secret
+znvault secret list                              # List all secrets
+znvault secret list --tenant acme                # Filter by tenant
+znvault secret get <alias>                       # Get secret value
+znvault secret create <alias> --value "secret"   # Create secret
+znvault secret create <alias> --json '{"k":"v"}' # Create JSON secret
+znvault secret update <alias> --value "new"      # Update secret
+znvault secret delete <alias>                    # Delete secret
+```
+
+### KMS (Key Management Service)
+
+```bash
+znvault kms list                                 # List KMS keys
+znvault kms create --alias my-key --usage encrypt-decrypt
+znvault kms get <keyId>                          # Key details
+znvault kms encrypt <keyId> "plaintext"          # Encrypt data
+znvault kms decrypt <keyId> "ciphertext"         # Decrypt data
+znvault kms generate-data-key <keyId>            # Generate DEK
+znvault kms rotate <keyId>                       # Rotate key version
+znvault kms versions <keyId>                     # List key versions
+znvault kms enable|disable <keyId>               # Enable/disable key
+znvault kms delete <keyId>                       # Schedule deletion
+```
+
+### API Key Management
+
+```bash
+znvault apikey list                              # List API keys
+znvault apikey create my-key --permissions secret:read,secret:write
+znvault apikey show <id>                         # Key details
+znvault apikey rotate <id>                       # Rotate key
+znvault apikey enable|disable <id>               # Enable/disable
+znvault apikey delete <id>                       # Delete key
+znvault apikey self                              # Current key info
+znvault apikey self-rotate                       # Rotate current key
+
+# Managed API keys (auto-rotating)
+znvault apikey managed list
+znvault apikey managed create <name> --rotation-days 30
+znvault apikey managed rotate <name>             # Force rotation
 ```
 
 ### Certificate Management
 
 ```bash
-znvault certificate list                       # List certificates
-znvault certificate get <id>                   # Get certificate
-znvault certificate create <alias>             # Create certificate
-znvault certificate rotate <id>                # Rotate certificate
-znvault certificate delete <id>                # Delete certificate
+znvault cert list                                # List certificates
+znvault cert get <id>                            # Get certificate
+znvault cert create <alias> --cn "example.com"   # Create cert
+znvault cert rotate <id>                         # Rotate certificate
+znvault cert delete <id>                         # Delete certificate
+```
+
+### Tenant Management
+
+```bash
+znvault tenant list                              # List tenants
+znvault tenant create <id> --name "Acme Corp"    # Create tenant
+znvault tenant show <id>                         # Tenant details
+znvault tenant delete <id>                       # Delete tenant
+```
+
+### User Management
+
+```bash
+znvault user list                                # List users
+znvault user list --tenant acme                  # Filter by tenant
+znvault user create <username> --role admin      # Create user
+znvault user unlock <username>                   # Unlock locked user
+znvault user reset-password <username>           # Reset password
+znvault user totp-disable <username>             # Disable 2FA
+```
+
+### RBAC Role Management
+
+```bash
+znvault role list                                # List roles
+znvault role show <name>                         # Role details
+znvault role create <name> --permissions p1,p2   # Create role
+znvault role assign <username> <role>            # Assign to user
+znvault role revoke <username> <role>            # Revoke from user
+```
+
+### ABAC Policy Management
+
+```bash
+znvault policy list                              # List policies
+znvault policy get <id>                          # Policy details
+znvault policy create --name "Read Prod" --file policy.json
+znvault policy delete <id>                       # Delete policy
+```
+
+### Backup Management
+
+```bash
+znvault backup list                              # List backups
+znvault backup create                            # Create backup
+znvault backup get <id>                          # Backup details
+znvault backup verify <id>                       # Verify integrity
+znvault backup restore <id>                      # Restore backup
+znvault backup config                            # Show config
+znvault backup health                            # Check health
+
+# Storage configuration
+znvault backup storage show
+znvault backup storage set-s3 --bucket my-bucket --region us-east-1
 ```
 
 ### Audit & Security
 
 ```bash
-znvault audit list [--days 7]        # View audit logs
-znvault lockdown status              # Check lockdown state
+znvault audit list                               # Recent audit logs
+znvault audit list --days 7 --action LOGIN       # Filter logs
+znvault lockdown status                          # Lockdown state
+znvault lockdown set <level>                     # Set level (admin)
 ```
 
 ### Emergency Operations
 
+Direct database operations (requires sudo on vault nodes):
+
 ```bash
-sudo znvault emergency reset-password <user> <pass>
+sudo znvault emergency reset-password <user> <newpass>
 sudo znvault emergency unlock <user>
 sudo znvault emergency disable-totp <user>
 ```
 
-## Certificate Agent
+## Remote Agent Management
 
-The `znvault agent` command provides automated certificate synchronization with real-time updates via WebSocket.
+Manage agents connected to the vault (for local agent operations, use `zn-vault-agent`):
 
-### Quick Start
-
-```bash
-# Initialize agent config
-znvault agent init -o /etc/ssl/znvault
-
-# Add certificate to sync
-znvault agent add <cert-id> \
-  --alias my-cert \
-  --cert-file /etc/ssl/certs/my-cert.crt \
-  --key-file /etc/ssl/private/my-cert.key
-
-# Start agent with reload hook
-znvault agent start --on-update "systemctl reload nginx"
-```
-
-### Agent Commands
+### List & Monitor Agents
 
 ```bash
-znvault agent init                   # Initialize configuration
-znvault agent add <id>               # Add certificate to sync
-znvault agent remove <id>            # Remove certificate
-znvault agent list                   # List configured certificates
-znvault agent sync                   # One-time sync
-znvault agent start                  # Start daemon
-znvault agent status                 # Show sync status
+znvault agent remote list                        # List registered agents
+znvault agent remote list --status online        # Filter by status
+znvault agent remote connections                 # Active WebSocket connections
 ```
 
-### Features
-
-- **Real-time Updates**: WebSocket-based push notifications
-- **Resilient Connections**: Custom ping/pong with watchdog
-- **Automatic Reconnection**: Fixed-interval reconnect on disconnect
-- **Subscription Filtering**: Only receive events for watched certificates
-- **Reload Hooks**: Run commands after updates (e.g., reload HAProxy)
-- **Cross-Node Events**: Works with HA clusters via Redis pub/sub
-
-### Example: HAProxy Automation
+### Agent Alerts
 
 ```bash
-znvault agent init -o /etc/haproxy/certs
-
-znvault agent add $CERT_ID \
-  --alias frontend \
-  --combined-file /etc/haproxy/certs/frontend.pem
-
-znvault agent start --on-update "haproxy -c -f /etc/haproxy/haproxy.cfg && systemctl reload haproxy"
+znvault agent remote alerts <agent-id> --enable --threshold 600
+znvault agent remote alerts <agent-id> --disable
 ```
 
-### Systemd Service
+### Delete Agent
 
-```ini
-[Unit]
-Description=ZN-Vault Certificate Agent
-After=network-online.target
-
-[Service]
-Type=simple
-Environment=ZNVAULT_URL=https://vault.example.com
-Environment=ZNVAULT_API_KEY=znv_...
-ExecStart=/usr/local/bin/znvault agent start \
-  -c /etc/znvault/agent.json \
-  --on-update "/usr/local/bin/reload.sh"
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
+```bash
+znvault agent remote delete <agent-id>           # Remove agent
+znvault agent remote delete <agent-id> -y        # Skip confirmation
 ```
 
-See [Agent Guide](../docs/AGENT_GUIDE.md) for complete documentation.
+## Registration Tokens
+
+Create one-time tokens for bootstrapping agents with managed API keys:
+
+```bash
+# Create registration token
+znvault agent token create --managed-key my-agent-key --expires 1h
+znvault agent token create --managed-key my-agent-key --description "For staging server"
+
+# List tokens
+znvault agent token list --managed-key my-agent-key
+znvault agent token list --managed-key my-agent-key --include-used
+
+# Revoke token
+znvault agent token revoke <token-id> --managed-key my-agent-key
+```
+
+### Bootstrap Workflow
+
+```bash
+# 1. Admin creates registration token
+znvault agent token create --managed-key staging-agent --expires 1h
+# Token: zrt_abc123...
+
+# 2. On new server (cloud-init, Ansible, etc.)
+curl -sSL https://vault.example.com/agent/bootstrap.sh | ZNVAULT_TOKEN=zrt_abc123... bash
+
+# 3. Token is invalidated after use
+```
+
+## Local Agent Operations
+
+For local agent configuration, certificate sync, and secret injection, use the standalone `zn-vault-agent`:
+
+```bash
+# Install standalone agent
+npm install -g @zincapp/zn-vault-agent
+
+# Agent commands
+zn-vault-agent login         # Authenticate with vault
+zn-vault-agent setup         # Interactive setup
+zn-vault-agent sync          # Sync secrets/certificates
+zn-vault-agent start         # Start agent daemon
+zn-vault-agent status        # Show agent status
+zn-vault-agent exec          # Execute with secrets injected
+
+# More info
+zn-vault-agent --help
+znvault agent help-local     # Quick reference
+```
 
 ## Interactive TUI Dashboard
 
-The CLI includes an interactive terminal dashboard for real-time monitoring.
+Real-time terminal dashboard for monitoring:
 
 ```bash
-# Launch interactive dashboard
-znvault tui
-
-# Or use the alias
-znvault dashboard
-
-# With custom refresh rate (in milliseconds)
-znvault tui --refresh 10000
-
-# Start on a specific screen
-znvault tui --screen secrets
+znvault tui                           # Launch dashboard
+znvault dashboard                     # Alias for tui
+znvault tui --refresh 10000           # Custom refresh (ms)
+znvault tui --screen secrets          # Start on specific screen
 ```
-
-### Dashboard Features
-
-- **Live Health Status**: Real-time cluster and node health
-- **Security Overview**: Lockdown status and threat level
-- **Keyboard Navigation**: Use number keys (1-4) to switch screens
-- **Auto-Refresh**: Configurable polling interval
 
 ### Keyboard Shortcuts
 
@@ -312,83 +374,73 @@ znvault tui --screen secrets
 
 ## Auto-Update
 
-The CLI automatically checks for updates (once per 24 hours) and displays a notification if a new version is available.
+The CLI checks for updates automatically (once per 24 hours):
 
 ```bash
-# Check for updates manually
-znvault self-update --check
-
-# Update to latest version
-znvault self-update
-
-# Skip confirmation
-znvault self-update --yes
-
-# Show version with update check
-znvault version
+znvault version                       # Show version + update check
+znvault self-update --check           # Check for updates
+znvault self-update                   # Update to latest
+znvault self-update --yes             # Skip confirmation
 ```
 
 ## Output Modes
 
-The CLI supports two output modes:
-
 | Mode | Description | When |
 |------|-------------|------|
-| **TUI** | Rich colored output with boxes and tables | Interactive terminals |
-| **Plain** | Simple text output for parsing | CI/CD, piped commands |
+| **TUI** | Rich colored output | Interactive terminals |
+| **Plain** | Simple text for parsing | CI/CD, piped commands |
 
-### Automatic Detection
-
-Plain mode is automatically enabled when:
-- Running in CI environments (GitHub Actions, GitLab CI, etc.)
-- Output is piped to another command
-- stdin is not a TTY
-
-### Manual Override
+Plain mode is automatic in CI or when output is piped. Override manually:
 
 ```bash
-# Force plain text output
 znvault --plain health
-
-# Via environment variable
 ZNVAULT_PLAIN_OUTPUT=true znvault health
-
-# Disable update checks in CI
-ZNVAULT_NO_UPDATE_CHECK=true znvault health
 ```
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `ZNVAULT_URL` | Vault API URL |
-| `ZNVAULT_USERNAME` | Username for login |
-| `ZNVAULT_PASSWORD` | Password for login |
+| `ZNVAULT_URL` | Vault server URL |
 | `ZNVAULT_API_KEY` | API key for authentication |
-| `ZNVAULT_INSECURE` | Skip TLS verification |
+| `ZNVAULT_USERNAME` | Username for auto-login |
+| `ZNVAULT_PASSWORD` | Password for auto-login |
+| `ZNVAULT_INSECURE` | Skip TLS verification (`true`/`false`) |
 | `ZNVAULT_PROFILE` | Override active profile |
 | `ZNVAULT_PLAIN_OUTPUT` | Force plain text output |
 | `ZNVAULT_NO_UPDATE_CHECK` | Disable auto-update checks |
 
+## Configuration Files
+
+Configuration is stored per-profile in the system config directory:
+
+- **macOS**: `~/Library/Preferences/znvault-nodejs/config.json`
+- **Linux**: `~/.config/znvault-nodejs/config.json`
+- **Windows**: `%APPDATA%\znvault-nodejs\Config\config.json`
+
+```bash
+znvault config show                   # Show current config
+znvault config set url <url>          # Set vault URL
+znvault config set insecure true      # Skip TLS verification
+```
+
 ## Documentation
 
-- [Agent Guide](../docs/AGENT_GUIDE.md) - Certificate agent documentation
 - [CLI Admin Guide](../docs/CLI_ADMIN_GUIDE.md) - Full CLI reference
+- [Managed API Keys Guide](../docs/MANAGED_API_KEYS_GUIDE.md) - Auto-rotating keys
 - [KMS User Guide](../docs/KMS_USER_GUIDE.md) - Key management
+- [Agent Guide](../docs/AGENT_GUIDE.md) - Standalone agent documentation
 
 ## Development
 
 ```bash
-# Build
-npm run build
-
-# Watch mode
-npm run dev
-
-# Run without building
-npm run start -- <command>
+npm install          # Install dependencies
+npm run build        # Build TypeScript
+npm run dev          # Watch mode
+npm run lint         # Lint code
+npm test             # Run tests
 ```
 
 ## License
 
-Proprietary - ZincApp
+Proprietary - ZincApp SL
