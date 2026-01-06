@@ -704,12 +704,13 @@ class VaultClient {
   }
 
   async updateApiKeyPermissions(id: string, permissions: string[], tenantId?: string): Promise<APIKey> {
-    return this.request<APIKey>({
+    const response = await this.request<{ apiKey: APIKey; message: string }>({
       method: 'PATCH',
       path: `/auth/api-keys/${id}/permissions`,
       query: tenantId ? { tenantId } : undefined,
       body: { permissions },
     });
+    return response.apiKey;
   }
 
   async updateApiKeyConditions(id: string, conditions: Record<string, unknown>, tenantId?: string): Promise<APIKey> {
