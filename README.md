@@ -24,11 +24,8 @@ npm link
 # Create a profile for your vault server
 znvault profile create prod --vault-url https://vault.example.com --use
 
-# Authenticate (session expires after JWT timeout)
+# Authenticate (auto-refreshes for 7 days)
 znvault login -u admin -p 'password'
-
-# Or use persistent login (creates long-lived API key)
-znvault login -u admin -p 'password' --persistent
 
 # Verify authentication
 znvault whoami
@@ -39,57 +36,31 @@ znvault health
 
 ## Authentication
 
-The CLI supports multiple authentication methods:
-
-### Session Login (JWT-based)
-
-Standard login creates a JWT session that expires (typically 1 hour):
+### Login
 
 ```bash
 znvault login -u admin -p 'password'
 znvault login -u admin -p 'password' -t 123456  # With TOTP
 ```
 
-### Persistent Login (API Key)
-
-Use `--persistent` to automatically create an API key for long-lived sessions:
+Sessions are stored locally with a **refresh token** (7 days). The CLI auto-refreshes when needed, so you stay logged in as long as you use it within 7 days.
 
 ```bash
-# Create API key valid for 365 days (default)
-znvault login -u admin -p 'password' --persistent
-
-# Custom expiration (90 days)
-znvault login -u admin -p 'password' --persistent --expires 90
-
-# Logout revokes the API key on server
-znvault logout
-
-# Keep API key but clear local session
-znvault logout --local
+znvault logout    # Clear stored session
+znvault whoami    # Show current user
 ```
 
-### Direct API Key Login
+### Environment Variables (CI/CD)
 
-If you already have an API key:
-
-```bash
-# Store API key in profile
-znvault login-apikey --key znv_abc123...
-
-# Or via environment variable
-export ZNVAULT_API_KEY=znv_abc123...
-znvault whoami
-```
-
-### Environment Credentials
-
-For CI/CD pipelines:
+For automation, use environment variables with an API key:
 
 ```bash
 export ZNVAULT_URL=https://vault.example.com
 export ZNVAULT_API_KEY=znv_abc123...
 znvault secret list
 ```
+
+Create API keys via the web dashboard or `znvault apikey create`.
 
 ## Multi-Profile Support
 
@@ -122,10 +93,10 @@ znvault profile rename staging qa
 ```bash
 # Setup and login to multiple environments
 znvault profile create prod --vault-url https://vault.example.com --use
-znvault login -u admin -p 'prod-pass' --persistent
+znvault login -u admin -p 'prod-pass'
 
 znvault profile create dev --vault-url https://localhost:8443 -k --use
-znvault login -u admin -p 'dev-pass' --persistent
+znvault login -u admin -p 'dev-pass'
 
 # Switch between them - credentials stored per profile
 znvault profile use prod && znvault whoami  # prod user
