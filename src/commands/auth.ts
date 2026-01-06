@@ -1,4 +1,5 @@
 import { type Command } from 'commander';
+import os from 'node:os';
 import ora from 'ora';
 import React from 'react';
 import { render } from 'ink';
@@ -111,7 +112,7 @@ export function registerAuthCommands(program: Command): void {
             // Create persistent API key
             spinner.text = 'Creating persistent API key...';
 
-            const hostname = require('os').hostname();
+            const hostname = os.hostname();
             const keyName = `znvault-cli-${profileName}-${hostname}`;
             const expiresInDays = parseInt(options.expires ?? '365', 10);
 
