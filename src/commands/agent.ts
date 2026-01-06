@@ -911,6 +911,197 @@ export function registerAgentCommands(program: Command): void {
         await mode.closeLocalClient();
       }
     });
+
+  // ===== Registration Token Commands =====
+
+  const token = agent
+    .command('token')
+    .description('Manage registration tokens for agent bootstrapping');
+
+  // Create registration token
+  token
+    .command('create')
+    .description('Create a one-time registration token for managed key binding')
+    .requiredOption('-k, --managed-key <name>', 'Name of the managed key to bind')
+    .option('-e, --expires <duration>', 'Token expiration (e.g., "1h", "24h")', '1h')
+    .option('-d, --description <text>', 'Optional description for audit trail')
+    .option('--tenant <tenantId>', 'Target tenant ID (superadmin only)')
+    .action(async (options: {
+      managedKey: string;
+      expires: string;
+      description?: string;
+      tenant?: string;
+    }) => {
+      const spinner = ora('Creating registration token...').start();
+
+      try {
+        const tenantQuery = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
+
+        const response = await mode.apiPost<{
+          token: string;
+          prefix: string;
+          id: string;
+          managedKeyName: string;
+          tenantId: string;
+          expiresAt: string;
+          description: string | null;
+        }>(
+          `/auth/api-keys/managed/${encodeURIComponent(options.managedKey)}/registration-tokens${tenantQuery}`,
+          {
+            expiresIn: options.expires,
+            description: options.description,
+          }
+        );
+
+        spinner.succeed('Registration token created');
+        console.log();
+        console.log('Token (save this - shown only once!):');
+        console.log(`  ${response.token}`);
+        console.log();
+        console.log('Details:');
+        console.log(`  Prefix: ${response.prefix}`);
+        console.log(`  Managed Key: ${response.managedKeyName}`);
+        console.log(`  Tenant: ${response.tenantId}`);
+        console.log(`  Expires: ${new Date(response.expiresAt).toLocaleString()}`);
+        if (response.description) {
+          console.log(`  Description: ${response.description}`);
+        }
+        console.log();
+        console.log('Usage:');
+        console.log(`  curl -sSL https://vault.example.com/agent/bootstrap.sh | ZNVAULT_TOKEN=${response.token} bash`);
+        console.log();
+        console.log('Or manually:');
+        console.log(`  curl -X POST https://vault.example.com/agent/bootstrap \\`);
+        console.log(`    -H "Content-Type: application/json" \\`);
+        console.log(`    -d '{"token": "${response.token}"}'`);
+      } catch (err) {
+        spinner.fail('Failed to create registration token');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      } finally {
+        await mode.closeLocalClient();
+      }
+    });
+
+  // List registration tokens
+  token
+    .command('list')
+    .description('List registration tokens for a managed key')
+    .requiredOption('-k, --managed-key <name>', 'Name of the managed key')
+    .option('--include-used', 'Include already-used tokens')
+    .option('--tenant <tenantId>', 'Target tenant ID (superadmin only)')
+    .option('--json', 'Output as JSON')
+    .action(async (options: {
+      managedKey: string;
+      includeUsed?: boolean;
+      tenant?: string;
+      json?: boolean;
+    }) => {
+      const spinner = ora('Fetching registration tokens...').start();
+
+      try {
+        const params = new URLSearchParams();
+        if (options.tenant) params.set('tenantId', options.tenant);
+        if (options.includeUsed) params.set('includeUsed', 'true');
+
+        const query = params.toString();
+        const response = await mode.apiGet<{
+          tokens: Array<{
+            id: string;
+            prefix: string;
+            managedKeyName: string;
+            tenantId: string;
+            createdBy: string;
+            createdAt: string;
+            expiresAt: string;
+            usedAt: string | null;
+            usedByIp: string | null;
+            revokedAt: string | null;
+            description: string | null;
+            status: 'active' | 'used' | 'expired' | 'revoked';
+          }>;
+        }>(`/auth/api-keys/managed/${encodeURIComponent(options.managedKey)}/registration-tokens${query ? `?${query}` : ''}`);
+
+        spinner.stop();
+
+        if (options.json) {
+          output.json(response);
+          return;
+        }
+
+        if (response.tokens.length === 0) {
+          console.log('No registration tokens found');
+          return;
+        }
+
+        console.log(`Registration tokens for ${options.managedKey}:`);
+        console.log();
+
+        output.table(
+          ['Prefix', 'Status', 'Created', 'Expires', 'Description'],
+          response.tokens.map(t => [
+            t.prefix,
+            t.status === 'active' ? '● active' :
+              t.status === 'used' ? '○ used' :
+              t.status === 'expired' ? '○ expired' : '○ revoked',
+            formatRelativeTime(t.createdAt),
+            formatRelativeTime(t.expiresAt),
+            t.description?.substring(0, 30) ?? '-',
+          ])
+        );
+      } catch (err) {
+        spinner.fail('Failed to fetch registration tokens');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      } finally {
+        await mode.closeLocalClient();
+      }
+    });
+
+  // Revoke registration token
+  token
+    .command('revoke <token-id>')
+    .description('Revoke a registration token (prevents future use)')
+    .requiredOption('-k, --managed-key <name>', 'Name of the managed key')
+    .option('--tenant <tenantId>', 'Target tenant ID (superadmin only)')
+    .option('-y, --yes', 'Skip confirmation prompt')
+    .action(async (tokenId: string, options: {
+      managedKey: string;
+      tenant?: string;
+      yes?: boolean;
+    }) => {
+      if (!options.yes) {
+        const readline = await import('readline');
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>(resolve => {
+          rl.question(`Revoke token ${tokenId}? This cannot be undone. [y/N] `, resolve);
+        });
+        rl.close();
+
+        if (answer.toLowerCase() !== 'y') {
+          console.log('Cancelled');
+          return;
+        }
+      }
+
+      const spinner = ora('Revoking registration token...').start();
+
+      try {
+        const tenantQuery = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
+
+        await mode.apiDelete(
+          `/auth/api-keys/managed/${encodeURIComponent(options.managedKey)}/registration-tokens/${encodeURIComponent(tokenId)}${tenantQuery}`
+        );
+
+        spinner.succeed('Registration token revoked');
+      } catch (err) {
+        spinner.fail('Failed to revoke registration token');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      } finally {
+        await mode.closeLocalClient();
+      }
+    });
 }
 
 function ensureDir(dir: string): void {

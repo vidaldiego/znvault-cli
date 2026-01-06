@@ -22,7 +22,7 @@ import { registerPermissionsCommands } from './commands/permissions.js';
 import { registerSecretCommands } from './commands/secret.js';
 import { registerKmsCommands } from './commands/kms.js';
 import { registerRoleCommands } from './commands/role.js';
-import { registerBackupCommands } from './commands/backup.js';
+import { registerBackupCommands } from './commands/backup/index.js';
 import { registerNotificationCommands } from './commands/notification.js';
 import { registerTuiCommands } from './commands/tui.js';
 import { registerSelfUpdateCommands } from './commands/self-update.js';
