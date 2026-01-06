@@ -116,34 +116,12 @@ export function registerAuthCommands(program: Command): void {
             const keyName = `znvault-cli-${profileName}-${hostname}`;
             const expiresInDays = parseInt(options.expires ?? '365', 10);
 
-            // Full permissions for CLI usage (inherits from authenticated user)
-            const permissions = [
-              'secret:read:value',
-              'secret:read:metadata',
-              'secret:write',
-              'secret:delete',
-              'secret:list:values',
-              'secret:list:metadata',
-              'config:read',
-              'config:write',
-              'config:list',
-              'certificate:read:value',
-              'certificate:read:metadata',
-              'certificate:write',
-              'certificate:list',
-              'kms:encrypt',
-              'kms:decrypt',
-              'kms:list',
-              'api_key:create',
-              'api_key:read',
-              'api_key:delete',
-            ];
-
+            // Create API key with wildcard - grants all permissions the user has
             const result = await client.createApiKey({
               name: keyName,
               description: `CLI persistent login: ${profileName} on ${hostname}`,
               expiresInDays,
-              permissions,
+              permissions: ['*'],  // Wildcard expands to all user's permissions
             });
 
             // Store the API key with ID for later revocation
