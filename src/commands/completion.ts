@@ -28,6 +28,7 @@ _znvault_completions() {
     local agent_cmds="list get register-token revoke-token"
     local update_cmds="list get create upload set-latest"
     local apikey_cmds="list get create delete rotate permissions conditions enable disable policies attach-policy detach-policy self managed"
+    local apikey_managed_cmds="list get create bind rotate config delete permissions"
     local policy_cmds="list get create update delete toggle validate attachments attach-user attach-role detach-user detach-role test"
     local secret_cmds="list get create update delete copy"
     local kms_cmds="key encrypt decrypt sign verify"
@@ -67,9 +68,11 @@ _znvault_completions() {
             esac
             ;;
         3)
-            # Handle nested subcommands (e.g., advisor llm)
+            # Handle nested subcommands (e.g., advisor llm, apikey managed)
             if [[ "\${words[1]}" == "advisor" && "\${prev}" == "llm" ]]; then
                 COMPREPLY=( \$(compgen -W "\${advisor_llm_cmds}" -- "\${cur}") )
+            elif [[ "\${words[1]}" == "apikey" && "\${prev}" == "managed" ]] || [[ "\${words[1]}" == "api-key" && "\${prev}" == "managed" ]]; then
+                COMPREPLY=( \$(compgen -W "\${apikey_managed_cmds}" -- "\${cur}") )
             fi
             ;;
         *)
@@ -267,18 +270,32 @@ _znvault() {
                     _describe -t subcommands 'subcommand' subcommands
                     ;;
                 apikey|api-key)
-                    subcommands=(
-                        'list:List API keys'
-                        'get:Get API key details'
-                        'create:Create an API key'
-                        'delete:Delete an API key'
-                        'rotate:Rotate an API key'
-                        'permissions:Update permissions'
-                        'enable:Enable an API key'
-                        'disable:Disable an API key'
-                        'self:View current API key'
-                        'managed:Managed API keys'
-                    )
+                    if [[ \${words[2]} == "managed" ]]; then
+                        subcommands=(
+                            'list:List managed API keys'
+                            'get:Get managed key details'
+                            'create:Create a managed API key'
+                            'bind:Bind and get key value'
+                            'rotate:Force rotation'
+                            'config:Update rotation config'
+                            'delete:Delete managed key'
+                            'permissions:Update permissions'
+                        )
+                    else
+                        subcommands=(
+                            'list:List API keys'
+                            'get:Get API key details'
+                            'create:Create an API key'
+                            'delete:Delete an API key'
+                            'rotate:Rotate an API key'
+                            'update-permissions:Update permissions'
+                            'update-conditions:Update ABAC conditions'
+                            'enable:Enable an API key'
+                            'disable:Disable an API key'
+                            'self:View current API key'
+                            'managed:Managed API keys'
+                        )
+                    fi
                     _describe -t subcommands 'subcommand' subcommands
                     ;;
                 completion)
