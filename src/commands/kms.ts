@@ -7,6 +7,7 @@ import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
+import { getAuthContext } from '../lib/auth-context.js';
 
 // ============================================================================
 // Type Definitions
@@ -249,10 +250,16 @@ async function getKey(keyId: string, options: GetOptions): Promise<void> {
 }
 
 async function createKey(options: CreateOptions): Promise<void> {
-  const spinner = ora('Creating KMS key...').start();
+  // Resolve tenant: use explicit option, or get from stored credentials
+  const authContext = getAuthContext();
+  const tenantId = options.tenant || authContext.tenantId;
 
-  // Use 'me' as default tenant - the server will resolve it to the user's tenant
-  const tenantId = options.tenant || 'me';
+  if (!tenantId) {
+    output.error('Tenant is required. Use --tenant <id> or login to a tenant account.');
+    process.exit(1);
+  }
+
+  const spinner = ora('Creating KMS key...').start();
 
   try {
     const body: Record<string, unknown> = {
