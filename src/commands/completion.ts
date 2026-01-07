@@ -28,7 +28,7 @@ _znvault_completions() {
     local agent_cmds="list get register-token revoke-token"
     local update_cmds="list get create upload set-latest"
     local apikey_cmds="list get create delete rotate permissions conditions enable disable policies attach-policy detach-policy self managed"
-    local apikey_managed_cmds="list get create bind rotate config delete permissions"
+    local apikey_managed_cmds="list get create bind rotate config delete permissions conditions"
     local policy_cmds="list get create update delete toggle validate attachments attach-user attach-role detach-user detach-role test"
     local secret_cmds="list get create update delete copy"
     local kms_cmds="key encrypt decrypt sign verify"
@@ -280,6 +280,7 @@ _znvault() {
                             'config:Update rotation config'
                             'delete:Delete managed key'
                             'permissions:Update permissions'
+                            'conditions:Update ABAC conditions'
                         )
                     else
                         subcommands=(
