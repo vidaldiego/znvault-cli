@@ -24,6 +24,7 @@ import { registerNotificationCommands } from './commands/notification.js';
 import { registerTuiCommands } from './commands/tui.js';
 import { registerSelfUpdateCommands } from './commands/self-update.js';
 import { registerAdvisorCommands } from './commands/advisor.js';
+import { registerCompletionCommands } from './commands/completion.js';
 import { client } from './lib/client.js';
 import { setRuntimeProfile, getActiveProfileName, getConfig } from './lib/config.js';
 import { cliBanner, helpHint } from './lib/visual.js';
@@ -50,7 +51,7 @@ program
   .option('--insecure', 'Skip TLS certificate verification')
   .option('--profile <name>', 'Use a specific configuration profile')
   .option('--plain', 'Use plain text output (no colors or TUI)')
-  .hook('preAction', (thisCommand) => {
+  .hook('preAction', (thisCommand, actionCommand) => {
     // Apply global options
     const opts = thisCommand.opts<GlobalOptions>();
 
@@ -67,6 +68,13 @@ program
     // Apply URL/insecure overrides
     if (opts.url !== undefined || opts.insecure !== undefined) {
       client.configure(opts.url, opts.insecure);
+    }
+
+    // Skip profile indicator for completion commands (output is evaluated by shell)
+    const cmdPath = actionCommand.name();
+    const parentName = actionCommand.parent?.name();
+    if (parentName === 'completion' || cmdPath === 'completion') {
+      return;
     }
 
     // Show current profile indicator
@@ -98,6 +106,7 @@ registerNotificationCommands(program);
 registerTuiCommands(program);
 registerSelfUpdateCommands(program);
 registerAdvisorCommands(program);
+registerCompletionCommands(program);
 
 // Configure context-aware help (hides superadmin-only commands for regular users)
 configureContextHelp(program);
