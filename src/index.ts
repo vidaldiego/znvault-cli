@@ -33,6 +33,7 @@ import { cliBanner, helpHint } from './lib/visual.js';
 import { runBackgroundUpdateCheck } from './lib/cli-update.js';
 import { setOutputMode } from './lib/output-mode.js';
 import { profileIndicator } from './lib/output.js';
+import { configureContextHelp } from './lib/context-help.js';
 
 interface PackageJson {
   version?: string;
@@ -124,6 +125,9 @@ registerNotificationCommands(program);
 registerTuiCommands(program);
 registerSelfUpdateCommands(program);
 registerAdvisorCommands(program);
+
+// Configure context-aware help (hides superadmin-only commands for regular users)
+configureContextHelp(program);
 
 // Run background update check (non-blocking)
 runBackgroundUpdateCheck();

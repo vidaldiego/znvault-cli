@@ -4,6 +4,11 @@ import { type Command } from 'commander';
 import ora from 'ora';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
+import {
+  configureContextHelp,
+  addTenantOption,
+  superadminDesc,
+} from '../lib/context-help.js';
 
 // Types for advisor API responses
 interface Finding {
@@ -95,15 +100,22 @@ export function registerAdvisorCommands(program: Command): void {
     .command('advisor')
     .description('AI-powered security advisor commands');
 
+  // Configure context-aware help for this command group
+  configureContextHelp(advisor);
+
   // Run security audit
-  advisor
+  const auditCmd = advisor
     .command('audit')
-    .description('Run a security audit (tenant inferred from auth, or specify for superadmin)')
-    .option('--tenant <id>', 'Tenant ID (superadmin only)')
+    .description('Run a security audit (tenant inferred from auth)')
     .option('--category <category>', 'Filter by category (security, organization, compliance)')
     .option('--severity <severity>', 'Filter by severity (critical, high, medium, low)')
     .option('--ai-summary', 'Include AI-generated summary')
-    .option('--json', 'Output as JSON')
+    .option('--json', 'Output as JSON');
+
+  // Add tenant option (hidden for tenant users)
+  addTenantOption(auditCmd);
+
+  auditCmd
     .action(async (options: AuditOptions) => {
       const spinner = ora('Running security audit...').start();
 
@@ -238,16 +250,19 @@ export function registerAdvisorCommands(program: Command): void {
     });
 
   // Suggest secret configuration
-  advisor
+  const suggestCmd = advisor
     .command('suggest')
     .description('Get AI suggestions for naming and configuring a new secret')
     .argument('<description>', 'Description of the secret (e.g., "stripe api key for payments")')
-    .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--environment <env>', 'Environment hint (prod, staging, dev)')
     .option('--service <name>', 'Service name hint')
     .option('--team <name>', 'Team name hint')
-    .option('--json', 'Output as JSON')
-    .action(async (description: string, options: SuggestOptions) => {
+    .option('--json', 'Output as JSON');
+
+  // Add tenant option (hidden for tenant users)
+  addTenantOption(suggestCmd);
+
+  suggestCmd.action(async (description: string, options: SuggestOptions) => {
       const spinner = ora('Getting AI suggestions...').start();
 
       try {
@@ -318,6 +333,9 @@ export function registerAdvisorCommands(program: Command): void {
     .command('llm')
     .description('Manage LLM configuration for AI features');
 
+  // Configure context-aware help for LLM subcommands
+  configureContextHelp(llm);
+
   // Check LLM status
   llm
     .command('status')
@@ -357,7 +375,7 @@ export function registerAdvisorCommands(program: Command): void {
   // Get LLM config (superadmin only)
   llm
     .command('get')
-    .description('Get LLM configuration (superadmin only)')
+    .description(superadminDesc('Get LLM configuration'))
     .option('--json', 'Output as JSON')
     .action(async (options: { json?: boolean }) => {
       const spinner = ora('Fetching LLM configuration...').start();
@@ -394,7 +412,7 @@ export function registerAdvisorCommands(program: Command): void {
   // Update LLM config (superadmin only)
   llm
     .command('config')
-    .description('Update LLM configuration (superadmin only)')
+    .description(superadminDesc('Update LLM configuration'))
     .option('--provider <provider>', 'LLM provider (anthropic)')
     .option('--api-key <key>', 'API key for the provider')
     .option('--model <model>', 'Model to use (e.g., claude-3-5-haiku-latest)')
@@ -439,7 +457,7 @@ export function registerAdvisorCommands(program: Command): void {
   // Test LLM connection (superadmin only)
   llm
     .command('test')
-    .description('Test LLM connection (superadmin only)')
+    .description(superadminDesc('Test LLM connection'))
     .action(async () => {
       const spinner = ora('Testing LLM connection...').start();
 
@@ -470,7 +488,7 @@ export function registerAdvisorCommands(program: Command): void {
   // Delete LLM config (superadmin only)
   llm
     .command('delete')
-    .description('Delete LLM configuration (superadmin only)')
+    .description(superadminDesc('Delete LLM configuration'))
     .action(async () => {
       const spinner = ora('Deleting LLM configuration...').start();
 
