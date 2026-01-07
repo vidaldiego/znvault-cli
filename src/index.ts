@@ -26,6 +26,7 @@ import { registerBackupCommands } from './commands/backup/index.js';
 import { registerNotificationCommands } from './commands/notification.js';
 import { registerTuiCommands } from './commands/tui.js';
 import { registerSelfUpdateCommands } from './commands/self-update.js';
+import { registerAdvisorCommands } from './commands/advisor.js';
 import { client } from './lib/client.js';
 import { setRuntimeProfile, getActiveProfileName, getConfig } from './lib/config.js';
 import { cliBanner, helpHint } from './lib/visual.js';
@@ -122,6 +123,7 @@ registerBackupCommands(program);
 registerNotificationCommands(program);
 registerTuiCommands(program);
 registerSelfUpdateCommands(program);
+registerAdvisorCommands(program);
 
 // Run background update check (non-blocking)
 runBackgroundUpdateCheck();
