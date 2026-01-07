@@ -68,7 +68,7 @@ interface GetOptions {
 }
 
 interface CreateOptions {
-  tenant: string;
+  tenant?: string;
   alias?: string;
   description?: string;
   usage?: string;
@@ -249,16 +249,14 @@ async function getKey(keyId: string, options: GetOptions): Promise<void> {
 }
 
 async function createKey(options: CreateOptions): Promise<void> {
-  if (!options.tenant) {
-    output.error('Tenant is required. Use --tenant <id>');
-    process.exit(1);
-  }
-
   const spinner = ora('Creating KMS key...').start();
+
+  // Use 'me' as default tenant - the server will resolve it to the user's tenant
+  const tenantId = options.tenant || 'me';
 
   try {
     const body: Record<string, unknown> = {
-      tenant: options.tenant,
+      tenant: tenantId,
     };
 
     if (options.alias) {
@@ -634,7 +632,7 @@ export function registerKmsCommands(program: Command): void {
   kms
     .command('create')
     .description('Create a new KMS key')
-    .requiredOption('-t, --tenant <id>', 'Tenant ID')
+    .option('-t, --tenant <id>', 'Tenant ID (defaults to current user tenant)')
     .option('-a, --alias <alias>', 'Key alias (e.g., my-key or alias/my-key)')
     .option('-d, --description <desc>', 'Key description')
     .option('--usage <usage>', 'Key usage (ENCRYPT_DECRYPT, SIGN_VERIFY)', 'ENCRYPT_DECRYPT')

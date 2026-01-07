@@ -724,14 +724,8 @@ async function createSecret(aliasOrDescription: string, options: CreateOptions):
     }
   }
 
-  // Tenant is required for creating secrets
-  if (!options.tenant && !options.suggest) {
-    output.error('Tenant is required. Use --tenant <id> or --suggest to infer from auth context');
-    process.exit(1);
-  }
-
-  // For suggest mode without explicit tenant, we need to get tenant from context
-  // The API will infer it, but we still need it for the create call
+  // Use 'me' as default tenant - the server will resolve it to the user's tenant
+  // For superadmins, they must specify --tenant explicitly
   const tenantId = options.tenant || 'me';
 
   let data: Record<string, unknown> = {};
@@ -1222,7 +1216,7 @@ export function registerSecretCommands(program: Command): void {
   secret
     .command('create <alias>')
     .description('Create a new secret (use --suggest for AI naming help)')
-    .option('-t, --tenant <id>', 'Tenant ID (required unless using --suggest with auth context)')
+    .option('-t, --tenant <id>', 'Tenant ID (defaults to current user tenant)')
     .option('--type <type>', 'Secret type (opaque, credential, setting)', 'opaque')
     .option('--sub-type <subType>', 'Semantic sub-type')
     .option('--tags <tags>', 'Comma-separated tags')
