@@ -12,6 +12,7 @@ import React from 'react';
 import { render } from 'ink';
 import type { OutputFormat } from '../types/index.js';
 import { isPlainMode } from './output-mode.js';
+import { getVersion } from './version.js';
 import {
   Table as TuiTable,
   type TableColumn,
@@ -509,14 +510,22 @@ export function newline(): void {
 }
 
 /**
- * Print the current profile indicator
+ * Print the current profile and version indicator
  * Shows at the start of each command to indicate which profile is active
  */
 export function profileIndicator(profileName: string, url: string): void {
+  const version = getVersion();
   if (isPlainMode()) {
-    console.log(`[profile: ${profileName} -> ${url}]`);
+    console.log(`[znvault v${version}] [profile: ${profileName} -> ${url}]`);
   } else {
-    console.log(chalk.dim(`Using profile ${chalk.cyan(profileName)} → ${chalk.gray(url)}`));
+    console.log(
+      chalk.dim(`znvault`) + ' ' +
+      chalk.dim.yellow(`v${version}`) + ' ' +
+      chalk.dim(`· profile`) + ' ' +
+      chalk.cyan(profileName) + ' ' +
+      chalk.dim(`→`) + ' ' +
+      chalk.gray(url)
+    );
   }
 }
 

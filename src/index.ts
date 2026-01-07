@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
 import { registerAuthCommands } from './commands/auth.js';
 import { registerHealthCommands } from './commands/health.js';
 import { registerClusterCommands } from './commands/cluster.js';
@@ -34,37 +31,13 @@ import { runBackgroundUpdateCheck } from './lib/cli-update.js';
 import { setOutputMode } from './lib/output-mode.js';
 import { profileIndicator } from './lib/output.js';
 import { configureContextHelp } from './lib/context-help.js';
-
-interface PackageJson {
-  version?: string;
-}
+import { getVersion } from './lib/version.js';
 
 interface GlobalOptions {
   url?: string;
   insecure?: boolean;
   profile?: string;
   plain?: boolean;
-}
-
-// Get version from package.json
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-function getVersion(): string {
-  const possiblePaths = [
-    path.join(__dirname, '../package.json'),
-    path.join(__dirname, '../../package.json'),
-    path.join(process.cwd(), 'package.json'),
-  ];
-  for (const p of possiblePaths) {
-    try {
-      if (fs.existsSync(p)) {
-        const pkg = JSON.parse(fs.readFileSync(p, 'utf-8')) as PackageJson;
-        if (pkg.version) return pkg.version;
-      }
-    } catch { /* continue */ }
-  }
-  return 'unknown';
 }
 
 const program = new Command();
