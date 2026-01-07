@@ -121,10 +121,15 @@ complete -F _znvault_completions znvault
  * Generate Zsh completion script
  */
 function generateZshCompletion(): string {
-  return `#compdef znvault
-# znvault zsh completion
+  return `# znvault zsh completion
 # Add to ~/.zshrc:
-#   eval "$(znvault completion zsh)"
+#   source <(znvault completion zsh)
+# Or:
+#   znvault completion zsh > ~/.zsh/completions/_znvault
+#   fpath=(~/.zsh/completions \$fpath)
+
+autoload -Uz compinit
+compinit -u 2>/dev/null
 
 _znvault() {
     local -a commands subcommands opts
@@ -314,7 +319,7 @@ _znvault() {
     esac
 }
 
-_znvault "\$@"
+compdef _znvault znvault
 `;
 }
 
@@ -341,14 +346,22 @@ export function registerCompletionCommands(program: Command): void {
   completion.action(() => {
     output.section('Shell Completion Setup');
     console.log('');
-    output.info('Bash (add to ~/.bashrc):');
+    output.info('Bash (add to ~/.bashrc or ~/.bash_profile):');
     console.log('  eval "$(znvault completion bash)"');
     console.log('');
     output.info('Zsh (add to ~/.zshrc):');
-    console.log('  eval "$(znvault completion zsh)"');
+    console.log('  source <(znvault completion zsh)');
     console.log('');
     output.info('Or save to a file:');
-    console.log('  znvault completion bash > /etc/bash_completion.d/znvault');
-    console.log('  znvault completion zsh > /usr/local/share/zsh/site-functions/_znvault');
+    console.log('');
+    output.info('  Bash:');
+    console.log('    znvault completion bash > /etc/bash_completion.d/znvault');
+    console.log('');
+    output.info('  Zsh (macOS with Homebrew):');
+    console.log('    znvault completion zsh > $(brew --prefix)/share/zsh/site-functions/_znvault');
+    console.log('');
+    output.info('  Zsh (Linux):');
+    console.log('    znvault completion zsh > ~/.zsh/completions/_znvault');
+    console.log('    # Then add to ~/.zshrc: fpath=(~/.zsh/completions $fpath)');
   });
 }
