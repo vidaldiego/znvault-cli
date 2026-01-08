@@ -16,7 +16,7 @@ _znvault_completions() {
     _init_completion || return
 
     # Top-level commands
-    local commands="login logout whoami config profile health status cluster tenant user superadmin lockdown audit emergency cert agent update apikey policy permissions secret kms role backup notification tui dashboard self-update advisor completion version help"
+    local commands="login logout whoami config profile health status cluster tenant user superadmin lockdown audit emergency cert agent update apikey policy permissions secret kms role backup notification tui dashboard self-update advisor crypto device unseal completion version help"
 
     # Subcommands for each command group
     local cluster_cmds="status takeover release promote maintenance"
@@ -38,6 +38,9 @@ _znvault_completions() {
     local advisor_cmds="audit rules suggest llm"
     local advisor_llm_cmds="status get config test delete"
     local profile_cmds="list create delete use rename"
+    local crypto_cmds="status list grant revoke transfer-root"
+    local device_cmds="list revoke enroll"
+    local unseal_cmds="status seal"
     local completion_cmds="bash zsh"
 
     case "\${cword}" in
@@ -63,6 +66,9 @@ _znvault_completions() {
                 notification) COMPREPLY=( \$(compgen -W "\${notification_cmds}" -- "\${cur}") ) ;;
                 advisor) COMPREPLY=( \$(compgen -W "\${advisor_cmds}" -- "\${cur}") ) ;;
                 profile) COMPREPLY=( \$(compgen -W "\${profile_cmds}" -- "\${cur}") ) ;;
+                crypto) COMPREPLY=( \$(compgen -W "\${crypto_cmds}" -- "\${cur}") ) ;;
+                device) COMPREPLY=( \$(compgen -W "\${device_cmds}" -- "\${cur}") ) ;;
+                unseal) COMPREPLY=( \$(compgen -W "\${unseal_cmds}" -- "\${cur}") ) ;;
                 completion) COMPREPLY=( \$(compgen -W "\${completion_cmds}" -- "\${cur}") ) ;;
                 *) ;;
             esac
@@ -182,6 +188,9 @@ _znvault() {
                 'dashboard:Launch interactive dashboard'
                 'self-update:Update znvault CLI'
                 'advisor:AI-powered security advisor'
+                'crypto:Manage admin crypto access grants'
+                'device:Manage enrolled devices'
+                'unseal:Unseal the vault for crypto operations'
                 'completion:Generate shell completion scripts'
                 'version:Show version'
                 'help:Display help'
@@ -302,6 +311,31 @@ _znvault() {
                             'managed:Managed API keys'
                         )
                     fi
+                    _describe -t subcommands 'subcommand' subcommands
+                    ;;
+                crypto)
+                    subcommands=(
+                        'status:Show crypto mode status'
+                        'list:List crypto grants'
+                        'grant:Grant crypto access to an admin'
+                        'revoke:Revoke crypto access from an admin'
+                        'transfer-root:Transfer tenant root to another user'
+                    )
+                    _describe -t subcommands 'subcommand' subcommands
+                    ;;
+                device)
+                    subcommands=(
+                        'list:List enrolled devices'
+                        'revoke:Revoke a device'
+                        'enroll:Show enrollment instructions'
+                    )
+                    _describe -t subcommands 'subcommand' subcommands
+                    ;;
+                unseal)
+                    subcommands=(
+                        'status:Check unseal status'
+                        'seal:Seal the vault'
+                    )
                     _describe -t subcommands 'subcommand' subcommands
                     ;;
                 completion)
