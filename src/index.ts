@@ -25,6 +25,9 @@ import { registerTuiCommands } from './commands/tui.js';
 import { registerSelfUpdateCommands } from './commands/self-update.js';
 import { registerAdvisorCommands } from './commands/advisor.js';
 import { registerCompletionCommands } from './commands/completion.js';
+import { registerUnsealCommands } from './commands/unseal.js';
+import { registerDeviceCommands } from './commands/device.js';
+import { registerCryptoCommands } from './commands/crypto.js';
 import { client } from './lib/client.js';
 import { setRuntimeProfile, getActiveProfileName, getConfig } from './lib/config.js';
 import { cliBanner, helpHint } from './lib/visual.js';
@@ -107,6 +110,9 @@ registerTuiCommands(program);
 registerSelfUpdateCommands(program);
 registerAdvisorCommands(program);
 registerCompletionCommands(program);
+registerUnsealCommands(program);
+registerDeviceCommands(program);
+registerCryptoCommands(program);
 
 // Configure context-aware help (hides superadmin-only commands for regular users)
 configureContextHelp(program);
