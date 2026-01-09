@@ -28,14 +28,16 @@ import { registerCompletionCommands } from './commands/completion.js';
 import { registerUnsealCommands } from './commands/unseal.js';
 import { registerDeviceCommands } from './commands/device.js';
 import { registerCryptoCommands } from './commands/crypto.js';
+import { registerPluginCommands } from './commands/plugin.js';
 import { client } from './lib/client.js';
-import { setRuntimeProfile, getActiveProfileName, getConfig } from './lib/config.js';
+import { setRuntimeProfile, getActiveProfileName, getConfig, getPlugins } from './lib/config.js';
 import { cliBanner, helpHint } from './lib/visual.js';
 import { runBackgroundUpdateCheck } from './lib/cli-update.js';
 import { setOutputMode } from './lib/output-mode.js';
 import { profileIndicator } from './lib/output.js';
 import { configureContextHelp } from './lib/context-help.js';
 import { getVersion } from './lib/version.js';
+import { createCLIPluginLoader } from './plugins/loader.js';
 
 interface GlobalOptions {
   url?: string;
@@ -113,6 +115,7 @@ registerCompletionCommands(program);
 registerUnsealCommands(program);
 registerDeviceCommands(program);
 registerCryptoCommands(program);
+registerPluginCommands(program);
 
 // Configure context-aware help (hides superadmin-only commands for regular users)
 configureContextHelp(program);
@@ -120,12 +123,37 @@ configureContextHelp(program);
 // Run background update check (non-blocking)
 runBackgroundUpdateCheck();
 
-// Show banner when no command is provided
-if (process.argv.length === 2) {
-  console.log(cliBanner(getVersion()));
-  console.log(helpHint());
-  process.exit(0);
+// Main async entry point
+async function main(): Promise<void> {
+  // Show banner when no command is provided
+  if (process.argv.length === 2) {
+    console.log(cliBanner(getVersion()));
+    console.log(helpHint());
+    process.exit(0);
+  }
+
+  // Load CLI plugins
+  const pluginConfigs = getPlugins();
+  if (pluginConfigs.length > 0) {
+    try {
+      const pluginLoader = await createCLIPluginLoader(
+        pluginConfigs,
+        client,
+        getConfig,
+        getActiveProfileName
+      );
+      pluginLoader.registerCommands(program);
+    } catch {
+      // Plugin loading errors are non-fatal - warnings already printed
+    }
+  }
+
+  // Parse and execute
+  program.parse();
 }
 
-// Parse and execute
-program.parse();
+// Run main
+main().catch((err) => {
+  console.error('CLI error:', err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
