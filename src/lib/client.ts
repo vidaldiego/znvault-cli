@@ -239,7 +239,7 @@ class VaultClient {
     const response = await this.request<LoginResponse>({
       method: 'POST',
       path: '/auth/login',
-      body: { username, password, totp },
+      body: { username, password, totpCode: totp },
       skipAuth: true,
     });
 
