@@ -81,6 +81,23 @@ function getShortName(packageName: string): string {
 }
 
 /**
+ * Compare two semver versions
+ * Returns: 1 if a > b, -1 if a < b, 0 if equal
+ */
+function compareVersions(a: string, b: string): number {
+  const partsA = a.replace(/^v/, '').split('.').map(Number);
+  const partsB = b.replace(/^v/, '').split('.').map(Number);
+
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const numA = partsA[i] ?? 0;
+    const numB = partsB[i] ?? 0;
+    if (numA > numB) return 1;
+    if (numA < numB) return -1;
+  }
+  return 0;
+}
+
+/**
  * Check for plugin updates
  */
 function checkPluginUpdates(): PluginUpdateInfo[] {
@@ -97,7 +114,8 @@ function checkPluginUpdates(): PluginUpdateInfo[] {
     const latestVersion = getLatestVersion(plugin.package);
     if (!latestVersion) continue;
 
-    if (currentVersion !== latestVersion) {
+    // Only show update if latest version is actually newer
+    if (compareVersions(latestVersion, currentVersion) > 0) {
       updates.push({
         name: getShortName(plugin.package),
         package: plugin.package,
