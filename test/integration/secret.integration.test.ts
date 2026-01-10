@@ -6,7 +6,7 @@ import { TestConfig } from './test-config.js';
 /**
  * Integration tests for secret CLI commands.
  *
- * These tests run against a real ZN-Vault server.
+ * These tests run against a real ZnVault server.
  * Run with: ZNVAULT_INTEGRATION=true npm run test:integration
  */
 

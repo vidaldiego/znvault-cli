@@ -200,7 +200,7 @@ async function setupConfig(options: SetupOptions): Promise<void> {
         type: 'input',
         name: 'fromName',
         message: 'From Name (optional):',
-        default: fromName || 'ZN-Vault',
+        default: fromName || 'ZnVault',
       },
     ]);
 

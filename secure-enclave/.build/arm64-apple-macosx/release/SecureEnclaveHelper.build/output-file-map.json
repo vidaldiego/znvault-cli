@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/SecureEnclaveHelper.d",
+    "object": "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/SecureEnclaveHelper.o",
+    "swift-dependencies": "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/master.swiftdeps"
+  },
+  "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/Sources/main.swift": {
+    "object": "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main.swift.o",
+    "swiftmodule": "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main.swiftdeps",
+    "diagnostics": "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main.dia"
+  }
+}

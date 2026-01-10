@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 /**
  * Test configuration for CLI integration tests.
  *
- * These tests run the actual CLI binary against a real ZN-Vault server.
+ * These tests run the actual CLI binary against a real ZnVault server.
  * When run via `npm test`, the SDK test environment is automatically started.
  *
  * Environment variables (set automatically by sdk-test-run.sh):

@@ -50,7 +50,7 @@ const program = new Command();
 
 program
   .name('znvault')
-  .description('ZN-Vault Administration CLI')
+  .description('ZnVault Administration CLI')
   .version(getVersion())
   .option('--url <url>', 'Vault server URL')
   .option('--insecure', 'Skip TLS certificate verification')

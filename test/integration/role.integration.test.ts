@@ -6,7 +6,7 @@ import { TestConfig } from './test-config.js';
 /**
  * Integration tests for role CLI commands.
  *
- * These tests run against a real ZN-Vault server.
+ * These tests run against a real ZnVault server.
  * Run with: ZNVAULT_INTEGRATION=true npm run test:integration
  *
  * Note: These tests require superadmin with role:* permissions.

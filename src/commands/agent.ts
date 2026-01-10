@@ -22,6 +22,31 @@ function formatRelativeTime(dateStr: string): string {
   return `${diffDays}d ago`;
 }
 
+/**
+ * Format connection state with color coding
+ */
+function formatConnectionState(state: string): string {
+  const green = '\x1b[32m';
+  const yellow = '\x1b[33m';
+  const red = '\x1b[31m';
+  const cyan = '\x1b[36m';
+  const reset = '\x1b[0m';
+
+  switch (state) {
+    case 'healthy':
+      return `${green}● healthy${reset}`;
+    case 'degraded':
+      return `${yellow}◐ degraded${reset}`;
+    case 'recovering':
+      return `${cyan}↻ recovering${reset}`;
+    case 'reprovisioning':
+      return `${cyan}⟳ reprovisioning${reset}`;
+    case 'unknown':
+    default:
+      return `${red}○ ${state || 'unknown'}${reset}`;
+  }
+}
+
 // Remote agent types
 interface RemoteAgent {
   id: string;
@@ -33,6 +58,7 @@ interface RemoteAgent {
   lastSeen: string;
   alertOnDisconnect: boolean;
   disconnectThresholdSeconds: number;
+  lastIpAddress: string | null;
   subscriptions: {
     certificates: string[];
     secrets: string[];
@@ -69,6 +95,66 @@ interface AlertsOptions {
 
 interface DeleteOptions {
   yes?: boolean;
+}
+
+interface ReprovisionOptions {
+  reason?: string;
+  expiresIn?: string;
+}
+
+interface ReprovisionResponse {
+  token: string;
+  agentId: string;
+  tenantId: string;
+  expiresAt: string;
+  reason: string | null;
+  newApiKeyId: string;
+}
+
+interface ReprovisionStatusResponse {
+  agentId: string;
+  hostname: string;
+  connectionState: string;
+  hasPendingToken: boolean;
+  pendingToken?: {
+    id: string;
+    expiresAt: string;
+    createdAt: string;
+    createdBy: string | null;
+    reason: string | null;
+  };
+  lastHealthyAt: string | null;
+  lastDegradedAt: string | null;
+  degradedReason: string | null;
+}
+
+interface AgentDetailResponse {
+  id: string;
+  tenantId: string;
+  hostname: string;
+  version: string | null;
+  platform: string | null;
+  status: 'online' | 'offline';
+  connectionState: string;
+  lastSeen: string;
+  lastConnectedAt: string | null;
+  lastDisconnectedAt: string | null;
+  disconnectReason: string | null;
+  lastHealthyAt: string | null;
+  lastDegradedAt: string | null;
+  degradedReason: string | null;
+  alertOnDisconnect: boolean;
+  disconnectThresholdSeconds: number;
+  totalConnections: number;
+  totalEventsReceived: number;
+  lastIpAddress: string | null;
+  subscriptions: {
+    certificates: string[];
+    secrets: string[];
+    updates: string | null;
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export function registerAgentCommands(program: Command): void {
@@ -120,12 +206,12 @@ export function registerAgentCommands(program: Command): void {
         console.log();
 
         output.table(
-          ['Hostname', 'Status', 'Last Seen', 'Version', 'Platform', 'Alerts'],
+          ['Hostname', 'Status', 'Last Seen', 'IP Address', 'Platform', 'Alerts'],
           response.agents.map(a => [
             a.hostname,
             a.status === 'online' ? '● online' : '○ offline',
             formatRelativeTime(a.lastSeen),
-            a.version ?? '-',
+            a.lastIpAddress ?? '-',
             a.platform ?? '-',
             a.alertOnDisconnect ? 'enabled' : 'disabled',
           ])
@@ -182,6 +268,126 @@ export function registerAgentCommands(program: Command): void {
         );
       } catch (err) {
         spinner.fail('Failed to fetch connections');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      } finally {
+        await mode.closeLocalClient();
+      }
+    });
+
+  // Get agent status/details
+  remote
+    .command('status <agent-id>')
+    .description('Show detailed status of an agent including connection state')
+    .option('--json', 'Output as JSON')
+    .action(async (agentId: string, options: { json?: boolean }) => {
+      const spinner = ora('Fetching agent status...').start();
+
+      try {
+        // Fetch both agent details and reprovision status in parallel
+        const [agentResponse, reprovisionResponse] = await Promise.all([
+          mode.apiGet<AgentDetailResponse>(`/v1/agents/${encodeURIComponent(agentId)}`),
+          mode.apiGet<ReprovisionStatusResponse>(`/v1/agents/${encodeURIComponent(agentId)}/reprovision/status`).catch(() => null),
+        ]);
+
+        spinner.stop();
+
+        if (options.json) {
+          output.json({ agent: agentResponse, reprovision: reprovisionResponse });
+          return;
+        }
+
+        const agent = agentResponse;
+        const statusIcon = agent.status === 'online' ? '●' : '○';
+        const statusColor = agent.status === 'online' ? '\x1b[32m' : '\x1b[31m';
+        const reset = '\x1b[0m';
+
+        console.log();
+        console.log(`Agent: ${agent.hostname}`);
+        console.log('═'.repeat(50));
+        console.log();
+
+        // Basic Info
+        console.log('Basic Information:');
+        console.log(`  ID:          ${agent.id}`);
+        console.log(`  Tenant:      ${agent.tenantId}`);
+        console.log(`  Platform:    ${agent.platform || 'Unknown'}`);
+        console.log(`  Version:     ${agent.version ? `v${agent.version}` : 'Unknown'}`);
+        console.log(`  IP Address:  ${agent.lastIpAddress || 'Unknown'}`);
+        console.log();
+
+        // Connection Status
+        console.log('Connection Status:');
+        console.log(`  Status:           ${statusColor}${statusIcon} ${agent.status}${reset}`);
+        console.log(`  Connection State: ${formatConnectionState(agent.connectionState)}`);
+        console.log(`  Last Seen:        ${formatRelativeTime(agent.lastSeen)}`);
+        if (agent.lastConnectedAt) {
+          console.log(`  Last Connected:   ${formatRelativeTime(agent.lastConnectedAt)}`);
+        }
+        if (agent.lastDisconnectedAt) {
+          console.log(`  Last Disconnected: ${formatRelativeTime(agent.lastDisconnectedAt)}`);
+          if (agent.disconnectReason) {
+            console.log(`  Disconnect Reason: ${agent.disconnectReason}`);
+          }
+        }
+        console.log();
+
+        // Degraded State Info (if applicable)
+        if (agent.connectionState === 'degraded' || agent.lastDegradedAt || agent.degradedReason) {
+          console.log('Degraded State:');
+          if (agent.lastHealthyAt) {
+            console.log(`  Last Healthy:    ${formatRelativeTime(agent.lastHealthyAt)}`);
+          }
+          if (agent.lastDegradedAt) {
+            console.log(`  Degraded Since:  ${formatRelativeTime(agent.lastDegradedAt)}`);
+          }
+          if (agent.degradedReason) {
+            console.log(`  Reason:          ${agent.degradedReason}`);
+          }
+          console.log();
+        }
+
+        // Reprovision Status
+        if (reprovisionResponse) {
+          if (reprovisionResponse.hasPendingToken && reprovisionResponse.pendingToken) {
+            console.log('Pending Reprovision:');
+            console.log(`  Token Created:   ${formatRelativeTime(reprovisionResponse.pendingToken.createdAt)}`);
+            console.log(`  Token Expires:   ${new Date(reprovisionResponse.pendingToken.expiresAt).toLocaleString()}`);
+            if (reprovisionResponse.pendingToken.reason) {
+              console.log(`  Reason:          ${reprovisionResponse.pendingToken.reason}`);
+            }
+            console.log();
+          }
+        }
+
+        // Alerts Configuration
+        console.log('Alert Configuration:');
+        console.log(`  Disconnect Alerts: ${agent.alertOnDisconnect ? 'Enabled' : 'Disabled'}`);
+        if (agent.alertOnDisconnect) {
+          console.log(`  Threshold:         ${agent.disconnectThresholdSeconds}s`);
+        }
+        console.log();
+
+        // Subscriptions
+        const certCount = agent.subscriptions?.certificates?.length ?? 0;
+        const secretCount = agent.subscriptions?.secrets?.length ?? 0;
+        console.log('Subscriptions:');
+        console.log(`  Certificates: ${certCount}`);
+        console.log(`  Secrets:      ${secretCount}`);
+        if (agent.subscriptions?.updates) {
+          console.log(`  Updates:      ${agent.subscriptions.updates}`);
+        }
+        console.log();
+
+        // Stats
+        console.log('Statistics:');
+        console.log(`  Total Connections:    ${agent.totalConnections}`);
+        console.log(`  Events Received:      ${agent.totalEventsReceived}`);
+        console.log(`  Registered:           ${formatRelativeTime(agent.createdAt)}`);
+        console.log();
+
+      } catch (err) {
+        spinner.fail('Failed to fetch agent status');
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
       } finally {
@@ -257,6 +463,153 @@ export function registerAgentCommands(program: Command): void {
         spinner.succeed('Agent deleted');
       } catch (err) {
         spinner.fail('Failed to delete agent');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      } finally {
+        await mode.closeLocalClient();
+      }
+    });
+
+  // ===== Agent Reprovision Commands =====
+
+  // Initiate reprovision
+  remote
+    .command('reprovision <agent-id>')
+    .description('Generate a one-time token to reprovision an agent with new credentials')
+    .option('-r, --reason <reason>', 'Reason for reprovisioning (for audit trail)')
+    .option('-e, --expires-in <duration>', 'Token expiration (default: 15m)', '15m')
+    .action(async (agentId: string, options: ReprovisionOptions) => {
+      const spinner = ora('Generating reprovision token...').start();
+
+      try {
+        const response = await mode.apiPost<ReprovisionResponse>(
+          `/v1/agents/${encodeURIComponent(agentId)}/reprovision`,
+          {
+            reason: options.reason,
+            expiresIn: options.expiresIn,
+          }
+        );
+
+        spinner.succeed('Reprovision token generated');
+        console.log();
+        console.log('╔══════════════════════════════════════════════════════════════════╗');
+        console.log('║  ONE-TIME REPROVISION TOKEN - SAVE THIS NOW!                    ║');
+        console.log('╚══════════════════════════════════════════════════════════════════╝');
+        console.log();
+        console.log(`  Token: ${response.token}`);
+        console.log();
+        console.log('Details:');
+        console.log(`  Agent ID:    ${response.agentId}`);
+        console.log(`  Tenant:      ${response.tenantId}`);
+        console.log(`  Expires:     ${new Date(response.expiresAt).toLocaleString()}`);
+        if (response.reason) {
+          console.log(`  Reason:      ${response.reason}`);
+        }
+        console.log();
+        console.log('To reprovision the agent, provide this token to the agent:');
+        console.log();
+        console.log('  1. On the agent machine, run:');
+        console.log(`     zn-vault-agent reprovision --token "${response.token}"`);
+        console.log();
+        console.log('  2. Or set the environment variable:');
+        console.log(`     ZNVAULT_REPROVISION_TOKEN="${response.token}" zn-vault-agent start`);
+        console.log();
+        console.log('The token can only be used once and expires in 15 minutes.');
+      } catch (err) {
+        spinner.fail('Failed to generate reprovision token');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      } finally {
+        await mode.closeLocalClient();
+      }
+    });
+
+  // Check reprovision status
+  remote
+    .command('reprovision-status <agent-id>')
+    .description('Check reprovision status and pending tokens for an agent')
+    .option('--json', 'Output as JSON')
+    .action(async (agentId: string, options: { json?: boolean }) => {
+      const spinner = ora('Fetching reprovision status...').start();
+
+      try {
+        const response = await mode.apiGet<ReprovisionStatusResponse>(
+          `/v1/agents/${encodeURIComponent(agentId)}/reprovision/status`
+        );
+
+        spinner.stop();
+
+        if (options.json) {
+          output.json(response);
+          return;
+        }
+
+        console.log(`Agent: ${response.hostname} (${response.agentId})`);
+        console.log();
+        console.log('Connection State:');
+        console.log(`  Current state: ${response.connectionState}`);
+        if (response.lastHealthyAt) {
+          console.log(`  Last healthy:  ${formatRelativeTime(response.lastHealthyAt)}`);
+        }
+        if (response.lastDegradedAt) {
+          console.log(`  Last degraded: ${formatRelativeTime(response.lastDegradedAt)}`);
+        }
+        if (response.degradedReason) {
+          console.log(`  Degraded reason: ${response.degradedReason}`);
+        }
+        console.log();
+
+        if (response.hasPendingToken && response.pendingToken) {
+          console.log('Pending Reprovision Token:');
+          console.log(`  Token ID:   ${response.pendingToken.id}`);
+          console.log(`  Created:    ${formatRelativeTime(response.pendingToken.createdAt)}`);
+          console.log(`  Expires:    ${new Date(response.pendingToken.expiresAt).toLocaleString()}`);
+          if (response.pendingToken.createdBy) {
+            console.log(`  Created by: ${response.pendingToken.createdBy}`);
+          }
+          if (response.pendingToken.reason) {
+            console.log(`  Reason:     ${response.pendingToken.reason}`);
+          }
+        } else {
+          console.log('No pending reprovision token');
+        }
+      } catch (err) {
+        spinner.fail('Failed to fetch reprovision status');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      } finally {
+        await mode.closeLocalClient();
+      }
+    });
+
+  // Cancel reprovision
+  remote
+    .command('cancel-reprovision <agent-id>')
+    .description('Cancel a pending reprovision token')
+    .option('-y, --yes', 'Skip confirmation')
+    .action(async (agentId: string, options: { yes?: boolean }) => {
+      if (!options.yes) {
+        const readline = await import('readline');
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>(resolve => {
+          rl.question('Cancel the pending reprovision token? [y/N] ', resolve);
+        });
+        rl.close();
+
+        if (answer.toLowerCase() !== 'y') {
+          console.log('Cancelled');
+          return;
+        }
+      }
+
+      const spinner = ora('Cancelling reprovision token...').start();
+
+      try {
+        await mode.apiDelete(`/v1/agents/${encodeURIComponent(agentId)}/reprovision`);
+        spinner.succeed('Reprovision token cancelled');
+        console.log('The agent will need a new token to be reprovisioned.');
+      } catch (err) {
+        spinner.fail('Failed to cancel reprovision token');
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
       } finally {

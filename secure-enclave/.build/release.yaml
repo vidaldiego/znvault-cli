@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "PackageStructure": ["<PackageStructure>"]
+  "SecureEnclaveHelper-arm64-apple-macosx26.0-release.module": ["<SecureEnclaveHelper-arm64-apple-macosx26.0-release.module>"]
+  "main": ["<SecureEnclaveHelper-arm64-apple-macosx26.0-release.module>","<znvault-secure-enclave-arm64-apple-macosx26.0-release.exe>"]
+  "test": ["<SecureEnclaveHelper-arm64-apple-macosx26.0-release.module>","<znvault-secure-enclave-arm64-apple-macosx26.0-release.exe>"]
+  "znvault-secure-enclave-arm64-apple-macosx26.0-release.exe": ["<znvault-secure-enclave-arm64-apple-macosx26.0-release.exe>"]
+default: "main"
+nodes:
+  "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/Sources/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/Sources/main.swift"]
+    outputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/sources"]
+    description: "Write auxiliary file /Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/sources"
+
+  "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+
+  "/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main.swift.o"]
+    outputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave.product/Objects.LinkFileList"
+
+  "<SecureEnclaveHelper-arm64-apple-macosx26.0-release.module>":
+    tool: phony
+    inputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main.swift.o","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/Modules/SecureEnclaveHelper.swiftmodule"]
+    outputs: ["<SecureEnclaveHelper-arm64-apple-macosx26.0-release.module>"]
+
+  "<znvault-secure-enclave-arm64-apple-macosx26.0-release.exe>":
+    tool: phony
+    inputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave"]
+    outputs: ["<znvault-secure-enclave-arm64-apple-macosx26.0-release.exe>"]
+
+  "C.SecureEnclaveHelper-arm64-apple-macosx26.0-release.module":
+    tool: shell
+    inputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/Sources/main.swift","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/sources"]
+    outputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main.swift.o","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/Modules/SecureEnclaveHelper.swiftmodule"]
+    description: "Compiling Swift Module 'SecureEnclaveHelper' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","SecureEnclaveHelper","-emit-dependencies","-emit-module","-emit-module-path","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/Modules/SecureEnclaveHelper.swiftmodule","-output-file-map","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/output-file-map.json","-whole-module-optimization","-num-threads","16","-c","@/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/sources","-I","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx12.0","-whole-module-optimization","-num-threads","16","-serialize-diagnostics","-O","-j16","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","SecureEnclaveHelper_main","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","secure_enclave"]
+
+  "C.znvault-secure-enclave-arm64-apple-macosx26.0-release.exe":
+    tool: shell
+    inputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/SecureEnclaveHelper.build/main.swift.o","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave.product/Objects.LinkFileList"]
+    outputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave"]
+    description: "Linking ./.build/arm64-apple-macosx/release/znvault-secure-enclave"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release","-o","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave","-module-name","znvault_secure_enclave","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_SecureEnclaveHelper_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/.build/arm64-apple-macosx/release/znvault-secure-enclave.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx12.0","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/Sources/","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/Package.swift","/Users/diegovidal/Drive/zn-vault/znvault-cli/secure-enclave/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

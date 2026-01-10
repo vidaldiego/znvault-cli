@@ -21,7 +21,7 @@ vi.mock('inquirer', () => ({
       user: 'user@example.com',
       password: 'password123',
       from: 'noreply@example.com',
-      fromName: 'ZN-Vault',
+      fromName: 'ZnVault',
     }),
   },
 }));
@@ -41,7 +41,7 @@ const mockConfig = {
       pass: '********',
     },
     from: 'noreply@example.com',
-    fromName: 'ZN-Vault',
+    fromName: 'ZnVault',
   },
 };
 

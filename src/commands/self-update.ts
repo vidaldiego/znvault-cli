@@ -38,7 +38,7 @@ export function registerSelfUpdateCommands(program: Command): void {
         spinner.stop();
 
         console.log();
-        console.log(chalk.bold('ZN-Vault CLI Update Check'));
+        console.log(chalk.bold('ZnVault CLI Update Check'));
         console.log();
         console.log(`  Current version: ${chalk.cyan(result.currentVersion)}`);
         console.log(`  Latest version:  ${result.latestVersion ? chalk.green(result.latestVersion) : chalk.gray('unknown')}`);

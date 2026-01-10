@@ -1,6 +1,6 @@
-# ZN-Vault CLI
+# ZnVault CLI
 
-Official command-line interface for ZN-Vault secrets management.
+Official command-line interface for ZnVault secrets management.
 
 ## Installation
 

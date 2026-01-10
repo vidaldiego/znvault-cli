@@ -54,7 +54,7 @@ function Header(): React.ReactElement {
       paddingY={0}
       marginBottom={1}
     >
-      <Text bold color="cyan">ZN-Vault Profile Manager</Text>
+      <Text bold color="cyan">ZnVault Profile Manager</Text>
     </Box>
   );
 }
