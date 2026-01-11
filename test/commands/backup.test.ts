@@ -71,9 +71,17 @@ const mockHealth = {
 
 const mockConfig = {
   enabled: true,
-  schedule: '0 2 * * *',
-  retention: { maxCount: 30, maxAgeDays: 90 },
-  storage: { type: 'local' as const, path: '/backups' },
+  intervalMs: 86400000, // 24 hours
+  retentionDays: 90,
+  retentionCount: 30,
+  storage: {
+    type: 'local' as const,
+    local: { path: '/backups' },
+  },
+  encryption: {
+    enabled: true,
+    hasPassword: true,
+  },
 };
 
 vi.mock('../../src/lib/client.js', () => ({
@@ -90,6 +98,7 @@ vi.mock('../../src/lib/client.js', () => ({
       if (path.includes('/verify')) return Promise.resolve({ valid: true, checksum: 'sha256:abc123', integrityCheck: 'passed', message: 'OK' });
       return Promise.resolve({ message: 'Backup created', backup: mockBackupDetails });
     }),
+    put: vi.fn().mockResolvedValue({ message: 'Config updated', config: mockConfig }),
     patch: vi.fn().mockResolvedValue(mockConfig),
     delete: vi.fn().mockResolvedValue(undefined),
     configure: vi.fn(),
@@ -117,7 +126,7 @@ describe('backup commands', () => {
     program = new Command();
     program.exitOverride();
 
-    const { registerBackupCommands } = await import('../../src/commands/backup.js');
+    const { registerBackupCommands } = await import('../../src/commands/backup/index.js');
     registerBackupCommands(program);
 
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -289,13 +298,13 @@ describe('backup commands', () => {
 
       await program.parseAsync([
         'node', 'test', 'backup', 'config-update',
-        '--schedule', '0 3 * * *',
-        '--max-count', '50',
+        '--interval', '6h',
+        '--retention-count', '50',
       ]);
 
-      expect(client.patch).toHaveBeenCalledWith('/v1/admin/backups/config', expect.objectContaining({
-        schedule: '0 3 * * *',
-        retention: { maxCount: 50 },
+      expect(client.put).toHaveBeenCalledWith('/v1/admin/backups/config', expect.objectContaining({
+        intervalMs: 21600000, // 6 hours
+        retentionCount: 50,
       }));
       expect(success).toHaveBeenCalledWith('Backup configuration updated');
     });
@@ -305,7 +314,7 @@ describe('backup commands', () => {
 
       await program.parseAsync(['node', 'test', 'backup', 'config-update', '--enabled']);
 
-      expect(client.patch).toHaveBeenCalledWith('/v1/admin/backups/config', expect.objectContaining({
+      expect(client.put).toHaveBeenCalledWith('/v1/admin/backups/config', expect.objectContaining({
         enabled: true,
       }));
     });

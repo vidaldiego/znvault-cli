@@ -1,4 +1,5 @@
 import { type Command } from 'commander';
+import { readFileSync, existsSync } from 'node:fs';
 import ora from 'ora';
 import React from 'react';
 import { render } from 'ink';
@@ -19,6 +20,25 @@ import {
 } from '../lib/config.js';
 import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+
+/**
+ * Read password from a file.
+ * The file should contain the password on the first line.
+ * Trailing newlines are stripped.
+ */
+function readPasswordFromFile(filePath: string): string {
+  if (!existsSync(filePath)) {
+    throw new Error(`Password file not found: ${filePath}`);
+  }
+  const content = readFileSync(filePath, 'utf-8');
+  // Take first line only, strip trailing whitespace
+  const password = content.split('\n')[0].trimEnd();
+  if (!password) {
+    throw new Error(`Password file is empty: ${filePath}`);
+  }
+  return password;
+}
+
 import { ProfileManager } from '../tui/ProfileManager.js';
 
 // ============================================================================
@@ -28,6 +48,7 @@ import { ProfileManager } from '../tui/ProfileManager.js';
 interface LoginOptions {
   username?: string;
   password?: string;
+  passwordFile?: string;
   totp?: string;
 }
 
@@ -68,16 +89,31 @@ export function registerAuthCommands(program: Command): void {
     .command('login')
     .description('Authenticate with the vault server')
     .option('-u, --username <username>', 'Username')
-    .option('-p, --password <password>', 'Password')
+    .option('-p, --password <password>', 'Password (WARNING: visible in process list - prefer --password-file)')
+    .option('--password-file <path>', 'Read password from file (more secure than -p)')
     .option('-t, --totp <code>', 'TOTP code (if 2FA enabled)')
     .action(async (options: LoginOptions) => {
       const profileName = getActiveProfileName();
 
       try {
         const username = options.username ?? await promptUsername();
-        const password = options.password ?? await promptPassword();
+
+        // Password resolution: file > CLI arg > interactive prompt
+        let password: string;
+        if (options.passwordFile) {
+          password = readPasswordFromFile(options.passwordFile);
+        } else if (options.password) {
+          // Warn about CLI password visibility (unless in CI)
+          if (process.env.CI !== 'true') {
+            output.warn('Password passed via -p is visible in process list. Consider using --password-file instead.');
+          }
+          password = options.password;
+        } else {
+          password = await promptPassword();
+        }
+
         // Only prompt for TOTP if not running in CI mode and credentials weren't provided via CLI
-        const isNonInteractive = process.env.CI === 'true' || (options.username && options.password);
+        const isNonInteractive = process.env.CI === 'true' || (options.username && (options.password || options.passwordFile));
         const totp = options.totp ?? (isNonInteractive ? undefined : await promptTotp());
 
         const spinner = ora('Authenticating...').start();

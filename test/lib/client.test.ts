@@ -41,10 +41,10 @@ describe('VaultClient', () => {
           }
         } else if (req.url?.startsWith('/v1/tenants') && req.method === 'GET') {
           res.end(JSON.stringify({
-            data: [
+            items: [
               { id: 'tenant-1', name: 'Test Tenant', status: 'active' },
             ],
-            total: 1,
+            pagination: { total: 1, page: 1, pageSize: 10, totalPages: 1 },
           }));
         } else if (req.url === '/v1/admin/lockdown/status' && req.method === 'GET') {
           res.end(JSON.stringify({

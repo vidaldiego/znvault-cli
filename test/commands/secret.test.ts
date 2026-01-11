@@ -65,7 +65,7 @@ const mockDecryptedSecret = {
 vi.mock('../../src/lib/client.js', () => ({
   client: {
     get: vi.fn().mockImplementation((path: string) => {
-      if (path.includes('/v1/secrets?')) return Promise.resolve(mockSecrets);
+      if (path.includes('/v1/secrets?')) return Promise.resolve({ items: mockSecrets, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
       if (path.includes('/meta')) return Promise.resolve(mockSecretMetadata);
       if (path.includes('/history')) return Promise.resolve([{ version: 1, createdAt: new Date().toISOString() }]);
       return Promise.resolve(mockSecretMetadata);
@@ -145,7 +145,7 @@ describe('secret commands', () => {
 
       await program.parseAsync(['node', 'test', 'secret', 'list', '--json']);
 
-      expect(json).toHaveBeenCalledWith(mockSecrets);
+      expect(json).toHaveBeenCalledWith({ items: mockSecrets, pagination: expect.any(Object) });
     });
   });
 

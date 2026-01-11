@@ -70,7 +70,7 @@ const mockUserRoles = {
 vi.mock('../../src/lib/client.js', () => ({
   client: {
     get: vi.fn().mockImplementation((path: string) => {
-      if (path.includes('/v1/roles?')) return Promise.resolve({ data: mockRoles, total: 2, page: 1, pageSize: 20 });
+      if (path.includes('/v1/roles?')) return Promise.resolve({ items: mockRoles, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
       if (path.includes('/roles/role-003')) return Promise.resolve(mockCustomRole);
       if (path.includes('/roles/')) return Promise.resolve(mockRoleDetails);
       if (path.includes('/users/') && path.includes('/roles')) return Promise.resolve(mockUserRoles);

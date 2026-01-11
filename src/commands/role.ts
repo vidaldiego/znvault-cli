@@ -25,10 +25,13 @@ interface Role {
 }
 
 interface RoleListResponse {
-  data: Role[];
-  page: number;
-  pageSize: number;
-  total: number;
+  items: Role[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 interface UserRolesResponse {
@@ -104,11 +107,11 @@ async function listRoles(options: ListOptions): Promise<void> {
     spinner.stop();
 
     if (options.json) {
-      output.json(response.data);
+      output.json(response.items);
       return;
     }
 
-    if (response.data.length === 0) {
+    if (response.items.length === 0) {
       output.info('No roles found');
       return;
     }
@@ -119,7 +122,7 @@ async function listRoles(options: ListOptions): Promise<void> {
       wordWrap: true,
     });
 
-    for (const role of response.data) {
+    for (const role of response.items) {
       table.push([
         role.id,
         role.name,
@@ -131,7 +134,7 @@ async function listRoles(options: ListOptions): Promise<void> {
     }
 
     console.log(table.toString());
-    output.info(`Total: ${response.total} role(s)`);
+    output.info(`Total: ${response.pagination.total} role(s)${response.pagination.hasMore ? ' (more available)' : ''}`);
   } catch (error) {
     spinner.fail('Failed to list roles');
     output.error((error as Error).message);

@@ -123,18 +123,18 @@ export function registerPolicyCommands(program: Command): void {
         spinner.stop();
 
         if (options.json) {
-          output.json(result.data);
+          output.json(result.items);
           return;
         }
 
-        if (result.data.length === 0) {
+        if (result.items.length === 0) {
           output.info('No policies found');
           return;
         }
 
         output.table(
           ['ID', 'Name', 'Effect', 'Priority', 'Actions', 'Status', 'Tenant'],
-          result.data.map(p => [
+          result.items.map(p => [
             p.id.substring(0, 8),
             p.name.length > 25 ? p.name.substring(0, 22) + '...' : p.name,
             p.effect.toUpperCase(),
@@ -145,7 +145,7 @@ export function registerPolicyCommands(program: Command): void {
           ])
         );
 
-        output.info(`Total: ${result.total} policy(s)`);
+        output.info(`Total: ${result.pagination.total} policy(s)${result.pagination.hasMore ? ' (more available)' : ''}`);
       } catch (err) {
         spinner.fail('Failed to list policies');
         output.error(err instanceof Error ? err.message : String(err));

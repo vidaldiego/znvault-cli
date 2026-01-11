@@ -188,10 +188,13 @@ export interface LoginResponse {
 }
 
 export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page?: number;
-  pageSize?: number;
+  items: T[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 export interface ApiError {
@@ -446,11 +449,13 @@ export interface PolicyTestResult {
 }
 
 export interface PolicyListResponse {
-  data: Policy[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
+  items: Policy[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 // Managed API Key types

@@ -71,7 +71,7 @@ const mockVersions = [
 vi.mock('../../src/lib/client.js', () => ({
   client: {
     get: vi.fn().mockImplementation((path: string) => {
-      if (path.includes('/v1/kms/keys?')) return Promise.resolve({ keys: mockKeys, truncated: false });
+      if (path.includes('/v1/kms/keys?')) return Promise.resolve({ items: mockKeys, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
       if (path.includes('/versions')) return Promise.resolve(mockVersions);
       // API returns { keyMetadata: { ... } }
       if (path.includes('/v1/kms/keys/')) return Promise.resolve({ keyMetadata: mockKeyDetails });
@@ -95,6 +95,7 @@ vi.mock('../../src/lib/client.js', () => ({
 vi.mock('../../src/lib/config.js', () => ({
   getCredentials: vi.fn().mockReturnValue({ accessToken: 'token' }),
   getConfig: vi.fn().mockReturnValue({ url: 'https://localhost:8443', insecure: false, timeout: 30000 }),
+  hasApiKey: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../../src/lib/output.js', () => ({

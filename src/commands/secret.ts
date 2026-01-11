@@ -396,11 +396,16 @@ async function listSecrets(options: ListOptions): Promise<void> {
       query.expiringBefore = expiringBefore;
     }
 
-    const secrets = await client.get<SecretMetadata[]>('/v1/secrets?' + new URLSearchParams(query as Record<string, string>).toString());
+    interface SecretsListResponse {
+      items: SecretMetadata[];
+      pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+    }
+    const response = await client.get<SecretsListResponse>('/v1/secrets?' + new URLSearchParams(query as Record<string, string>).toString());
+    const secrets = response.items;
     spinner.stop();
 
     if (options.json) {
-      output.json(secrets);
+      output.json(response);
       return;
     }
 
@@ -429,7 +434,7 @@ async function listSecrets(options: ListOptions): Promise<void> {
     }
 
     console.log(table.toString());
-    output.info(`Total: ${secrets.length} secret(s)`);
+    output.info(`Total: ${response.pagination.total} secret(s)${response.pagination.hasMore ? ' (more available)' : ''}`);
   } catch (error) {
     spinner.fail('Failed to list secrets');
     output.error((error as Error).message);

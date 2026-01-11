@@ -29,15 +29,21 @@ interface KMSKey {
   tags?: Record<string, string>;
 }
 
+interface KMSKeyItem {
+  keyId: string;
+  alias?: string;
+  keyState: string;
+  createdDate: string;
+}
+
 interface ListKeysResponse {
-  keys: Array<{
-    keyId: string;
-    alias?: string;
-    keyState: string;
-    createdDate: string;
-  }>;
-  nextMarker?: string;
-  truncated: boolean;
+  items: KMSKeyItem[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 interface EncryptResponse {
@@ -165,11 +171,11 @@ async function listKeys(options: ListOptions): Promise<void> {
     spinner.stop();
 
     if (options.json) {
-      output.json(response.keys);
+      output.json(response.items);
       return;
     }
 
-    if (response.keys.length === 0) {
+    if (response.items.length === 0) {
       output.info('No KMS keys found');
       return;
     }
@@ -179,7 +185,7 @@ async function listKeys(options: ListOptions): Promise<void> {
       colWidths: [40, 30, 18, 24],
     });
 
-    for (const key of response.keys) {
+    for (const key of response.items) {
       table.push([
         key.keyId,
         key.alias || '-',
@@ -189,7 +195,7 @@ async function listKeys(options: ListOptions): Promise<void> {
     }
 
     console.log(table.toString());
-    output.info(`Total: ${response.keys.length} key(s)${response.truncated ? ' (more available)' : ''}`);
+    output.info(`Total: ${response.pagination.total} key(s)${response.pagination.hasMore ? ' (more available)' : ''}`);
   } catch (error) {
     spinner.fail('Failed to list keys');
     output.error((error as Error).message);

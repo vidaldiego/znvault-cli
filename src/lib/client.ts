@@ -349,7 +349,7 @@ class VaultClient {
         pageSize: 1000,
       },
     });
-    return response.data;
+    return response.items;
   }
 
   async createTenant(data: {
@@ -367,12 +367,11 @@ class VaultClient {
   }
 
   async getTenant(id: string, withUsage?: boolean): Promise<TenantWithUsage> {
-    const response = await this.request<{ data: TenantWithUsage }>({
+    return this.request<TenantWithUsage>({
       method: 'GET',
       path: `/v1/tenants/${id}`,
       query: { withUsage },
     });
-    return response.data;
   }
 
   async updateTenant(id: string, data: {
@@ -397,11 +396,10 @@ class VaultClient {
   }
 
   async getTenantUsage(id: string): Promise<TenantUsage> {
-    const response = await this.request<{ data: TenantUsage }>({
+    return this.request<TenantUsage>({
       method: 'GET',
       path: `/v1/tenants/${id}/usage`,
     });
-    return response.data;
   }
 
   // ============ Users ============
@@ -421,7 +419,7 @@ class VaultClient {
         pageSize: 1000,
       },
     });
-    return response.data;
+    return response.items;
   }
 
   async createUser(data: {
@@ -577,7 +575,7 @@ class VaultClient {
       path: '/v1/admin/lockdown/history',
       query: { limit: limit ?? 50 },
     });
-    return response.data;
+    return response.items;
   }
 
   async getThreats(options?: {
@@ -594,7 +592,7 @@ class VaultClient {
         limit: options?.limit ?? 100,
       },
     });
-    return response.data;
+    return response.items;
   }
 
   // ============ Audit ============
@@ -617,7 +615,7 @@ class VaultClient {
         limit: options?.limit ?? 100,
       },
     });
-    return response.data;
+    return response.items;
   }
 
   async verifyAuditChain(): Promise<AuditVerifyResult> {
