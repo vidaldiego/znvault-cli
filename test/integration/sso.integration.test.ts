@@ -33,7 +33,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
     // Cleanup created apps
     for (const id of createdAppIds) {
       try {
-        TestConfig.exec('sso', 'delete', id, '--yes');
+        TestConfig.exec('sso', 'delete', id, '--tenant', TestConfig.DEFAULT_TENANT, '--yes');
         console.log(`  Cleaned up SSO app: ${id}`);
       } catch {
         // Ignore cleanup errors
@@ -44,7 +44,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
 
   describe('sso list', () => {
     it('should list SSO apps', () => {
-      const result = TestConfig.exec('sso', 'list');
+      const result = TestConfig.exec('sso', 'list', '--tenant', TestConfig.DEFAULT_TENANT);
 
       expect(result.success).toBe(true);
       // Output should contain table headers or "No SSO apps found"
@@ -56,7 +56,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
     });
 
     it('should list SSO apps as JSON', () => {
-      const result = TestConfig.execJson<Array<{ id: string }>>('sso', 'list');
+      const result = TestConfig.execJson<Array<{ id: string }>>('sso', 'list', '--tenant', TestConfig.DEFAULT_TENANT);
 
       expect(result.success).toBe(true);
       expect(Array.isArray(result.data)).toBe(true);
@@ -156,7 +156,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       createdAppIds.push(slug);
 
       // Get the app
-      const result = TestConfig.exec('sso', 'get', slug);
+      const result = TestConfig.exec('sso', 'get', slug, '--tenant', TestConfig.DEFAULT_TENANT);
 
       expect(result.success).toBe(true);
       expect(result.stdout).toContain(slug);
@@ -183,7 +183,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
         slug: string;
         client_id: string;
         redirect_uris: string[];
-      }>('sso', 'get', slug);
+      }>('sso', 'get', slug, '--tenant', TestConfig.DEFAULT_TENANT);
 
       expect(result.success).toBe(true);
       expect(result.data?.slug).toBe(slug);
@@ -210,6 +210,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       const newName = `Updated Name ${slug}`;
       const updateResult = TestConfig.exec(
         'sso', 'update', slug,
+        '--tenant', TestConfig.DEFAULT_TENANT,
         '--name', newName
       );
 
@@ -233,13 +234,14 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       // Add another redirect URI
       const updateResult = TestConfig.exec(
         'sso', 'update', slug,
+        '--tenant', TestConfig.DEFAULT_TENANT,
         '--add-redirect-uri', 'http://localhost:4000/callback'
       );
 
       expect(updateResult.success).toBe(true);
 
       // Verify both URIs exist
-      const getResult = TestConfig.execJson<{ redirect_uris: string[] }>('sso', 'get', slug);
+      const getResult = TestConfig.execJson<{ redirect_uris: string[] }>('sso', 'get', slug, '--tenant', TestConfig.DEFAULT_TENANT);
       expect(getResult.data?.redirect_uris).toContain('http://localhost:3000/callback');
       expect(getResult.data?.redirect_uris).toContain('http://localhost:4000/callback');
 
@@ -260,6 +262,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       // Set to inactive
       const updateResult = TestConfig.exec(
         'sso', 'update', slug,
+        '--tenant', TestConfig.DEFAULT_TENANT,
         '--status', 'inactive'
       );
 
@@ -287,7 +290,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       const originalSecret = originalSecretMatch?.[1];
 
       // Rotate secret
-      const rotateResult = TestConfig.exec('sso', 'rotate-secret', slug);
+      const rotateResult = TestConfig.exec('sso', 'rotate-secret', slug, '--tenant', TestConfig.DEFAULT_TENANT);
 
       expect(rotateResult.success).toBe(true);
       expect(rotateResult.stdout).toContain('rotated successfully');
@@ -316,7 +319,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       const rotateResult = TestConfig.execJson<{
         client_secret: string;
         rotated_at: string;
-      }>('sso', 'rotate-secret', slug);
+      }>('sso', 'rotate-secret', slug, '--tenant', TestConfig.DEFAULT_TENANT);
 
       expect(rotateResult.success).toBe(true);
       expect(rotateResult.data?.client_secret).toBeDefined();
@@ -339,13 +342,13 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       // Don't add to cleanup - we're deleting it
 
       // Delete app
-      const deleteResult = TestConfig.exec('sso', 'delete', slug, '--yes');
+      const deleteResult = TestConfig.exec('sso', 'delete', slug, '--tenant', TestConfig.DEFAULT_TENANT, '--yes');
 
       expect(deleteResult.success).toBe(true);
       expect(deleteResult.stdout).toContain('deleted successfully');
 
       // Verify it's gone
-      const getResult = TestConfig.exec('sso', 'get', slug);
+      const getResult = TestConfig.exec('sso', 'get', slug, '--tenant', TestConfig.DEFAULT_TENANT);
       expect(getResult.success).toBe(false);
 
       console.log(`✓ Deleted SSO app: ${slug}`);
@@ -365,7 +368,7 @@ describe.skipIf(!shouldRunIntegration)('SSO Commands Integration', () => {
       createdAppIds.push(slug);
 
       // List users (should be empty initially)
-      const listResult = TestConfig.exec('sso', 'users', 'list', slug);
+      const listResult = TestConfig.exec('sso', 'users', 'list', slug, '--tenant', TestConfig.DEFAULT_TENANT);
 
       expect(listResult.success).toBe(true);
       // Either shows empty message or table

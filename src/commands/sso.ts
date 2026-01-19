@@ -52,6 +52,7 @@ interface ListOptions {
 }
 
 interface GetOptions {
+  tenant?: string;
   json?: boolean;
 }
 
@@ -71,6 +72,7 @@ interface CreateOptions {
 }
 
 interface UpdateOptions {
+  tenant?: string;
   name?: string;
   description?: string;
   addRedirectUri?: string[];
@@ -87,18 +89,31 @@ interface UpdateOptions {
 }
 
 interface DeleteOptions {
+  tenant?: string;
   yes?: boolean;
 }
 
 interface RotateSecretOptions {
+  tenant?: string;
   json?: boolean;
 }
 
 interface UserListOptions {
+  tenant?: string;
   json?: boolean;
 }
 
+interface UserRevokeOptions {
+  tenant?: string;
+  yes?: boolean;
+}
+
+interface UserSetRoleOptions {
+  tenant?: string;
+}
+
 interface UserGrantOptions {
+  tenant?: string;
   role?: string;
 }
 
@@ -184,12 +199,14 @@ export function registerSSOCommands(program: Command): void {
   sso
     .command('get <id>')
     .description('Get SSO app details (by ID or slug)')
+    .option('--tenant <id>', 'Tenant ID (superadmin only, required for slug lookup)')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: GetOptions) => {
       const spinner = ora('Fetching SSO app...').start();
 
       try {
-        const app = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}`);
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
+        const app = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
         spinner.stop();
 
         if (options.json) {
@@ -210,10 +227,10 @@ export function registerSSOCommands(program: Command): void {
 
         output.section('OAuth Configuration');
         output.keyValue({
-          'Redirect URIs': app.redirect_uris.join('\n                  ') || '-',
-          'Allowed Origins': app.allowed_origins.join(', ') || '-',
-          'Grant Types': app.allowed_grant_types.join(', '),
-          'Scopes': app.allowed_scopes.join(', ') || '-',
+          'Redirect URIs': app.redirect_uris?.join('\n                  ') || '-',
+          'Allowed Origins': app.allowed_origins?.join(', ') || '-',
+          'Grant Types': app.allowed_grant_types?.join(', ') || '-',
+          'Scopes': app.allowed_scopes?.join(', ') || '-',
           'PKCE Required': app.require_pkce ? 'Yes' : 'No',
           'Access Token TTL': formatTtl(app.access_token_ttl_seconds),
           'Refresh Token TTL': formatTtl(app.refresh_token_ttl_seconds),
@@ -221,8 +238,8 @@ export function registerSSOCommands(program: Command): void {
 
         output.section('Roles');
         output.keyValue({
-          'Available Roles': app.roles.join(', '),
-          'Default Role': app.default_role,
+          'Available Roles': app.roles?.join(', ') || '-',
+          'Default Role': app.default_role || '-',
         });
 
         if (app.user_count !== undefined || app.active_token_count !== undefined) {
@@ -331,6 +348,7 @@ export function registerSSOCommands(program: Command): void {
   sso
     .command('update <id>')
     .description('Update an SSO application')
+    .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--name <name>', 'New app name')
     .option('--description <text>', 'New description')
     .option('--add-redirect-uri <uri...>', 'Add redirect URIs')
@@ -349,8 +367,10 @@ export function registerSSOCommands(program: Command): void {
       const spinner = ora('Updating SSO app...').start();
 
       try {
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
+
         // First fetch current app to merge arrays
-        const current = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}`);
+        const current = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
 
         // Build update payload
         const updates: Record<string, unknown> = {};
@@ -405,8 +425,9 @@ export function registerSSOCommands(program: Command): void {
           process.exit(1);
         }
 
-        const app = await client.patch<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}`, updates);
-        spinner.succeed(`SSO app "${app.name}" updated successfully`);
+        const app = await client.patch<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`, updates);
+        spinner.stop();
+        output.success(`SSO app "${app.name}" updated successfully`);
 
         if (options.json) {
           output.json(app);
@@ -432,11 +453,14 @@ export function registerSSOCommands(program: Command): void {
   sso
     .command('delete <id>')
     .description('Delete an SSO application')
+    .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('-y, --yes', 'Skip confirmation')
     .action(async (id: string, options: DeleteOptions) => {
       try {
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
+
         // Fetch app name for confirmation
-        const app = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}`);
+        const app = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
 
         if (!options.yes) {
           output.warn(`This will permanently delete the SSO app "${app.name}" and revoke all tokens.`);
@@ -450,8 +474,9 @@ export function registerSSOCommands(program: Command): void {
         const spinner = ora('Deleting SSO app...').start();
 
         try {
-          await client.delete(`/v1/sso/apps/${encodeURIComponent(id)}`);
-          spinner.succeed(`SSO app "${app.name}" deleted successfully`);
+          await client.delete(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
+          spinner.stop();
+          output.success(`SSO app "${app.name}" deleted successfully`);
         } catch (err) {
           spinner.fail('Failed to delete SSO app');
           throw err;
@@ -468,16 +493,19 @@ export function registerSSOCommands(program: Command): void {
   sso
     .command('rotate-secret <id>')
     .description('Rotate the client secret for an SSO app')
+    .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: RotateSecretOptions) => {
       const spinner = ora('Rotating client secret...').start();
 
       try {
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
         const response = await client.post<{ client_secret: string; rotated_at: string }>(
-          `/v1/sso/apps/${encodeURIComponent(id)}/rotate-secret`,
+          `/v1/sso/apps/${encodeURIComponent(id)}/rotate-secret${query}`,
           {}
         );
-        spinner.succeed('Client secret rotated successfully');
+        spinner.stop();
+        output.success('Client secret rotated successfully');
 
         if (options.json) {
           output.json(response);
@@ -509,13 +537,15 @@ export function registerSSOCommands(program: Command): void {
   users
     .command('list <appId>')
     .description('List users with access to an SSO app')
+    .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (appId: string, options: UserListOptions) => {
       const spinner = ora('Fetching users...').start();
 
       try {
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
         const response = await client.get<{ users: SSOAppUser[]; pagination: { total: number } }>(
-          `/v1/sso/apps/${encodeURIComponent(appId)}/users`
+          `/v1/sso/apps/${encodeURIComponent(appId)}/users${query}`
         );
         spinner.stop();
 
@@ -552,12 +582,14 @@ export function registerSSOCommands(program: Command): void {
   users
     .command('grant <appId> <userId>')
     .description('Grant a user access to an SSO app')
+    .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--role <role>', 'Role to assign', 'user')
     .action(async (appId: string, userId: string, options: UserGrantOptions) => {
       const spinner = ora('Granting access...').start();
 
       try {
-        await client.post(`/v1/sso/apps/${encodeURIComponent(appId)}/users`, {
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
+        await client.post(`/v1/sso/apps/${encodeURIComponent(appId)}/users${query}`, {
           user_id: userId,
           role: options.role,
         });
@@ -573,9 +605,12 @@ export function registerSSOCommands(program: Command): void {
   users
     .command('revoke <appId> <userId>')
     .description('Revoke a user\'s access to an SSO app')
+    .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('-y, --yes', 'Skip confirmation')
-    .action(async (appId: string, userId: string, options: DeleteOptions) => {
+    .action(async (appId: string, userId: string, options: UserRevokeOptions) => {
       try {
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
+
         if (!options.yes) {
           const confirmed = await promptConfirm(`Revoke access for user ${userId}?`);
           if (!confirmed) {
@@ -587,7 +622,7 @@ export function registerSSOCommands(program: Command): void {
         const spinner = ora('Revoking access...').start();
 
         try {
-          await client.delete(`/v1/sso/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}`);
+          await client.delete(`/v1/sso/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}${query}`);
           spinner.succeed(`Access revoked for user ${userId}`);
         } catch (err) {
           spinner.fail('Failed to revoke access');
@@ -603,12 +638,14 @@ export function registerSSOCommands(program: Command): void {
   users
     .command('set-role <appId> <userId> <role>')
     .description('Update a user\'s role in an SSO app')
-    .action(async (appId: string, userId: string, role: string) => {
+    .option('--tenant <id>', 'Tenant ID (superadmin only)')
+    .action(async (appId: string, userId: string, role: string, options: UserSetRoleOptions) => {
       const spinner = ora('Updating role...').start();
 
       try {
+        const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';
         await client.patch(
-          `/v1/sso/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}`,
+          `/v1/sso/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}${query}`,
           { role }
         );
         spinner.succeed(`Role updated to "${role}" for user ${userId}`);

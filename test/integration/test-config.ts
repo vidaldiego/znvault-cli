@@ -144,19 +144,31 @@ export const TestConfig = {
 
     try {
       // Find JSON in output (may have other text before/after)
-      // Match JSON object starting at beginning of a line (avoids matching [profile: ...])
+      // Match JSON object starting at beginning of a line
       const jsonObjMatch = result.stdout.match(/^\{[\s\S]*\}$/m);
-      // Match JSON array starting at beginning of a line
-      const jsonArrMatch = result.stdout.match(/^\[[\s\S]*\]$/m);
 
-      const jsonMatch = jsonObjMatch || jsonArrMatch;
-      if (jsonMatch) {
-        return {
-          data: JSON.parse(jsonMatch[0]) as T,
-          error: null,
-          success: true,
-        };
+      // Match JSON array - must either be empty [] or have newline after opening bracket
+      // to avoid matching profile line like: [znvault v2.15.0] [profile: ...]
+      // Real JSON arrays look like: [] or [\n  {...}, ...\n]
+      const jsonArrMatch = result.stdout.match(/^(\[\]|\[\s*\n[\s\S]*\n\])$/m);
+
+      // Try object first, then array
+      const matches = [jsonObjMatch, jsonArrMatch].filter(Boolean);
+
+      for (const match of matches) {
+        if (match) {
+          try {
+            return {
+              data: JSON.parse(match[0]) as T,
+              error: null,
+              success: true,
+            };
+          } catch {
+            // Try next match
+          }
+        }
       }
+
       return {
         data: null,
         error: 'No JSON found in output',

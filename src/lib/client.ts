@@ -1263,30 +1263,66 @@ class VaultClient {
 
   /**
    * Generic POST request
+   * @param path - Path may include query string (e.g., '/v1/sso/apps?tenantId=foo')
    */
   async post<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>({ method: 'POST', path, body });
+    const [basePath, queryString] = path.split('?');
+    const query: Record<string, string> = {};
+    if (queryString) {
+      const params = new URLSearchParams(queryString);
+      for (const [key, value] of params.entries()) {
+        query[key] = value;
+      }
+    }
+    return this.request<T>({ method: 'POST', path: basePath, body, query: Object.keys(query).length > 0 ? query : undefined });
   }
 
   /**
    * Generic DELETE request
+   * @param path - Path may include query string
    */
   async delete<T>(path: string): Promise<T> {
-    return this.request<T>({ method: 'DELETE', path });
+    const [basePath, queryString] = path.split('?');
+    const query: Record<string, string> = {};
+    if (queryString) {
+      const params = new URLSearchParams(queryString);
+      for (const [key, value] of params.entries()) {
+        query[key] = value;
+      }
+    }
+    return this.request<T>({ method: 'DELETE', path: basePath, query: Object.keys(query).length > 0 ? query : undefined });
   }
 
   /**
    * Generic PUT request
+   * @param path - Path may include query string
    */
   async put<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>({ method: 'PUT', path, body });
+    const [basePath, queryString] = path.split('?');
+    const query: Record<string, string> = {};
+    if (queryString) {
+      const params = new URLSearchParams(queryString);
+      for (const [key, value] of params.entries()) {
+        query[key] = value;
+      }
+    }
+    return this.request<T>({ method: 'PUT', path: basePath, body, query: Object.keys(query).length > 0 ? query : undefined });
   }
 
   /**
    * Generic PATCH request
+   * @param path - Path may include query string
    */
   async patch<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>({ method: 'PATCH', path, body });
+    const [basePath, queryString] = path.split('?');
+    const query: Record<string, string> = {};
+    if (queryString) {
+      const params = new URLSearchParams(queryString);
+      for (const [key, value] of params.entries()) {
+        query[key] = value;
+      }
+    }
+    return this.request<T>({ method: 'PATCH', path: basePath, body, query: Object.keys(query).length > 0 ? query : undefined });
   }
 
   /**

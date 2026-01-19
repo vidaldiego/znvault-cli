@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "2.15.0",
+  "version": "2.15.1",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -53,26 +53,26 @@
     "ink": "^6.6.0",
     "ink-text-input": "^6.0.0",
     "ink-ui": "^0.4.0",
-    "inquirer": "^13.1.0",
+    "inquirer": "^13.2.0",
     "openpgp": "^6.3.0",
     "ora": "^9.0.0",
-    "pg": "^8.16.3",
+    "pg": "^8.17.1",
     "react": "^19.2.3",
-    "ws": "^8.18.3"
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/figlet": "^1.7.0",
     "@types/gradient-string": "^1.1.6",
     "@types/inquirer": "^9.0.9",
-    "@types/node": "^25.0.3",
+    "@types/node": "^25.0.9",
     "@types/pg": "^8.16.0",
-    "@types/react": "^19.2.7",
-    "@vitest/coverage-v8": "^4.0.16",
+    "@types/react": "^19.2.8",
+    "@vitest/coverage-v8": "^4.0.17",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.51.0",
-    "vitest": "^4.0.16"
+    "typescript-eslint": "^8.53.1",
+    "vitest": "^4.0.17"
   },
   "engines": {
     "node": ">=20.0.0"
