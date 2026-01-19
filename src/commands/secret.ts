@@ -387,9 +387,13 @@ function isUUID(str: string): boolean {
 /**
  * Resolve a secret identifier to a UUID.
  * Supports formats:
- * - UUID: pass through
- * - alias:tenant/path: resolve via /v1/secrets/:tenant/:path
- * - tenant/path: resolve via /v1/secrets/:tenant/:path (if contains /)
+ * - UUID: pass through directly
+ * - alias:path: resolve via /v1/secrets/alias/:alias (tenant from JWT)
+ * - path/to/secret: resolve via /v1/secrets/alias/:alias (tenant from JWT)
+ * - simple-name: resolve via /v1/secrets/alias/:alias (tenant from JWT)
+ *
+ * Note: The alias is the full path (e.g., "zn-admin/config"), NOT tenant/alias.
+ * Tenant is always derived from the authenticated user's JWT.
  */
 async function resolveSecretId(idOrAlias: string): Promise<string> {
   // Already a UUID - pass through
@@ -397,32 +401,13 @@ async function resolveSecretId(idOrAlias: string): Promise<string> {
     return idOrAlias;
   }
 
-  let tenant: string;
-  let alias: string;
+  // Strip optional "alias:" prefix
+  const alias = idOrAlias.startsWith('alias:')
+    ? idOrAlias.slice(6)
+    : idOrAlias;
 
-  // Handle "alias:tenant/path" format
-  if (idOrAlias.startsWith('alias:')) {
-    const rest = idOrAlias.slice(6); // Remove "alias:" prefix
-    const slashIndex = rest.indexOf('/');
-    if (slashIndex === -1) {
-      throw new Error(`Invalid alias format: "${idOrAlias}". Expected "alias:tenant/path" or "tenant/path"`);
-    }
-    tenant = rest.slice(0, slashIndex);
-    alias = rest.slice(slashIndex + 1);
-  }
-  // Handle "tenant/path" format (implicit alias)
-  else if (idOrAlias.includes('/')) {
-    const slashIndex = idOrAlias.indexOf('/');
-    tenant = idOrAlias.slice(0, slashIndex);
-    alias = idOrAlias.slice(slashIndex + 1);
-  }
-  // Not an alias format
-  else {
-    throw new Error(`Invalid identifier: "${idOrAlias}". Expected UUID, "alias:tenant/path", or "tenant/path"`);
-  }
-
-  // Resolve alias to UUID via API
-  const metadata = await client.get<SecretMetadata>(`/v1/secrets/${encodeURIComponent(tenant)}/${encodeURIComponent(alias)}`);
+  // Resolve alias to UUID via API (tenant derived from JWT)
+  const metadata = await client.get<SecretMetadata>(`/v1/secrets/alias/${encodeURIComponent(alias)}`);
   return metadata.id;
 }
 
@@ -1277,16 +1262,19 @@ async function copySecret(source: string, destinationAlias: string, options: Cop
 // Help text for secret identifier format
 const SECRET_ID_HELP = `
 Secret Identifier Formats:
-  Commands that accept <id-or-alias> support three formats:
+  Commands that accept <id-or-alias> support these formats:
 
-  1. UUID:           abc12345-1234-5678-9abc-def012345678
-  2. tenant/alias:   acme/database/credentials
-  3. alias:prefix:   alias:acme/database/credentials
+  1. UUID:    abc12345-1234-5678-9abc-def012345678
+  2. Alias:   zn-admin/config, web/api-key, smtp-credentials
+  3. Prefix:  alias:zn-admin/config (optional "alias:" prefix)
+
+  Note: Tenant is derived from your authenticated user (JWT).
+  You can only access secrets within your assigned tenant.
 
 Examples:
-  znvault secret decrypt acme/web/api-key
-  znvault secret get zn-admin/config
-  znvault secret history alias:prod/smtp/password
+  znvault secret decrypt zn-admin/config
+  znvault secret get web/production/api-key
+  znvault secret history alias:database/credentials
   znvault secret delete abc12345-1234-5678-9abc-def012345678
 `;
 
@@ -1323,10 +1311,10 @@ export function registerSecretCommands(program: Command): void {
     .option('--json', 'Output as JSON')
     .addHelpText('after', `
 Examples:
-  znvault secret decrypt acme/database/password      # by tenant/alias
-  znvault secret decrypt alias:acme/api-keys/stripe  # with alias: prefix
+  znvault secret decrypt zn-admin/config             # by alias path
+  znvault secret decrypt alias:web/api-key           # with alias: prefix
   znvault secret decrypt abc12345-...                # by UUID
-  znvault secret decrypt acme/certs/server -o cert.pem  # save to file
+  znvault secret decrypt certs/server-key -o key.pem # save to file
 `)
     .action(decryptSecret);
 
