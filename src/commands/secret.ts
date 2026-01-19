@@ -377,6 +377,55 @@ function formatExpiry(expiresAt?: string): string {
   return `${days}d`;
 }
 
+/**
+ * Check if a string looks like a UUID
+ */
+function isUUID(str: string): boolean {
+  return /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(str);
+}
+
+/**
+ * Resolve a secret identifier to a UUID.
+ * Supports formats:
+ * - UUID: pass through
+ * - alias:tenant/path: resolve via /v1/secrets/:tenant/:path
+ * - tenant/path: resolve via /v1/secrets/:tenant/:path (if contains /)
+ */
+async function resolveSecretId(idOrAlias: string): Promise<string> {
+  // Already a UUID - pass through
+  if (isUUID(idOrAlias)) {
+    return idOrAlias;
+  }
+
+  let tenant: string;
+  let alias: string;
+
+  // Handle "alias:tenant/path" format
+  if (idOrAlias.startsWith('alias:')) {
+    const rest = idOrAlias.slice(6); // Remove "alias:" prefix
+    const slashIndex = rest.indexOf('/');
+    if (slashIndex === -1) {
+      throw new Error(`Invalid alias format: "${idOrAlias}". Expected "alias:tenant/path" or "tenant/path"`);
+    }
+    tenant = rest.slice(0, slashIndex);
+    alias = rest.slice(slashIndex + 1);
+  }
+  // Handle "tenant/path" format (implicit alias)
+  else if (idOrAlias.includes('/')) {
+    const slashIndex = idOrAlias.indexOf('/');
+    tenant = idOrAlias.slice(0, slashIndex);
+    alias = idOrAlias.slice(slashIndex + 1);
+  }
+  // Not an alias format
+  else {
+    throw new Error(`Invalid identifier: "${idOrAlias}". Expected UUID, "alias:tenant/path", or "tenant/path"`);
+  }
+
+  // Resolve alias to UUID via API
+  const metadata = await client.get<SecretMetadata>(`/v1/secrets/${encodeURIComponent(tenant)}/${encodeURIComponent(alias)}`);
+  return metadata.id;
+}
+
 // ============================================================================
 // Command Implementations
 // ============================================================================
@@ -442,10 +491,14 @@ async function listSecrets(options: ListOptions): Promise<void> {
   }
 }
 
-async function getSecret(id: string, options: GetOptions): Promise<void> {
-  const spinner = ora('Fetching secret metadata...').start();
+async function getSecret(idOrAlias: string, options: GetOptions): Promise<void> {
+  const spinner = ora('Resolving secret...').start();
 
   try {
+    // Resolve alias to UUID if needed
+    const id = await resolveSecretId(idOrAlias);
+    spinner.text = 'Fetching secret metadata...';
+
     const secret = await client.get<SecretMetadata>(`/v1/secrets/${id}/meta`);
     spinner.stop();
 
@@ -501,10 +554,14 @@ async function getSecret(id: string, options: GetOptions): Promise<void> {
   }
 }
 
-async function decryptSecret(id: string, options: DecryptOptions): Promise<void> {
-  const spinner = ora('Decrypting secret...').start();
+async function decryptSecret(idOrAlias: string, options: DecryptOptions): Promise<void> {
+  const spinner = ora('Resolving secret...').start();
 
   try {
+    // Resolve alias to UUID if needed
+    const id = await resolveSecretId(idOrAlias);
+    spinner.text = 'Decrypting secret...';
+
     const secret = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
     spinner.stop();
 
@@ -878,8 +935,17 @@ async function createSecret(aliasOrDescription: string, options: CreateOptions):
   }
 }
 
-async function updateSecret(id: string, options: UpdateOptions): Promise<void> {
+async function updateSecret(idOrAlias: string, options: UpdateOptions): Promise<void> {
   let newData: Record<string, unknown> | undefined;
+  let id: string;
+
+  // Resolve alias to UUID first
+  try {
+    id = await resolveSecretId(idOrAlias);
+  } catch (error) {
+    output.error((error as Error).message);
+    process.exit(1);
+  }
 
   // Check for non-interactive data option
   if (options.data) {
@@ -979,7 +1045,17 @@ async function updateSecret(id: string, options: UpdateOptions): Promise<void> {
   }
 }
 
-async function deleteSecret(id: string, options: DeleteOptions): Promise<void> {
+async function deleteSecret(idOrAlias: string, options: DeleteOptions): Promise<void> {
+  let id: string;
+
+  // Resolve alias to UUID first
+  try {
+    id = await resolveSecretId(idOrAlias);
+  } catch (error) {
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+
   if (!options.force) {
     // Get metadata first
     const spinner = ora('Fetching secret...').start();
@@ -1020,11 +1096,14 @@ async function deleteSecret(id: string, options: DeleteOptions): Promise<void> {
   }
 }
 
-async function rotateSecret(id: string, options: RotateOptions): Promise<void> {
-  // Get current secret first
-  const spinner = ora('Fetching current secret...').start();
+async function rotateSecret(idOrAlias: string, options: RotateOptions): Promise<void> {
+  const spinner = ora('Resolving secret...').start();
 
   try {
+    // Resolve alias to UUID if needed
+    const id = await resolveSecretId(idOrAlias);
+    spinner.text = 'Fetching current secret...';
+
     const current = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
     spinner.stop();
 
@@ -1095,10 +1174,14 @@ interface HistoryResponse {
   count: number;
 }
 
-async function showHistory(id: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching secret history...').start();
+async function showHistory(idOrAlias: string, options: { json?: boolean }): Promise<void> {
+  const spinner = ora('Resolving secret...').start();
 
   try {
+    // Resolve alias to UUID if needed
+    const id = await resolveSecretId(idOrAlias);
+    spinner.text = 'Fetching secret history...';
+
     const response = await client.get<HistoryResponse>(`/v1/secrets/${id}/history`);
     spinner.stop();
 
@@ -1191,10 +1274,27 @@ async function copySecret(source: string, destinationAlias: string, options: Cop
 // Command Registration
 // ============================================================================
 
+// Help text for secret identifier format
+const SECRET_ID_HELP = `
+Secret Identifier Formats:
+  Commands that accept <id-or-alias> support three formats:
+
+  1. UUID:           abc12345-1234-5678-9abc-def012345678
+  2. tenant/alias:   acme/database/credentials
+  3. alias:prefix:   alias:acme/database/credentials
+
+Examples:
+  znvault secret decrypt acme/web/api-key
+  znvault secret get zn-admin/config
+  znvault secret history alias:prod/smtp/password
+  znvault secret delete abc12345-1234-5678-9abc-def012345678
+`;
+
 export function registerSecretCommands(program: Command): void {
   const secret = program
     .command('secret')
-    .description('Manage secrets');
+    .description('Manage secrets')
+    .addHelpText('after', SECRET_ID_HELP);
 
   // List secrets
   secret
@@ -1210,17 +1310,24 @@ export function registerSecretCommands(program: Command): void {
 
   // Get secret metadata
   secret
-    .command('get <id>')
-    .description('Get secret metadata (no value)')
+    .command('get <id-or-alias>')
+    .description('Get secret metadata (supports UUID or tenant/alias format)')
     .option('--json', 'Output as JSON')
     .action(getSecret);
 
   // Decrypt secret
   secret
-    .command('decrypt <id>')
-    .description('Decrypt and show secret value')
+    .command('decrypt <id-or-alias>')
+    .description('Decrypt and show secret value (supports UUID or tenant/alias format)')
     .option('-o, --output <file>', 'Write content to file')
     .option('--json', 'Output as JSON')
+    .addHelpText('after', `
+Examples:
+  znvault secret decrypt acme/database/password      # by tenant/alias
+  znvault secret decrypt alias:acme/api-keys/stripe  # with alias: prefix
+  znvault secret decrypt abc12345-...                # by UUID
+  znvault secret decrypt acme/certs/server -o cert.pem  # save to file
+`)
     .action(decryptSecret);
 
   // Create secret
@@ -1246,8 +1353,8 @@ export function registerSecretCommands(program: Command): void {
 
   // Update secret
   secret
-    .command('update <id>')
-    .description('Update a secret')
+    .command('update <id-or-alias>')
+    .description('Update a secret (supports UUID or tenant/alias format)')
     .option('--tags <tags>', 'Comma-separated tags')
     .option('--ttl <datetime>', 'TTL expiration (ISO 8601)')
     .option('--expires <datetime>', 'Natural expiration (ISO 8601)')
@@ -1257,22 +1364,22 @@ export function registerSecretCommands(program: Command): void {
 
   // Delete secret
   secret
-    .command('delete <id>')
-    .description('Delete a secret')
+    .command('delete <id-or-alias>')
+    .description('Delete a secret (supports UUID or tenant/alias format)')
     .option('-f, --force', 'Skip confirmation')
     .action(deleteSecret);
 
   // Rotate secret
   secret
-    .command('rotate <id>')
-    .description('Rotate secret (create new version)')
+    .command('rotate <id-or-alias>')
+    .description('Rotate secret (supports UUID or tenant/alias format)')
     .option('--json', 'Output as JSON')
     .action(rotateSecret);
 
   // Show history
   secret
-    .command('history <id>')
-    .description('Show secret version history')
+    .command('history <id-or-alias>')
+    .description('Show secret version history (supports UUID or tenant/alias format)')
     .option('--json', 'Output as JSON')
     .action(showHistory);
 
