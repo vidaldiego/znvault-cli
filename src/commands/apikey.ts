@@ -171,6 +171,13 @@ function getDaysUntilExpiry(expiresAt: string): number {
   return Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+function formatSecondsToHuman(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
+}
+
 function formatExpiry(expiresAt: string): string {
   const days = getDaysUntilExpiry(expiresAt);
   if (days < 0) return `Expired ${Math.abs(days)} days ago`;
@@ -325,7 +332,7 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         const table = new Table({
-          head: ['Name', 'Prefix', 'Status', 'Tenant', 'Permissions', 'Conditions', 'Expires', 'Rotations'],
+          head: ['Name', 'Prefix', 'Type', 'Status', 'Tenant', 'Permissions', 'Expires', 'Rotations'],
           style: { head: ['cyan'] },
         });
 
@@ -336,13 +343,23 @@ export function registerApiKeyCommands(program: Command): void {
           const statusIcon = key.enabled ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
           const statusText = key.enabled ? 'Active' : 'Disabled';
 
+          // Format key type (static vs managed with rotation info)
+          let keyType = 'Static';
+          if (key.is_managed && key.rotation_mode) {
+            const mode = key.rotation_mode.replace('on-', '');
+            const interval = key.rotation_interval_seconds
+              ? formatSecondsToHuman(key.rotation_interval_seconds)
+              : '';
+            keyType = interval ? `${mode}/${interval}` : mode;
+          }
+
           table.push([
             key.name,
             key.prefix,
+            keyType,
             `${statusIcon} ${statusText}`,
             key.tenant_id,
             formatPermissions(key.permissions),
-            formatConditionsSummary(key.conditions as ApiKeyConditions | undefined),
             `${expiryColor}${formatExpiry(key.expires_at)}${reset}`,
             key.rotation_count > 0 ? `${key.rotation_count}x` : '-',
           ]);

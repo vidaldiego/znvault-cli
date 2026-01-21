@@ -317,6 +317,12 @@ export interface APIKey {
   // Rotation tracking
   rotation_count: number;
   last_rotation: string | null;
+  // Managed key fields (present for all keys, but meaningful only when is_managed=true)
+  is_managed?: boolean;
+  rotation_mode?: string | null;
+  rotation_interval_seconds?: number | null;
+  grace_period_seconds?: number;
+  next_rotation_at?: string | null;
 }
 
 export interface CreateAPIKeyRequest {
