@@ -47,6 +47,30 @@ function formatConnectionState(state: string): string {
   }
 }
 
+/**
+ * Format seconds to human-readable duration
+ */
+function formatSecondsToHuman(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
+}
+
+/**
+ * Format key type for display
+ */
+function formatKeyType(apiKey: RemoteAgent['apiKey']): string {
+  if (!apiKey) return '-';
+  if (!apiKey.isManaged) return 'Static';
+
+  const mode = apiKey.rotationMode?.replace('on-', '') ?? 'managed';
+  const interval = apiKey.rotationIntervalSeconds
+    ? formatSecondsToHuman(apiKey.rotationIntervalSeconds)
+    : '';
+  return interval ? `${mode}/${interval}` : mode;
+}
+
 // Remote agent types
 interface RemoteAgent {
   id: string;
@@ -64,6 +88,13 @@ interface RemoteAgent {
     secrets: string[];
     updates: string | null;
   };
+  apiKey: {
+    name: string;
+    prefix: string;
+    isManaged: boolean;
+    rotationMode: string | null;
+    rotationIntervalSeconds: number | null;
+  } | null;
 }
 
 interface RemoteAgentConnection {
@@ -153,6 +184,13 @@ interface AgentDetailResponse {
     secrets: string[];
     updates: string | null;
   };
+  apiKey: {
+    name: string;
+    prefix: string;
+    isManaged: boolean;
+    rotationMode: string | null;
+    rotationIntervalSeconds: number | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -206,13 +244,13 @@ export function registerAgentCommands(program: Command): void {
         console.log();
 
         output.table(
-          ['Hostname', 'Status', 'Last Seen', 'IP Address', 'Platform', 'Alerts'],
+          ['Hostname', 'Status', 'Last Seen', 'IP Address', 'Key Type', 'Alerts'],
           response.agents.map(a => [
             a.hostname,
             a.status === 'online' ? '● online' : '○ offline',
             formatRelativeTime(a.lastSeen),
             a.lastIpAddress ?? '-',
-            a.platform ?? '-',
+            formatKeyType(a.apiKey),
             a.alertOnDisconnect ? 'enabled' : 'disabled',
           ])
         );
@@ -315,6 +353,18 @@ export function registerAgentCommands(program: Command): void {
         console.log(`  Version:     ${agent.version ? `v${agent.version}` : 'Unknown'}`);
         console.log(`  IP Address:  ${agent.lastIpAddress || 'Unknown'}`);
         console.log();
+
+        // API Key Info
+        if (agent.apiKey) {
+          console.log('API Key:');
+          console.log(`  Name:        ${agent.apiKey.name}`);
+          console.log(`  Prefix:      ${agent.apiKey.prefix}`);
+          console.log(`  Type:        ${agent.apiKey.isManaged ? 'Managed' : 'Static'}`);
+          if (agent.apiKey.isManaged && agent.apiKey.rotationMode) {
+            console.log(`  Rotation:    ${agent.apiKey.rotationMode.replace('on-', '')} (${formatSecondsToHuman(agent.apiKey.rotationIntervalSeconds ?? 0)})`);
+          }
+          console.log();
+        }
 
         // Connection Status
         console.log('Connection Status:');
