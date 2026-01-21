@@ -314,7 +314,7 @@ export function registerApiKeyCommands(program: Command): void {
           return;
         }
 
-        if (result.keys.length === 0) {
+        if (result.items.length === 0) {
           output.warn('No API keys found');
           return;
         }
@@ -329,7 +329,7 @@ export function registerApiKeyCommands(program: Command): void {
           style: { head: ['cyan'] },
         });
 
-        for (const key of result.keys) {
+        for (const key of result.items) {
           const daysLeft = getDaysUntilExpiry(key.expires_at);
           const expiryColor = daysLeft <= 7 ? '\x1b[31m' : daysLeft <= 30 ? '\x1b[33m' : '';
           const reset = expiryColor ? '\x1b[0m' : '';
@@ -349,7 +349,10 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         console.log(table.toString());
-        console.log(`\nTotal: ${result.keys.length} API key(s)`);
+        const showingInfo = result.pagination.hasMore
+          ? `Showing ${result.items.length} of ${result.pagination.total}`
+          : `Total: ${result.pagination.total}`;
+        console.log(`\n${showingInfo} API key(s)`);
       } catch (err) {
         spinner.fail('Failed to list API keys');
         output.error(err instanceof Error ? err.message : String(err));
@@ -531,7 +534,7 @@ export function registerApiKeyCommands(program: Command): void {
         } catch {
           // Fall back to list and search
           const result = await client.listApiKeys(options.tenant);
-          key = result.keys.find(k => k.id === id || k.prefix === id || k.name === id);
+          key = result.items.find(k => k.id === id || k.prefix === id || k.name === id);
         }
 
         if (!key) {
@@ -1074,7 +1077,7 @@ export function registerApiKeyCommands(program: Command): void {
           return;
         }
 
-        if (result.keys.length === 0) {
+        if (result.items.length === 0) {
           output.warn('No managed API keys found');
           return;
         }
@@ -1084,7 +1087,7 @@ export function registerApiKeyCommands(program: Command): void {
           style: { head: ['cyan'] },
         });
 
-        for (const key of result.keys) {
+        for (const key of result.items) {
           const statusIcon = key.enabled ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
           const nextRotation = key.next_rotation_at ? formatTimeUntil(key.next_rotation_at) : '-';
 
@@ -1101,7 +1104,10 @@ export function registerApiKeyCommands(program: Command): void {
         }
 
         console.log(table.toString());
-        console.log(`\nTotal: ${result.keys.length} managed API key(s)`);
+        const showingInfo = result.pagination.hasMore
+          ? `Showing ${result.items.length} of ${result.pagination.total}`
+          : `Total: ${result.pagination.total}`;
+        console.log(`\n${showingInfo} managed API key(s)`);
       } catch (err) {
         spinner.fail('Failed to list managed API keys');
         output.error(err instanceof Error ? err.message : String(err));

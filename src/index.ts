@@ -30,6 +30,7 @@ import { registerDeviceCommands } from './commands/device.js';
 import { registerCryptoCommands } from './commands/crypto.js';
 import { registerPluginCommands } from './commands/plugin.js';
 import { registerSSOCommands } from './commands/sso.js';
+import { registerDynamicSecretsCommands } from './commands/dynamic-secrets.js';
 import { client } from './lib/client.js';
 import { setRuntimeProfile, getActiveProfileName, getConfig, getPlugins } from './lib/config.js';
 import { cliBanner, helpHint } from './lib/visual.js';
@@ -118,6 +119,7 @@ registerDeviceCommands(program);
 registerCryptoCommands(program);
 registerPluginCommands(program);
 registerSSOCommands(program);
+registerDynamicSecretsCommands(program);
 
 // Configure context-aware help (hides superadmin-only commands for regular users)
 configureContextHelp(program);

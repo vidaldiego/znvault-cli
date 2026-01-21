@@ -906,8 +906,13 @@ class VaultClient {
     }
 
     interface ServerListResponse {
-      keys: ServerListKey[];
-      total?: number;
+      items: ServerListKey[];
+      pagination: {
+        total: number;
+        limit: number;
+        offset: number;
+        hasMore: boolean;
+      };
     }
 
     const response = await this.request<ServerListResponse>({
@@ -918,7 +923,7 @@ class VaultClient {
 
     // Transform each key
     return {
-      keys: response.keys.map(key => ({
+      items: response.items.map(key => ({
         id: key.id,
         tenant_id: key.tenant_id,
         created_by: key.created_by,
@@ -944,7 +949,7 @@ class VaultClient {
         next_rotation_at: key.next_rotation_at,
         last_bound_at: key.first_used_at ?? undefined,
       })),
-      total: response.total ?? response.keys.length,
+      pagination: response.pagination,
     };
   }
 

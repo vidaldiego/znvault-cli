@@ -334,8 +334,16 @@ export interface CreateAPIKeyResponse {
   message: string;
 }
 
+export interface PaginationMeta {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export interface ListAPIKeysResponse {
-  keys: APIKey[];
+  items: APIKey[];
+  pagination: PaginationMeta;
   expiringSoon: APIKey[];
 }
 
@@ -513,8 +521,8 @@ export interface ManagedKeyBindResponse {
 }
 
 export interface ManagedKeyListResponse {
-  keys: ManagedAPIKey[];
-  total: number;
+  items: ManagedAPIKey[];
+  pagination: PaginationMeta;
 }
 
 export interface CreateManagedKeyRequest {
