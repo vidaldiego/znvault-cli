@@ -371,9 +371,11 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
       const version = a.version ? `v${a.version}` : 'unknown';
 
       if (a.lastIpAddress) {
+        // Strip ::ffff: prefix from IPv6-mapped IPv4 addresses
+        const ip = a.lastIpAddress.replace(/^::ffff:/i, '');
         choices.push({
-          name: `${statusIcon} ${a.hostname} (${a.lastIpAddress}) - ${version}`,
-          value: a.lastIpAddress,
+          name: `${statusIcon} ${a.hostname} (${ip}) - ${version}`,
+          value: ip,
           short: a.hostname,
         });
       } else {
