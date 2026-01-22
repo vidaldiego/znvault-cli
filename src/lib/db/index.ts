@@ -1,0 +1,143 @@
+// Path: src/lib/db/index.ts
+
+/**
+ * Modular database client for direct PostgreSQL operations.
+ * Used for local mode (running on vault nodes) and emergency operations.
+ */
+
+import { getLocalConfig } from '../local.js';
+import { HealthOperations } from './health.js';
+import { TenantOperations } from './tenants.js';
+import { UserOperations } from './users.js';
+import { LockdownOperations } from './lockdown.js';
+import { AuditOperations } from './audit.js';
+import { EmergencyOperations } from './emergency.js';
+
+// Re-export types
+export * from './types.js';
+
+/**
+ * Composite database client that combines all operation modules.
+ * Uses composition pattern to delegate to specialized operation classes.
+ */
+export class LocalDBClient {
+  private healthOps: HealthOperations;
+  private tenantOps: TenantOperations;
+  private userOps: UserOperations;
+  private lockdownOps: LockdownOperations;
+  private auditOps: AuditOperations;
+  private emergencyOps: EmergencyOperations;
+
+  constructor() {
+    // All operations share the same connection strategy via BaseDBClient
+    this.healthOps = new HealthOperations();
+    this.tenantOps = new TenantOperations();
+    this.userOps = new UserOperations();
+    this.lockdownOps = new LockdownOperations();
+    this.auditOps = new AuditOperations();
+    this.emergencyOps = new EmergencyOperations();
+  }
+
+  // Connection management - delegate to health ops (or any op, they all have the same base)
+  async connect(): Promise<void> {
+    await this.healthOps.connect();
+  }
+
+  async close(): Promise<void> {
+    // Close all connections
+    await Promise.all([
+      this.healthOps.close(),
+      this.tenantOps.close(),
+      this.userOps.close(),
+      this.lockdownOps.close(),
+      this.auditOps.close(),
+      this.emergencyOps.close(),
+    ]);
+  }
+
+  async disconnect(): Promise<void> {
+    return this.close();
+  }
+
+  // ============ Health ============
+  health = () => this.healthOps.health();
+  clusterStatus = () => this.healthOps.clusterStatus();
+
+  // ============ Tenants ============
+  listTenants = (options?: Parameters<TenantOperations['listTenants']>[0]) =>
+    this.tenantOps.listTenants(options);
+  getTenant = (id: string, withUsage?: boolean) =>
+    this.tenantOps.getTenant(id, withUsage);
+  getTenantUsage = (id: string) =>
+    this.tenantOps.getTenantUsage(id);
+
+  // ============ Users ============
+  listUsers = (options?: Parameters<UserOperations['listUsers']>[0]) =>
+    this.userOps.listUsers(options);
+  getUser = (id: string) =>
+    this.userOps.getUser(id);
+  getUserByUsername = (username: string) =>
+    this.userOps.getUserByUsername(username);
+  listSuperadmins = () =>
+    this.userOps.listSuperadmins();
+
+  // ============ Lockdown ============
+  getLockdownStatus = () =>
+    this.lockdownOps.getLockdownStatus();
+  getLockdownHistory = (limit?: number) =>
+    this.lockdownOps.getLockdownHistory(limit);
+  getThreats = (options?: Parameters<LockdownOperations['getThreats']>[0]) =>
+    this.lockdownOps.getThreats(options);
+
+  // ============ Audit ============
+  listAudit = (options?: Parameters<AuditOperations['listAudit']>[0]) =>
+    this.auditOps.listAudit(options);
+  verifyAuditChain = () =>
+    this.auditOps.verifyAuditChain();
+
+  // ============ Emergency Operations ============
+  testConnection = () =>
+    this.emergencyOps.testConnection();
+  getUserStatus = (username: string) =>
+    this.emergencyOps.getUserStatus(username);
+  resetPassword = (username: string, newPassword: string) =>
+    this.emergencyOps.resetPassword(username, newPassword);
+  unlockUser = (username: string) =>
+    this.emergencyOps.unlockUser(username);
+  disableTotp = (username: string) =>
+    this.emergencyOps.disableTotp(username);
+}
+
+// ============ Legacy exports for backward compatibility ============
+
+/**
+ * Legacy EmergencyDBClient class (alias for LocalDBClient)
+ * @deprecated Use LocalDBClient instead
+ */
+export class EmergencyDBClient extends LocalDBClient {
+  constructor() {
+    // For emergency operations, DATABASE_URL must be set
+    if (!process.env.DATABASE_URL) {
+      throw new Error(
+        'DATABASE_URL environment variable is required for emergency operations.\n' +
+        'This should only be set when running directly on a vault node.'
+      );
+    }
+    super();
+  }
+}
+
+/**
+ * Check if emergency DB access is available
+ */
+export function isEmergencyDbAvailable(): boolean {
+  return !!process.env.DATABASE_URL;
+}
+
+/**
+ * Check if local mode is available (more comprehensive check)
+ */
+export function isLocalDbAvailable(): boolean {
+  const config = getLocalConfig();
+  return config !== null;
+}
