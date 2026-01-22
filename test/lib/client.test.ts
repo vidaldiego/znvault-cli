@@ -2,6 +2,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
 
+// Mock config module to prevent tests from writing to real config
+vi.mock('../../src/lib/config.js', () => {
+  return {
+    storeCredentials: vi.fn(),
+    getCredentials: vi.fn().mockReturnValue(null),
+    clearCredentials: vi.fn(),
+    isTokenExpired: vi.fn().mockReturnValue(true),
+    hasEnvCredentials: vi.fn().mockReturnValue(false),
+    getEnvCredentials: vi.fn().mockReturnValue(undefined),
+    hasApiKey: vi.fn().mockImplementation(() => !!process.env.ZNVAULT_API_KEY),
+    getApiKey: vi.fn().mockImplementation(() => process.env.ZNVAULT_API_KEY),
+    getConfig: vi.fn().mockImplementation(() => ({
+      url: process.env.ZNVAULT_URL || 'http://localhost:8443',
+      insecure: false,
+      timeout: 30000,
+    })),
+    getConfigValue: vi.fn(),
+    getEffectiveUrl: vi.fn().mockImplementation(() => process.env.ZNVAULT_URL || 'http://localhost:8443'),
+  };
+});
+
 describe('VaultClient', () => {
   let server: http.Server;
   let serverUrl: string;
