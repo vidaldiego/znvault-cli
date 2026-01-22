@@ -128,8 +128,13 @@ export interface HistoryEntry {
 }
 
 export interface HistoryResponse {
-  history: HistoryEntry[];
-  count: number;
+  items: HistoryEntry[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
 }
 
 export interface CopyResponse {

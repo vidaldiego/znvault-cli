@@ -29,10 +29,10 @@ export function registerHistoryCommand(secretCmd: Command): void {
         const response = await client.get<HistoryResponse>(`/v1/secrets/${id}/history`);
         spinner.stop();
 
-        const history = response.history || [];
+        const history = response.items || [];
 
         if (options.json) {
-          output.json(history);
+          output.json(response);
           return;
         }
 
@@ -56,7 +56,7 @@ export function registerHistoryCommand(secretCmd: Command): void {
         }
 
         console.log(table.toString());
-        console.log(`Total: ${response.count} version(s)`);
+        console.log(`Total: ${response.pagination.total} version(s)`);
       } catch (error) {
         spinner.fail('Failed to fetch history');
         output.error((error as Error).message);
