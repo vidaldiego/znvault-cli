@@ -125,8 +125,10 @@ export class CLIPluginLoader {
           const fileUrl = pathToFileURL(modulePath).href;
           module = await import(fileUrl) as { default: CLIPlugin | CLIPluginFactory };
         } else {
-          // Fallback to global module resolution (for globally installed plugins)
-          module = await import(packageName) as { default: CLIPlugin | CLIPluginFactory };
+          // Plugin not found in plugins directory - require explicit installation
+          throw new Error(
+            `Plugin package '${packageName}' not found. Run 'znvault plugin install ${packageName}' to install it.`
+          );
         }
       } else {
         throw new Error('Plugin config must specify package or path');

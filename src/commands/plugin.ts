@@ -539,9 +539,13 @@ export function registerPluginCommands(program: Command): void {
 
         spinner.text = `Updating ${updates.length} plugin(s)...`;
 
-        // Update all at once
-        const packagesToUpdate = toUpdate.map(p => p.package!);
-        const updateResult = await runNpm(['update', ...packagesToUpdate], pluginsDir);
+        // Install latest versions explicitly (npm update respects semver ranges,
+        // which wouldn't update e.g. ^1.0.0 to 2.0.0)
+        const packagesToUpdate = updates.map(u => {
+          const plugin = toUpdate.find(p => getShortName(p.package ?? '') === u.name);
+          return `${plugin!.package}@latest`;
+        });
+        const updateResult = await runNpm(['install', ...packagesToUpdate], pluginsDir);
 
         if (!updateResult.success) {
           spinner.fail('Update failed');
