@@ -1,39 +1,32 @@
-// Path: src/lib/config.ts
+// Path: src/lib/config/index.ts
 
 /**
- * Config module - backward compatibility re-export
+ * Config module - main entry point
  *
- * This file maintains backward compatibility by re-exporting from the
- * modularized config/ directory structure.
+ * Re-exports all config functionality for backward compatibility.
  */
 
+// Types
+export type { Profile, ConfigStore, ProfileInfo, ApiKeyInfo } from './types.js';
+export { CONFIG_DEFAULTS, DEFAULT_PROFILE } from './types.js';
+
+// Store
+export { store, setRuntimeProfile, resetConfig, getConfigPath } from './store.js';
+
+// Migration
+export { ensureMigrated, resetMigrationState } from './migration.js';
+
+// Cache
 export {
-  // Types
-  type Profile,
-  type ConfigStore,
-  type ProfileInfo,
-  type ApiKeyInfo,
-  CONFIG_DEFAULTS,
-  DEFAULT_PROFILE,
-
-  // Store
-  store,
-  setRuntimeProfile,
-  resetConfig,
-  getConfigPath,
-
-  // Migration
-  ensureMigrated,
-  resetMigrationState,
-
-  // Cache
   invalidateProfileCache,
   invalidateAllProfileCaches,
   invalidateConfigCache,
   invalidateAllCaches,
   getCacheStats,
+} from './cache.js';
 
-  // Profile management
+// Profile management
+export {
   getActiveProfileName,
   getCurrentProfile,
   saveProfile,
@@ -43,42 +36,52 @@ export {
   switchProfile,
   getProfile,
   renameProfile,
+} from './profile.js';
 
-  // Credentials
+// Credentials
+export {
   storeCredentials,
   clearCredentials,
   getCredentials,
   isTokenExpired,
   hasEnvCredentials,
   getEnvCredentials,
+} from './credentials.js';
 
-  // API key
+// API key
+export {
   hasApiKey,
   getApiKey,
   storeApiKey,
   getStoredApiKeyInfo,
   clearApiKey,
   getStoredApiKey,
+} from './apikey.js';
 
-  // Plugins
+// Plugins
+export {
   getPlugins,
   addPlugin,
   removePlugin,
   setPluginEnabled,
   clearPlugins,
+} from './plugins.js';
 
-  // Config getters/setters
+// Config getters/setters
+export {
   getConfig,
   getConfigValue,
   setConfigValue,
   getEffectiveUrl,
   getAllConfig,
+} from './getters.js';
 
-  // Validation
+// Validation
+export {
   validateEnvironment,
   assertValidEnvironment,
   getValidatedEnvCredentials,
   getValidatedApiKey,
   getValidatedUrl,
   type ValidationResult,
-} from './config/index.js';
+} from './validation.js';

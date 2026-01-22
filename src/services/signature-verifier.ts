@@ -12,6 +12,7 @@ import * as crypto from 'crypto';
 import * as https from 'https';
 import * as openpgp from 'openpgp';
 import { getPublicKeyUrl } from '../types/update.js';
+import * as output from '../lib/output.js';
 
 /**
  * Embedded public key for verification
@@ -145,7 +146,7 @@ export class SignatureVerifier {
     try {
       return await this.fetchPublicKey();
     } catch {
-      console.warn('Failed to fetch public key from S3, using embedded key');
+      output.warn('Failed to fetch public key from S3, using embedded key');
       this.publicKeyArmored = EMBEDDED_PUBLIC_KEY;
       return EMBEDDED_PUBLIC_KEY;
     }
@@ -164,8 +165,14 @@ export class SignatureVerifier {
 
       // Check if signature is empty (release not signed)
       if (!signatureBase64 || signatureBase64.trim() === '') {
-        console.warn('WARNING: Release is not signed - signature verification skipped');
-        return true; // Allow unsigned releases (e.g., during development)
+        // Only allow unsigned releases if explicitly permitted via environment variable
+        if (process.env.ZNVAULT_ALLOW_UNSIGNED_RELEASES === 'true') {
+          output.warn('Release is not signed - signature verification skipped (ZNVAULT_ALLOW_UNSIGNED_RELEASES=true)');
+          return true;
+        }
+        // In production, unsigned releases should be rejected by default
+        output.error('Release is not signed. Set ZNVAULT_ALLOW_UNSIGNED_RELEASES=true to allow unsigned releases (not recommended).');
+        return false;
       }
 
       // Read the file to verify
@@ -196,7 +203,7 @@ export class SignatureVerifier {
 
       return true;
     } catch (err) {
-      console.error('Signature verification failed:', err instanceof Error ? err.message : String(err));
+      output.error(`Signature verification failed: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
   }

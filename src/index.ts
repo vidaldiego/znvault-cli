@@ -32,8 +32,16 @@ import { registerPluginCommands } from './commands/plugin.js';
 import { registerSSOCommands } from './commands/sso.js';
 import { registerDynamicSecretsCommands } from './commands/dynamic-secrets.js';
 import { client } from './lib/client.js';
-import { setRuntimeProfile, getActiveProfileName, getConfig, getPlugins } from './lib/config.js';
-import { cliBanner, helpHint } from './lib/visual.js';
+import {
+  setRuntimeProfile,
+  getActiveProfileName,
+  getConfig,
+  getPlugins,
+  getCredentials,
+  hasApiKey,
+  getStoredApiKeyInfo,
+} from './lib/config.js';
+import { cliBanner, helpHint, cliStatusDisplay, quickCommands, type CLIStatusInfo } from './lib/visual.js';
 import { runBackgroundUpdateCheck } from './lib/cli-update.js';
 import { setOutputMode } from './lib/output-mode.js';
 import { profileIndicator } from './lib/output.js';
@@ -127,11 +135,57 @@ configureContextHelp(program);
 // Run background update check (non-blocking)
 runBackgroundUpdateCheck();
 
+/**
+ * Get CLI status information for display
+ */
+function getCLIStatus(): CLIStatusInfo {
+  const config = getConfig();
+  const profile = getActiveProfileName();
+  const credentials = getCredentials();
+  const apiKeyInfo = getStoredApiKeyInfo();
+
+  let authMethod: 'jwt' | 'apikey' | 'none' = 'none';
+  let username: string | undefined;
+  let apiKeyName: string | undefined;
+  let apiKeyPrefix: string | undefined;
+
+  if (hasApiKey()) {
+    authMethod = 'apikey';
+    if (apiKeyInfo) {
+      apiKeyName = apiKeyInfo.name;
+      apiKeyPrefix = apiKeyInfo.key.substring(0, 12) + '...';
+    }
+  } else if (credentials?.accessToken) {
+    authMethod = 'jwt';
+    // Try to extract username from JWT payload
+    try {
+      const payload = credentials.accessToken.split('.')[1];
+      const decoded = JSON.parse(Buffer.from(payload, 'base64').toString()) as { sub?: string; username?: string };
+      username = decoded.username ?? decoded.sub;
+    } catch {
+      username = 'authenticated';
+    }
+  }
+
+  return {
+    version: getVersion(),
+    profile,
+    vaultUrl: config.url,
+    authMethod,
+    username,
+    apiKeyName,
+    apiKeyPrefix,
+  };
+}
+
 // Main async entry point
 async function main(): Promise<void> {
-  // Show banner when no command is provided
+  // Show enhanced status when no command is provided
   if (process.argv.length === 2) {
-    console.log(cliBanner(getVersion()));
+    const status = getCLIStatus();
+    console.log(cliBanner(status.version));
+    console.log(cliStatusDisplay(status));
+    console.log(quickCommands());
     console.log(helpHint());
     process.exit(0);
   }

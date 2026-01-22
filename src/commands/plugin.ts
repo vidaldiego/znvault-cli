@@ -6,7 +6,7 @@
  */
 
 import { type Command } from 'commander';
-import { execSync, spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import ora from 'ora';
@@ -91,11 +91,27 @@ function getShortName(packageName: string): string {
 }
 
 /**
+ * Validate npm package name to prevent command injection
+ * Valid: alphanumeric, hyphens, underscores, dots, @ for scopes, / for scoped packages
+ */
+function isValidPackageName(name: string): boolean {
+  // npm package name pattern: optional @scope/ followed by package name
+  // Scoped: @scope/package-name
+  // Unscoped: package-name
+  const npmPackagePattern = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
+  return npmPackagePattern.test(name) && name.length <= 214;
+}
+
+/**
  * Check if a package exists on npm
  */
 async function packageExists(packageName: string): Promise<boolean> {
+  if (!isValidPackageName(packageName)) {
+    return false;
+  }
   try {
-    execSync(`npm view ${packageName} version`, { stdio: 'pipe' });
+    // Use execFileSync with args array to avoid shell injection
+    execFileSync('npm', ['view', packageName, 'version'], { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -106,8 +122,13 @@ async function packageExists(packageName: string): Promise<boolean> {
  * Get package version from npm
  */
 function getPackageVersion(packageName: string): string | null {
+  if (!isValidPackageName(packageName)) {
+    return null;
+  }
   try {
-    return execSync(`npm view ${packageName} version`, { stdio: 'pipe' }).toString().trim();
+    // Use execFileSync with args array to avoid shell injection
+    const result = execFileSync('npm', ['view', packageName, 'version'], { stdio: 'pipe' });
+    return result.toString().trim();
   } catch {
     return null;
   }
@@ -597,13 +618,15 @@ export function registerPluginCommands(program: Command): void {
         } | null = null;
 
         try {
-          const infoStr = execSync(`npm view ${packageName} --json`, { stdio: 'pipe' }).toString();
-          npmInfo = JSON.parse(infoStr);
+          if (isValidPackageName(packageName)) {
+            const infoStr = execFileSync('npm', ['view', packageName, '--json'], { stdio: 'pipe' }).toString();
+            npmInfo = JSON.parse(infoStr);
+          }
         } catch {
           // Try without prefix
-          if (packageName !== name) {
+          if (packageName !== name && isValidPackageName(name)) {
             try {
-              const infoStr = execSync(`npm view ${name} --json`, { stdio: 'pipe' }).toString();
+              const infoStr = execFileSync('npm', ['view', name, '--json'], { stdio: 'pipe' }).toString();
               npmInfo = JSON.parse(infoStr);
             } catch {
               // Not found

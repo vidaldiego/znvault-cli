@@ -1,6 +1,7 @@
 import pg from 'pg';
 import bcryptjs from 'bcryptjs';
 import { getLocalConfig } from './local.js';
+import { REDIS_PING_TIMEOUT_MS, REDIS_SENTINEL_TIMEOUT_MS } from './constants.js';
 import type {
   HealthResponse,
   ClusterStatus,
@@ -183,11 +184,10 @@ export class LocalDBClient {
       // Check for simple Redis URL
       if (process.env.REDIS_URL) {
         try {
-          const { execSync } = await import('node:child_process');
-          const result = execSync(`redis-cli -u "${process.env.REDIS_URL}" PING 2>/dev/null`, {
-            encoding: 'utf-8',
-            timeout: 5000,
-          });
+          const result = await this.execAsync(
+            `redis-cli -u "${process.env.REDIS_URL}" PING 2>/dev/null`,
+            REDIS_PING_TIMEOUT_MS
+          );
           return { status: result.trim() === 'PONG' ? 'ok' : 'error' };
         } catch {
           return { status: 'error' };
@@ -196,29 +196,32 @@ export class LocalDBClient {
       return { status: 'unavailable' };
     }
 
-    // Check Redis Sentinel
+    // Check Redis Sentinel nodes in parallel
     try {
-      const { execSync } = await import('node:child_process');
       const nodes = sentinelNodes.split(',');
+
+      // Check all sentinel nodes in parallel
+      const nodeResults = await Promise.allSettled(
+        nodes.map(async (node) => {
+          const [host, port] = node.split(':');
+          const result = await this.execAsync(
+            `redis-cli -h ${host} -p ${port} SENTINEL get-master-addr-by-name ${sentinelMaster} 2>/dev/null`,
+            REDIS_SENTINEL_TIMEOUT_MS
+          );
+          return result.trim();
+        })
+      );
+
       let healthyNodes = 0;
       let masterHost = '';
 
-      for (const node of nodes) {
-        const [host, port] = node.split(':');
-        try {
-          const result = execSync(
-            `redis-cli -h ${host} -p ${port} SENTINEL get-master-addr-by-name ${sentinelMaster} 2>/dev/null`,
-            { encoding: 'utf-8', timeout: 3000 }
-          );
-          if (result.trim()) {
-            healthyNodes++;
-            if (!masterHost) {
-              const lines = result.trim().split('\n');
-              masterHost = lines[0] ?? '';
-            }
+      for (const result of nodeResults) {
+        if (result.status === 'fulfilled' && result.value) {
+          healthyNodes++;
+          if (!masterHost) {
+            const lines = result.value.split('\n');
+            masterHost = lines[0] ?? '';
           }
-        } catch {
-          // Node not reachable
         }
       }
 
@@ -232,6 +235,21 @@ export class LocalDBClient {
     }
   }
 
+  /**
+   * Execute a command asynchronously with timeout
+   */
+  private async execAsync(command: string, timeoutMs: number): Promise<string> {
+    const { exec } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execPromise = promisify(exec);
+
+    const { stdout } = await execPromise(command, {
+      encoding: 'utf-8',
+      timeout: timeoutMs,
+    });
+    return stdout;
+  }
+
   private async getClusterInfoFromRedis(): Promise<{ nodeCount: number; leaderNodeId: string | null }> {
     const sentinelNodes = process.env.REDIS_SENTINEL_NODES;
     const sentinelMaster = process.env.REDIS_SENTINEL_MASTER ?? 'znvault-master';
@@ -241,33 +259,35 @@ export class LocalDBClient {
     }
 
     try {
-      const { execSync } = await import('node:child_process');
       const nodes = sentinelNodes.split(',');
       const [host, port] = nodes[0].split(':');
 
       // Get master info
-      const masterResult = execSync(
+      const masterResult = await this.execAsync(
         `redis-cli -h ${host} -p ${port} SENTINEL get-master-addr-by-name ${sentinelMaster} 2>/dev/null`,
-        { encoding: 'utf-8', timeout: 3000 }
+        3000
       );
       const masterHost = masterResult.trim().split('\n')[0];
 
       // Try to get cluster nodes from Redis
       const masterPort = masterResult.trim().split('\n')[1] ?? '6379';
-      const nodesResult = execSync(
-        `redis-cli -h ${masterHost} -p ${masterPort} HGETALL 'zn-vault:nodes' 2>/dev/null`,
-        { encoding: 'utf-8', timeout: 3000 }
-      );
+
+      // Fetch nodes and leader in parallel
+      const [nodesResult, leaderResult] = await Promise.all([
+        this.execAsync(
+          `redis-cli -h ${masterHost} -p ${masterPort} HGETALL 'zn-vault:nodes' 2>/dev/null`,
+          3000
+        ),
+        this.execAsync(
+          `redis-cli -h ${masterHost} -p ${masterPort} GET 'zn-vault:leader' 2>/dev/null`,
+          3000
+        ),
+      ]);
 
       // Parse node data - HGETALL returns key1, value1, key2, value2, etc.
       const lines = nodesResult.trim().split('\n').filter(l => l);
       const nodeCount = Math.max(Math.floor(lines.length / 2), 1);
 
-      // Get leader
-      const leaderResult = execSync(
-        `redis-cli -h ${masterHost} -p ${masterPort} GET 'zn-vault:leader' 2>/dev/null`,
-        { encoding: 'utf-8', timeout: 3000 }
-      );
       const leaderNodeId = leaderResult.trim() || null;
 
       return { nodeCount, leaderNodeId };
@@ -328,11 +348,28 @@ export class LocalDBClient {
   // ============ Tenants ============
 
   async listTenants(options?: { status?: string; withUsage?: boolean }): Promise<TenantWithUsage[]> {
-    let sql = `
-      SELECT t.id, t.name, t.status, t.max_secrets, t.max_kms_keys, t.contact_email,
-             t.created_at, t.updated_at
-      FROM tenants t
-    `;
+    // Use single query with subqueries to avoid N+1 when withUsage is true
+    const withUsage = options?.withUsage ?? false;
+
+    let sql: string;
+    if (withUsage) {
+      // Single query with aggregated counts using subqueries
+      sql = `
+        SELECT t.id, t.name, t.status, t.max_secrets, t.max_kms_keys, t.contact_email,
+               t.created_at, t.updated_at,
+               (SELECT COUNT(*) FROM secrets WHERE tenant = t.id) as secrets_count,
+               (SELECT COUNT(*) FROM kms_keys WHERE tenant_id = t.id) as kms_keys_count,
+               (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as users_count,
+               (SELECT COUNT(*) FROM api_keys WHERE tenant_id = t.id) as api_keys_count
+        FROM tenants t
+      `;
+    } else {
+      sql = `
+        SELECT t.id, t.name, t.status, t.max_secrets, t.max_kms_keys, t.contact_email,
+               t.created_at, t.updated_at
+        FROM tenants t
+      `;
+    }
 
     const params: unknown[] = [];
 
@@ -343,7 +380,7 @@ export class LocalDBClient {
 
     sql += ' ORDER BY t.name';
 
-    const rows = await this.query<{
+    interface TenantRow {
       id: string;
       name: string;
       status: string;
@@ -352,27 +389,38 @@ export class LocalDBClient {
       contact_email: string | null;
       created_at: Date;
       updated_at: Date;
-    }>(sql, params);
-
-    const tenants: TenantWithUsage[] = rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      status: r.status as 'active' | 'suspended' | 'archived',
-      maxSecrets: r.max_secrets ?? undefined,
-      maxKmsKeys: r.max_kms_keys ?? undefined,
-      contactEmail: r.contact_email ?? undefined,
-      createdAt: r.created_at.toISOString(),
-      updatedAt: r.updated_at.toISOString(),
-    }));
-
-    if (options?.withUsage) {
-      for (const tenant of tenants) {
-        const usage = await this.getTenantUsage(tenant.id);
-        tenant.usage = usage;
-      }
+      secrets_count?: string;
+      kms_keys_count?: string;
+      users_count?: string;
+      api_keys_count?: string;
     }
 
-    return tenants;
+    const rows = await this.query<TenantRow>(sql, params);
+
+    return rows.map(r => {
+      const tenant: TenantWithUsage = {
+        id: r.id,
+        name: r.name,
+        status: r.status as 'active' | 'suspended' | 'archived',
+        maxSecrets: r.max_secrets ?? undefined,
+        maxKmsKeys: r.max_kms_keys ?? undefined,
+        contactEmail: r.contact_email ?? undefined,
+        createdAt: r.created_at.toISOString(),
+        updatedAt: r.updated_at.toISOString(),
+      };
+
+      if (withUsage) {
+        tenant.usage = {
+          secretsCount: parseInt(r.secrets_count ?? '0', 10),
+          kmsKeysCount: parseInt(r.kms_keys_count ?? '0', 10),
+          storageUsedMb: 0, // Would need additional calculation
+          usersCount: parseInt(r.users_count ?? '0', 10),
+          apiKeysCount: parseInt(r.api_keys_count ?? '0', 10),
+        };
+      }
+
+      return tenant;
+    });
   }
 
   async getTenant(id: string, withUsage?: boolean): Promise<TenantWithUsage | null> {

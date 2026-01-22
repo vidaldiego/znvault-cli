@@ -3,7 +3,7 @@
 import { type Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,23 +110,26 @@ function execSecureEnclaveHelper<T>(args: string[]): T {
 
   try {
     const env = useSoftwareKey ? { ...process.env, ZNVAULT_USE_SOFTWARE_KEYS: '1' } : process.env;
-    const result = execSync(`"${helperPath}" ${args.map(a => `"${a}"`).join(' ')}`, {
+    // Use execFileSync to avoid shell injection - args passed as array, not shell string
+    const result = execFileSync(helperPath, args, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
     });
     return JSON.parse(result.trim()) as T;
   } catch (err: unknown) {
-    const error = err as { stderr?: string; stdout?: string; message?: string };
+    const error = err as { stderr?: Buffer | string; stdout?: Buffer | string; message?: string };
     // Try to parse JSON error from stdout
-    if (error.stdout) {
+    const stdout = error.stdout?.toString();
+    if (stdout) {
       try {
-        return JSON.parse(error.stdout.trim()) as T;
+        return JSON.parse(stdout.trim()) as T;
       } catch {
         // Fall through
       }
     }
-    throw new Error(error.stderr ?? error.message ?? 'Unknown error');
+    const stderr = error.stderr?.toString();
+    throw new Error(stderr ?? error.message ?? 'Unknown error');
   }
 }
 

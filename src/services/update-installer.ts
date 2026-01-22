@@ -50,12 +50,13 @@ export class UpdateInstaller {
 
       https.get(url, { rejectUnauthorized: true }, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) {
-          // Handle redirect
+          // Handle redirect - properly close file before cleanup
           const redirectUrl = res.headers.location;
           if (redirectUrl) {
-            file.close();
-            fs.unlinkSync(destPath);
-            this.download(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
+            file.close(() => {
+              try { fs.unlinkSync(destPath); } catch { /* ignore */ }
+              this.download(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
+            });
             return;
           }
         }
@@ -108,30 +109,70 @@ export class UpdateInstaller {
   }
 
   /**
-   * Find the binary in extracted directory
+   * Maximum directory depth for binary search to prevent stack overflow
    */
-  private findBinary(extractDir: string): string | null {
-    // Check common locations
-    const candidates = [
-      path.join(extractDir, 'znvault'),
-      path.join(extractDir, 'bin', 'znvault'),
-      path.join(extractDir, 'vault-agent'),
-      path.join(extractDir, 'bin', 'vault-agent'),
-    ];
+  private static readonly MAX_SEARCH_DEPTH = 5;
 
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        return candidate;
+  /**
+   * Find the binary in extracted directory
+   * @param extractDir - Directory to search in
+   * @param maxDepth - Maximum recursion depth (default: 5)
+   * @param visited - Set of already visited real paths to prevent symlink cycles
+   */
+  private findBinary(
+    extractDir: string,
+    maxDepth: number = UpdateInstaller.MAX_SEARCH_DEPTH,
+    visited: Set<string> = new Set<string>()
+  ): string | null {
+    // Prevent stack overflow from deep recursion
+    if (maxDepth <= 0) return null;
+
+    // Resolve real path and check for symlink cycles
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync(extractDir);
+    } catch {
+      return null; // Invalid path
+    }
+
+    if (visited.has(realPath)) return null; // Already visited (symlink cycle)
+    visited.add(realPath);
+
+    // Check common locations (only at first level)
+    if (maxDepth === UpdateInstaller.MAX_SEARCH_DEPTH) {
+      const candidates = [
+        path.join(extractDir, 'znvault'),
+        path.join(extractDir, 'bin', 'znvault'),
+        path.join(extractDir, 'vault-agent'),
+        path.join(extractDir, 'bin', 'vault-agent'),
+      ];
+
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
       }
     }
 
-    // Search recursively
-    const files = fs.readdirSync(extractDir);
+    // Search recursively with depth limit
+    let files: string[];
+    try {
+      files = fs.readdirSync(extractDir);
+    } catch {
+      return null; // Cannot read directory
+    }
+
     for (const file of files) {
       const filePath = path.join(extractDir, file);
-      const stat = fs.statSync(filePath);
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(filePath);
+      } catch {
+        continue; // Skip inaccessible files
+      }
+
       if (stat.isDirectory()) {
-        const found = this.findBinary(filePath);
+        const found = this.findBinary(filePath, maxDepth - 1, visited);
         if (found) return found;
       } else if (file === 'znvault' || file === 'vault-agent') {
         return filePath;

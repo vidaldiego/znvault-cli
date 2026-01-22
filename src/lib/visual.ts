@@ -345,3 +345,112 @@ export function helpHint(): string {
   }
   return chalk.dim('\nRun ') + chalk.cyan('znvault --help') + chalk.dim(' for available commands\n');
 }
+
+/**
+ * Status information for CLI startup display
+ */
+export interface CLIStatusInfo {
+  version: string;
+  profile: string;
+  vaultUrl: string;
+  authMethod: 'jwt' | 'apikey' | 'none';
+  username?: string;
+  apiKeyName?: string;
+  apiKeyPrefix?: string;
+  isConnected?: boolean;
+  serverVersion?: string;
+}
+
+/**
+ * Create an enhanced CLI status display shown on startup
+ */
+export function cliStatusDisplay(info: CLIStatusInfo): string {
+  if (isPlainMode()) {
+    let result = '\n';
+    result += `Profile:     ${info.profile}\n`;
+    result += `Vault URL:   ${info.vaultUrl}\n`;
+
+    if (info.authMethod === 'jwt' && info.username) {
+      result += `Identity:    ${info.username} (JWT)\n`;
+    } else if (info.authMethod === 'apikey') {
+      const keyInfo = info.apiKeyName ?? info.apiKeyPrefix ?? 'configured';
+      result += `Identity:    API Key (${keyInfo})\n`;
+    } else {
+      result += `Identity:    Not authenticated\n`;
+    }
+
+    if (info.isConnected !== undefined) {
+      result += `Connection:  ${info.isConnected ? 'Connected' : 'Disconnected'}`;
+      if (info.isConnected && info.serverVersion) {
+        result += ` (server v${info.serverVersion})`;
+      }
+      result += '\n';
+    }
+
+    return result;
+  }
+
+  // Rich mode
+  const lines: string[] = [];
+
+  // Profile line
+  lines.push(`${chalk.dim('Profile')}      ${chalk.cyan(info.profile)}`);
+
+  // Vault URL
+  lines.push(`${chalk.dim('Vault URL')}    ${chalk.white(info.vaultUrl)}`);
+
+  // Identity
+  if (info.authMethod === 'jwt' && info.username) {
+    lines.push(`${chalk.dim('Identity')}     ${chalk.green('●')} ${chalk.white(info.username)} ${chalk.dim('(JWT)')}`);
+  } else if (info.authMethod === 'apikey') {
+    const keyInfo = info.apiKeyName ?? info.apiKeyPrefix ?? 'configured';
+    lines.push(`${chalk.dim('Identity')}     ${chalk.green('●')} ${chalk.white('API Key')} ${chalk.dim(`(${keyInfo})`)}`);
+  } else {
+    lines.push(`${chalk.dim('Identity')}     ${chalk.yellow('○')} ${chalk.dim('Not authenticated')}`);
+  }
+
+  // Connection status (if provided)
+  if (info.isConnected !== undefined) {
+    if (info.isConnected) {
+      let connText = `${chalk.green('●')} Connected`;
+      if (info.serverVersion) {
+        connText += chalk.dim(` (server v${info.serverVersion})`);
+      }
+      lines.push(`${chalk.dim('Connection')}   ${connText}`);
+    } else {
+      lines.push(`${chalk.dim('Connection')}   ${chalk.red('●')} ${chalk.red('Disconnected')}`);
+    }
+  }
+
+  return box(lines.join('\n'), {
+    title: 'ZnVault CLI Status',
+    borderColor: 'cyan',
+    padding: 1,
+  });
+}
+
+/**
+ * Quick commands section for startup display
+ */
+export function quickCommands(): string {
+  const commands = [
+    { cmd: 'znvault login', desc: 'Authenticate with vault' },
+    { cmd: 'znvault health', desc: 'Check vault health' },
+    { cmd: 'znvault secret list', desc: 'List secrets' },
+    { cmd: 'znvault profile list', desc: 'List profiles' },
+  ];
+
+  if (isPlainMode()) {
+    let result = 'Quick Commands:\n';
+    for (const { cmd, desc } of commands) {
+      result += `  ${cmd.padEnd(25)} ${desc}\n`;
+    }
+    return result;
+  }
+
+  const lines = commands.map(({ cmd, desc }) =>
+    `  ${chalk.cyan(cmd.padEnd(25))} ${chalk.dim(desc)}`
+  );
+
+  return chalk.dim('Quick Commands:\n') + lines.join('\n');
+}
