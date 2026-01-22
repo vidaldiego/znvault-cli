@@ -200,6 +200,25 @@ interface PluginUpdateResponse {
   timestamp: string;
 }
 
+// Agent version check response
+interface AgentVersionResponse {
+  current: string;
+  latest: string;
+  updateAvailable: boolean;
+  autoUpdateEnabled: boolean;
+  timestamp: string;
+}
+
+// Agent update response
+interface AgentUpdateResponse {
+  success: boolean;
+  previousVersion: string;
+  newVersion: string;
+  willRestart: boolean;
+  message: string;
+  timestamp: string;
+}
+
 /**
  * Parse host:port string (defaults to port 9100)
  */
@@ -278,6 +297,42 @@ async function triggerPluginUpdate(host: string, port: number): Promise<PluginUp
   }
 
   return response.json() as Promise<PluginUpdateResponse>;
+}
+
+/**
+ * Fetch agent version info via direct HTTP
+ */
+async function fetchAgentVersion(host: string, port: number): Promise<AgentVersionResponse> {
+  const url = `http://${host}:${port}/agent/version`;
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+  }
+
+  return response.json() as Promise<AgentVersionResponse>;
+}
+
+/**
+ * Trigger agent self-update via direct HTTP
+ */
+async function triggerAgentUpdate(host: string, port: number): Promise<AgentUpdateResponse> {
+  const url = `http://${host}:${port}/agent/update`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(120000), // 2 minutes for agent update
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+  }
+
+  return response.json() as Promise<AgentUpdateResponse>;
 }
 
 interface AgentDetailResponse {
@@ -994,6 +1049,157 @@ export function registerAgentCommands(program: Command): void {
         }
       } catch (err) {
         updateSpinner.fail('Failed to update plugins');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Check agent version
+  agent
+    .command('version <hostPort>')
+    .description('Check agent version and available updates (format: host:port or host)')
+    .option('--json', 'Output as JSON')
+    .action(async (hostPort: string, options: { json?: boolean }) => {
+      const { host, port } = parseHostPort(hostPort);
+      const spinner = ora(`Checking agent version at ${host}:${port}...`).start();
+
+      try {
+        const response = await fetchAgentVersion(host, port);
+        spinner.stop();
+
+        if (options.json) {
+          output.json(response);
+          return;
+        }
+
+        console.log();
+        console.log(`Agent Version: ${host}:${port}`);
+        console.log('═'.repeat(40));
+        console.log(`  Current:     v${response.current}`);
+        console.log(`  Latest:      v${response.latest}`);
+        console.log(`  Auto-update: ${response.autoUpdateEnabled ? 'Enabled' : 'Disabled'}`);
+        console.log();
+
+        if (response.updateAvailable) {
+          console.log(`\x1b[33m↑ Update available: ${response.current} → ${response.latest}\x1b[0m`);
+          console.log(`Run: znvault agent update ${hostPort}`);
+        } else {
+          console.log('\x1b[32m✓\x1b[0m Agent is up to date');
+        }
+        console.log();
+      } catch (err) {
+        spinner.fail(`Failed to check agent version at ${host}:${port}`);
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Update agent
+  agent
+    .command('update <hostPort>')
+    .description('Trigger agent self-update (format: host:port or host)')
+    .option('-y, --yes', 'Skip confirmation prompt')
+    .option('--json', 'Output as JSON')
+    .action(async (hostPort: string, options: { yes?: boolean; json?: boolean }) => {
+      const { host, port } = parseHostPort(hostPort);
+
+      // First check what version is available
+      const checkSpinner = ora(`Checking agent version at ${host}:${port}...`).start();
+      let versionInfo: AgentVersionResponse;
+
+      try {
+        versionInfo = await fetchAgentVersion(host, port);
+        checkSpinner.stop();
+      } catch (err) {
+        checkSpinner.fail(`Failed to check agent version at ${host}:${port}`);
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+
+      if (!versionInfo.updateAvailable) {
+        if (options.json) {
+          output.json({ updated: false, message: 'Agent is already at latest version', current: versionInfo.current });
+        } else {
+          console.log(`\x1b[32m✓\x1b[0m Agent is already at latest version (v${versionInfo.current})`);
+        }
+        return;
+      }
+
+      if (!versionInfo.autoUpdateEnabled) {
+        if (options.json) {
+          output.json({ updated: false, message: 'Auto-update is disabled on this agent', current: versionInfo.current });
+        } else {
+          console.log(`\x1b[33m⚠\x1b[0m Auto-update is disabled on this agent`);
+          console.log('  Enable with AUTO_UPDATE=true environment variable');
+        }
+        return;
+      }
+
+      // Show what will be updated
+      if (!options.json) {
+        console.log();
+        console.log('Agent update:');
+        console.log(`  ${versionInfo.current} → \x1b[32m${versionInfo.latest}\x1b[0m`);
+        console.log();
+      }
+
+      // Confirm
+      if (!options.yes && !options.json) {
+        const readline = await import('readline');
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>(resolve => {
+          rl.question('Proceed with update? Agent will restart. [y/N] ', resolve);
+        });
+        rl.close();
+
+        if (answer.toLowerCase() !== 'y') {
+          console.log('Cancelled');
+          return;
+        }
+      }
+
+      // Trigger update
+      const updateSpinner = ora('Updating agent...').start();
+
+      try {
+        const response = await triggerAgentUpdate(host, port);
+        updateSpinner.stop();
+
+        if (options.json) {
+          output.json(response);
+          return;
+        }
+
+        if (!response.success) {
+          console.log(`\x1b[31m✗\x1b[0m Update failed: ${response.message}`);
+          process.exit(1);
+        }
+
+        console.log(`\x1b[32m✓\x1b[0m ${response.message}`);
+        console.log(`  ${response.previousVersion} → ${response.newVersion}`);
+
+        if (response.willRestart) {
+          console.log();
+          console.log('\x1b[33mAgent is restarting...\x1b[0m');
+
+          // Wait for restart
+          const RESTART_WAIT = 25;
+          for (let i = RESTART_WAIT; i > 0; i--) {
+            process.stdout.write(`\rWaiting for restart... ${i}s  `);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          process.stdout.write('\r\x1b[K');
+
+          // Verify agent is back
+          try {
+            const health = await fetchAgentHealth(host, port);
+            console.log(`\x1b[32m✓\x1b[0m Agent back online (v${health.version})`);
+          } catch {
+            console.log('\x1b[33m⚠\x1b[0m Agent not responding yet. It may still be restarting.');
+          }
+        }
+      } catch (err) {
+        updateSpinner.fail('Failed to update agent');
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
