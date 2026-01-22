@@ -341,6 +341,14 @@ async function triggerAgentUpdate(host: string, port: number): Promise<AgentUpda
  * Returns the selected agent's host:port string
  */
 async function selectAgentInteractively(): Promise<{ host: string; port: number } | null> {
+  // Check if we have an interactive terminal
+  if (!process.stdin.isTTY) {
+    output.error('Interactive selection requires a TTY. Specify host:port directly.');
+    console.log('Usage: znvault agent ping <host:port>');
+    console.log('Example: znvault agent ping 172.16.220.55:9100');
+    return null;
+  }
+
   const spinner = ora('Fetching agents from vault...').start();
 
   try {
@@ -357,8 +365,8 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
       return null;
     }
 
-    // Build choices - include all agents but mark those without IP
-    const choices: Array<{ name: string; value: string; short: string; disabled?: string }> = [];
+    // Build choices - only include agents with IP addresses
+    const choices: Array<{ name: string; value: string }> = [];
 
     // Sort: online first, then by hostname
     const sortedAgents = [...response.agents].sort((a, b) => {
@@ -367,36 +375,26 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
     });
 
     for (const a of sortedAgents) {
-      const statusIcon = a.status === 'online' ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
-      const version = a.version ? `v${a.version}` : 'unknown';
+      if (!a.lastIpAddress) continue;
 
-      if (a.lastIpAddress) {
-        // Strip ::ffff: prefix from IPv6-mapped IPv4 addresses
-        const ip = a.lastIpAddress.replace(/^::ffff:/i, '');
-        choices.push({
-          name: `${statusIcon} ${a.hostname} (${ip}) - ${version}`,
-          value: ip,
-          short: a.hostname,
-        });
-      } else {
-        choices.push({
-          name: `${statusIcon} ${a.hostname} (no IP) - ${version}`,
-          value: '',
-          short: a.hostname,
-          disabled: 'no IP address',
-        });
-      }
+      const statusIcon = a.status === 'online' ? '●' : '○';
+      const version = a.version ? `v${a.version}` : 'unknown';
+      // Strip ::ffff: prefix from IPv6-mapped IPv4 addresses
+      const ip = a.lastIpAddress.replace(/^::ffff:/i, '');
+
+      choices.push({
+        name: `${statusIcon} ${a.hostname} (${ip}) - ${version}`,
+        value: ip,
+      });
     }
 
     // Add manual entry option
     choices.push({
-      name: '\x1b[36m→ Enter IP manually\x1b[0m',
+      name: '→ Enter IP manually',
       value: '__manual__',
-      short: 'manual',
     });
 
-    // Filter out disabled choices for the actual prompt (inquirer shows them but they can cause issues)
-    const enabledChoices = choices.filter(c => !c.disabled);
+    const enabledChoices = choices;
 
     if (enabledChoices.length === 0) {
       console.log('No agents with reachable IP addresses');
