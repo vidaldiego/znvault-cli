@@ -365,8 +365,8 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
       return null;
     }
 
-    // Build choices - only include agents with IP addresses
-    const choices: Array<{ name: string; value: string }> = [];
+    // Build list of agents with IP addresses
+    const agentList: Array<{ hostname: string; ip: string; status: string; version: string }> = [];
 
     // Sort: online first, then by hostname
     const sortedAgents = [...response.agents].sort((a, b) => {
@@ -376,50 +376,52 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
 
     for (const a of sortedAgents) {
       if (!a.lastIpAddress) continue;
-
-      const statusIcon = a.status === 'online' ? '●' : '○';
-      const version = a.version ? `v${a.version}` : 'unknown';
       // Strip ::ffff: prefix from IPv6-mapped IPv4 addresses
       const ip = a.lastIpAddress.replace(/^::ffff:/i, '');
-
-      choices.push({
-        name: `${statusIcon} ${a.hostname} (${ip}) - ${version}`,
-        value: ip,
+      agentList.push({
+        hostname: a.hostname,
+        ip,
+        status: a.status,
+        version: a.version ? `v${a.version}` : 'unknown',
       });
     }
 
-    // Add manual entry option
-    choices.push({
-      name: '→ Enter IP manually',
-      value: '__manual__',
-    });
-
-    const enabledChoices = choices;
-
-    if (enabledChoices.length === 0) {
+    if (agentList.length === 0) {
       console.log('No agents with reachable IP addresses');
       console.log('Use: znvault agent ping <host:port>');
       return null;
     }
 
-    const { selectedIp } = await inquirer.prompt<{ selectedIp: string }>([
+    // Display numbered list
+    console.log();
+    console.log('Available agents:');
+    agentList.forEach((a, i) => {
+      const statusIcon = a.status === 'online' ? '●' : '○';
+      console.log(`  ${i + 1}) ${statusIcon} ${a.hostname} (${a.ip}) - ${a.version}`);
+    });
+    console.log(`  0) Enter IP manually`);
+    console.log();
+
+    // Prompt for selection
+    const { selection } = await inquirer.prompt<{ selection: string }>([
       {
-        type: 'list',
-        name: 'selectedIp',
-        message: 'Select an agent:',
-        choices: enabledChoices,
-        pageSize: 15,
+        type: 'input',
+        name: 'selection',
+        message: `Select agent (1-${agentList.length}, or 0 for manual):`,
+        validate: (input: string) => {
+          const num = parseInt(input.trim(), 10);
+          if (isNaN(num) || num < 0 || num > agentList.length) {
+            return `Enter a number between 0 and ${agentList.length}`;
+          }
+          return true;
+        },
       },
     ]);
 
-    // Validate selection
-    if (!selectedIp || selectedIp === '') {
-      output.error('No agent selected');
-      return null;
-    }
+    const selectedNum = parseInt(selection.trim(), 10);
 
     // Handle manual entry
-    if (selectedIp === '__manual__') {
+    if (selectedNum === 0) {
       const { manualHost } = await inquirer.prompt<{ manualHost: string }>([
         {
           type: 'input',
@@ -434,7 +436,8 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
       return parseHostPort(manualHost.trim());
     }
 
-    return { host: selectedIp, port: 9100 };
+    const selected = agentList[selectedNum - 1]!;
+    return { host: selected.ip, port: 9100 };
   } catch (err) {
     spinner.stop();
     // If not authenticated or can't reach vault, return null
