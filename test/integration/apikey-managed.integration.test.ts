@@ -65,8 +65,8 @@ interface ManagedKeyResponse {
 }
 
 interface ManagedKeyListResponse {
-  keys: ManagedKeyResponse[];
-  total: number;
+  items: ManagedKeyResponse[];
+  pagination: { total: number; hasMore: boolean };
 }
 
 interface ManagedKeyBindResponse {
@@ -306,12 +306,12 @@ describe.skipIf(!shouldRunManagedTests)('Managed API Key Commands Integration', 
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(Array.isArray(result.data?.keys)).toBe(true);
-      expect(result.data?.keys.length).toBeGreaterThanOrEqual(2);
+      expect(Array.isArray(result.data?.items)).toBe(true);
+      expect(result.data?.items.length).toBeGreaterThanOrEqual(2);
 
       // Find our test keys
-      const key1 = result.data?.keys.find(k => k.name === listTestKey1);
-      const key2 = result.data?.keys.find(k => k.name === listTestKey2);
+      const key1 = result.data?.items.find(k => k.name === listTestKey1);
+      const key2 = result.data?.items.find(k => k.name === listTestKey2);
 
       expect(key1).toBeDefined();
       expect(key1?.rotation_mode).toBe('scheduled');
@@ -319,7 +319,7 @@ describe.skipIf(!shouldRunManagedTests)('Managed API Key Commands Integration', 
       expect(key2).toBeDefined();
       expect(key2?.rotation_mode).toBe('on-bind');
 
-      console.log(`✓ Listed ${result.data?.keys.length} managed keys as JSON`);
+      console.log(`✓ Listed ${result.data?.items.length} managed keys as JSON`);
     });
   });
 

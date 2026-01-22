@@ -283,7 +283,9 @@ describe.skipIf(!shouldRunIntegration)('KMS Commands Integration', () => {
       // Disable it
       const disableResult = TestConfig.exec('kms', 'disable', keyId);
       expect(disableResult.success).toBe(true);
-      expect(disableResult.stdout).toContain('disabled');
+      // The spinner output goes to stderr
+      const disableCombined = (disableResult.stdout + disableResult.stderr).toLowerCase();
+      expect(disableCombined).toContain('disabled');
 
       // Verify it's disabled - API returns uppercase states
       const getResult = TestConfig.execJson<{ keyState: string }>('kms', 'get', keyId);
@@ -292,7 +294,9 @@ describe.skipIf(!shouldRunIntegration)('KMS Commands Integration', () => {
       // Enable it again
       const enableResult = TestConfig.exec('kms', 'enable', keyId);
       expect(enableResult.success).toBe(true);
-      expect(enableResult.stdout.toLowerCase()).toContain('enabled');
+      // The spinner output goes to stderr
+      const enableCombined = (enableResult.stdout + enableResult.stderr).toLowerCase();
+      expect(enableCombined).toContain('enabled');
 
       // Verify it's enabled - API returns uppercase states
       const getResult2 = TestConfig.execJson<{ keyState: string }>('kms', 'get', keyId);

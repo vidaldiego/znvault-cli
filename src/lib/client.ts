@@ -359,19 +359,21 @@ class VaultClient {
     maxKmsKeys?: number;
     contactEmail?: string;
   }): Promise<Tenant> {
-    return this.request<Tenant>({
+    const response = await this.request<{ success: boolean; data: Tenant }>({
       method: 'POST',
       path: '/v1/tenants',
       body: data,
     });
+    return response.data;
   }
 
   async getTenant(id: string, withUsage?: boolean): Promise<TenantWithUsage> {
-    return this.request<TenantWithUsage>({
+    const response = await this.request<{ success: boolean; data: TenantWithUsage }>({
       method: 'GET',
       path: `/v1/tenants/${id}`,
       query: { withUsage },
     });
+    return response.data;
   }
 
   async updateTenant(id: string, data: {
@@ -381,11 +383,12 @@ class VaultClient {
     contactEmail?: string;
     status?: 'active' | 'suspended';
   }): Promise<Tenant> {
-    return this.request<Tenant>({
+    const response = await this.request<{ success: boolean; data: Tenant }>({
       method: 'PATCH',
       path: `/v1/tenants/${id}`,
       body: data,
     });
+    return response.data;
   }
 
   async deleteTenant(id: string): Promise<void> {

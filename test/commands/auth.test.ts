@@ -10,10 +10,26 @@ vi.mock('ora', () => ({
   }),
 }));
 
+// Mock React and Ink for ProfileManager
+vi.mock('react', () => ({
+  default: { createElement: vi.fn() },
+}));
+
+vi.mock('ink', () => ({
+  render: vi.fn(() => ({
+    waitUntilExit: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+vi.mock('../../src/tui/ProfileManager.js', () => ({
+  ProfileManager: vi.fn(),
+}));
+
 vi.mock('../../src/lib/prompts.js', () => ({
   promptUsername: vi.fn().mockResolvedValue('admin'),
   promptPassword: vi.fn().mockResolvedValue('password'),
   promptTotp: vi.fn().mockResolvedValue(undefined),
+  promptSelect: vi.fn().mockResolvedValue('default'),
 }));
 
 vi.mock('../../src/lib/client.js', () => ({
@@ -48,12 +64,20 @@ vi.mock('../../src/lib/config.js', () => ({
   getStoredApiKey: vi.fn().mockReturnValue(null),
   getActiveProfileName: vi.fn().mockReturnValue('default'),
   saveCredentials: vi.fn(),
+  listProfiles: vi.fn().mockReturnValue([{ name: 'default', isActive: true }]),
+  createProfile: vi.fn(),
+  deleteProfile: vi.fn(),
+  switchProfile: vi.fn(),
+  renameProfile: vi.fn(),
+  getProfile: vi.fn().mockReturnValue({ name: 'default' }),
+  getConfig: vi.fn().mockReturnValue({ url: 'https://localhost:8443', insecure: false, timeout: 30000 }),
 }));
 
 vi.mock('../../src/lib/output.js', () => ({
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
+  warn: vi.fn(),
   keyValue: vi.fn(),
   json: vi.fn(),
 }));

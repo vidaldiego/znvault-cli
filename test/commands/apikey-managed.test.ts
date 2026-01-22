@@ -60,8 +60,8 @@ vi.mock('../../src/lib/client.js', () => ({
       message: 'Managed API key created',
     }),
     listManagedApiKeys: vi.fn().mockResolvedValue({
-      keys: [mockManagedKey],
-      total: 1,
+      items: [mockManagedKey],
+      pagination: { total: 1, hasMore: false },
     }),
     getManagedApiKey: vi.fn().mockResolvedValue(mockManagedKey),
     bindManagedApiKey: vi.fn().mockResolvedValue(mockBindResponse),
@@ -135,8 +135,8 @@ describe('apikey managed commands', () => {
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'list', '--json']);
 
       expect(json).toHaveBeenCalledWith({
-        keys: [mockManagedKey],
-        total: 1,
+        items: [mockManagedKey],
+        pagination: { total: 1, hasMore: false },
       });
     });
   });

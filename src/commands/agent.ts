@@ -681,11 +681,13 @@ export function registerAgentCommands(program: Command): void {
     .option('-e, --expires <duration>', 'Token expiration (e.g., "1h", "24h")', '1h')
     .option('-d, --description <text>', 'Optional description for audit trail')
     .option('--tenant <tenantId>', 'Target tenant ID (superadmin only)')
+    .option('--json', 'Output as JSON')
     .action(async (options: {
       managedKey: string;
       expires: string;
       description?: string;
       tenant?: string;
+      json?: boolean;
     }) => {
       const spinner = ora('Creating registration token...').start();
 
@@ -709,11 +711,18 @@ export function registerAgentCommands(program: Command): void {
         );
 
         spinner.succeed('Registration token created');
+
+        if (options.json) {
+          output.json(response);
+          return;
+        }
+
         console.log();
         console.log('Token (save this - shown only once!):');
         console.log(`  ${response.token}`);
         console.log();
         console.log('Details:');
+        console.log(`  ID: ${response.id}`);
         console.log(`  Prefix: ${response.prefix}`);
         console.log(`  Managed Key: ${response.managedKeyName}`);
         console.log(`  Tenant: ${response.tenantId}`);
