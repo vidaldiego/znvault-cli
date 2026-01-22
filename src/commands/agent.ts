@@ -159,6 +159,127 @@ interface ReprovisionStatusResponse {
   degradedReason: string | null;
 }
 
+// Direct agent communication types
+interface AgentHealthResponse {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  version: string;
+  uptime: number;
+  plugins?: Array<{
+    name: string;
+    version: string;
+    healthy: boolean;
+  }>;
+}
+
+interface PluginVersionInfo {
+  package: string;
+  current: string;
+  latest: string;
+  updateAvailable: boolean;
+}
+
+interface PluginVersionsResponse {
+  hasUpdates: boolean;
+  versions: PluginVersionInfo[];
+  timestamp: string;
+}
+
+interface PluginUpdateResult {
+  package: string;
+  previousVersion: string;
+  newVersion: string;
+  success: boolean;
+  error?: string;
+}
+
+interface PluginUpdateResponse {
+  updated: number;
+  results: PluginUpdateResult[];
+  willRestart: boolean;
+  message: string;
+  timestamp: string;
+}
+
+/**
+ * Parse host:port string (defaults to port 9100)
+ */
+function parseHostPort(hostPort: string): { host: string; port: number } {
+  if (hostPort.includes(':')) {
+    const [host, portStr] = hostPort.split(':');
+    const port = parseInt(portStr!, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid port: ${portStr}`);
+    }
+    return { host: host!, port };
+  }
+  return { host: hostPort, port: 9100 };
+}
+
+/**
+ * Format uptime seconds to human-readable string
+ */
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+/**
+ * Fetch agent health via direct HTTP
+ */
+async function fetchAgentHealth(host: string, port: number): Promise<AgentHealthResponse> {
+  const url = `http://${host}:${port}/health`;
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return response.json() as Promise<AgentHealthResponse>;
+}
+
+/**
+ * Fetch plugin versions via direct HTTP
+ */
+async function fetchPluginVersions(host: string, port: number): Promise<PluginVersionsResponse> {
+  const url = `http://${host}:${port}/plugins/versions`;
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+  }
+
+  return response.json() as Promise<PluginVersionsResponse>;
+}
+
+/**
+ * Trigger plugin update via direct HTTP
+ */
+async function triggerPluginUpdate(host: string, port: number): Promise<PluginUpdateResponse> {
+  const url = `http://${host}:${port}/plugins/update`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(60000), // 1 minute for update
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`HTTP ${response.status}: ${text || response.statusText}`);
+  }
+
+  return response.json() as Promise<PluginUpdateResponse>;
+}
+
 interface AgentDetailResponse {
   id: string;
   tenantId: string;
@@ -664,6 +785,217 @@ export function registerAgentCommands(program: Command): void {
         process.exit(1);
       } finally {
         await mode.closeLocalClient();
+      }
+    });
+
+  // ===== Direct Agent Communication Commands =====
+  // These commands communicate directly with agents via HTTP, not through the vault
+
+  // Ping an agent directly
+  agent
+    .command('ping <hostPort>')
+    .description('Check agent health directly via HTTP (format: host:port or host)')
+    .option('--json', 'Output as JSON')
+    .action(async (hostPort: string, options: { json?: boolean }) => {
+      const { host, port } = parseHostPort(hostPort);
+      const spinner = ora(`Checking agent at ${host}:${port}...`).start();
+
+      try {
+        const health = await fetchAgentHealth(host, port);
+        spinner.stop();
+
+        if (options.json) {
+          output.json(health);
+          return;
+        }
+
+        const statusColor = health.status === 'healthy' ? '\x1b[32m' :
+                           health.status === 'degraded' ? '\x1b[33m' : '\x1b[31m';
+        const reset = '\x1b[0m';
+        const statusIcon = health.status === 'healthy' ? '●' :
+                          health.status === 'degraded' ? '◐' : '○';
+
+        console.log();
+        console.log(`Agent: ${host}:${port}`);
+        console.log('═'.repeat(40));
+        console.log(`  Status:  ${statusColor}${statusIcon} ${health.status}${reset}`);
+        console.log(`  Version: v${health.version}`);
+        console.log(`  Uptime:  ${formatUptime(health.uptime)}`);
+
+        if (health.plugins && health.plugins.length > 0) {
+          console.log();
+          console.log('Plugins:');
+          for (const plugin of health.plugins) {
+            const pluginIcon = plugin.healthy ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
+            console.log(`  ${pluginIcon} ${plugin.name} v${plugin.version}`);
+          }
+        }
+
+        console.log();
+      } catch (err) {
+        spinner.fail(`Failed to reach agent at ${host}:${port}`);
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Check plugin versions on an agent
+  agent
+    .command('plugins <hostPort>')
+    .description('Check plugin versions on an agent (format: host:port or host)')
+    .option('--json', 'Output as JSON')
+    .action(async (hostPort: string, options: { json?: boolean }) => {
+      const { host, port } = parseHostPort(hostPort);
+      const spinner = ora(`Checking plugins at ${host}:${port}...`).start();
+
+      try {
+        const response = await fetchPluginVersions(host, port);
+        spinner.stop();
+
+        if (options.json) {
+          output.json(response);
+          return;
+        }
+
+        console.log();
+        console.log(`Plugin Versions: ${host}:${port}`);
+        console.log('═'.repeat(50));
+
+        if (response.versions.length === 0) {
+          console.log('  No plugins installed');
+        } else {
+          for (const plugin of response.versions) {
+            const updateIcon = plugin.updateAvailable ? '\x1b[33m↑\x1b[0m' : ' ';
+            const versionStr = plugin.updateAvailable
+              ? `${plugin.current} → \x1b[32m${plugin.latest}\x1b[0m`
+              : plugin.current;
+            console.log(`  ${updateIcon} ${plugin.package}: ${versionStr}`);
+          }
+        }
+
+        console.log();
+        if (response.hasUpdates) {
+          console.log(`\x1b[33m${response.versions.filter(v => v.updateAvailable).length} update(s) available\x1b[0m`);
+          console.log(`Run: znvault agent update-plugins ${hostPort}`);
+        } else {
+          console.log('\x1b[32m✓\x1b[0m All plugins up to date');
+        }
+        console.log();
+      } catch (err) {
+        spinner.fail(`Failed to check plugins at ${host}:${port}`);
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Update plugins on an agent
+  agent
+    .command('update-plugins <hostPort>')
+    .description('Trigger plugin updates on an agent (format: host:port or host)')
+    .option('-y, --yes', 'Skip confirmation prompt')
+    .option('--json', 'Output as JSON')
+    .action(async (hostPort: string, options: { yes?: boolean; json?: boolean }) => {
+      const { host, port } = parseHostPort(hostPort);
+
+      // First check what needs updating
+      const checkSpinner = ora(`Checking plugins at ${host}:${port}...`).start();
+      let versions: PluginVersionsResponse;
+
+      try {
+        versions = await fetchPluginVersions(host, port);
+        checkSpinner.stop();
+      } catch (err) {
+        checkSpinner.fail(`Failed to check plugins at ${host}:${port}`);
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+
+      if (!versions.hasUpdates) {
+        if (options.json) {
+          output.json({ updated: 0, message: 'All plugins up to date' });
+        } else {
+          console.log('\x1b[32m✓\x1b[0m All plugins are up to date');
+        }
+        return;
+      }
+
+      // Show what will be updated
+      if (!options.json) {
+        console.log();
+        console.log('Updates available:');
+        for (const plugin of versions.versions) {
+          if (plugin.updateAvailable) {
+            console.log(`  ${plugin.package}: ${plugin.current} → \x1b[32m${plugin.latest}\x1b[0m`);
+          }
+        }
+        console.log();
+      }
+
+      // Confirm
+      if (!options.yes && !options.json) {
+        const readline = await import('readline');
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const answer = await new Promise<string>(resolve => {
+          rl.question('Proceed with update? Agent will restart. [y/N] ', resolve);
+        });
+        rl.close();
+
+        if (answer.toLowerCase() !== 'y') {
+          console.log('Cancelled');
+          return;
+        }
+      }
+
+      // Trigger update
+      const updateSpinner = ora('Updating plugins...').start();
+
+      try {
+        const response = await triggerPluginUpdate(host, port);
+        updateSpinner.stop();
+
+        if (options.json) {
+          output.json(response);
+          return;
+        }
+
+        if (response.updated === 0) {
+          console.log('No updates were applied');
+          return;
+        }
+
+        console.log(`\x1b[32m✓\x1b[0m Updated ${response.updated} plugin(s)`);
+        for (const result of response.results) {
+          if (result.success) {
+            console.log(`  ${result.package}: ${result.previousVersion} → ${result.newVersion}`);
+          } else {
+            console.log(`  \x1b[31m✗\x1b[0m ${result.package}: ${result.error}`);
+          }
+        }
+
+        if (response.willRestart) {
+          console.log();
+          console.log('\x1b[33mAgent is restarting...\x1b[0m');
+
+          // Wait for restart
+          const RESTART_WAIT = 25;
+          for (let i = RESTART_WAIT; i > 0; i--) {
+            process.stdout.write(`\rWaiting for restart... ${i}s  `);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          process.stdout.write('\r\x1b[K');
+
+          // Verify agent is back
+          try {
+            const health = await fetchAgentHealth(host, port);
+            console.log(`\x1b[32m✓\x1b[0m Agent back online (v${health.version})`);
+          } catch {
+            console.log('\x1b[33m⚠\x1b[0m Agent not responding yet. It may still be restarting.');
+          }
+        }
+      } catch (err) {
+        updateSpinner.fail('Failed to update plugins');
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
       }
     });
 
