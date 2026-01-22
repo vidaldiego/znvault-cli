@@ -31,7 +31,7 @@ async function openBrowser(url: string): Promise<void> {
 }
 
 // Version for CLI identification
-const CLI_VERSION = '2.20.0';
+const CLI_VERSION = '2.20.2';
 
 // Configuration
 const CALLBACK_PATH = '/callback';
@@ -116,8 +116,11 @@ function startCallbackServer(
 ): Promise<CallbackResult> {
   return new Promise((resolve, reject) => {
     let resolved = false;
+    const sockets = new Set<import('node:net').Socket>();
 
     const server = http.createServer((req, res) => {
+      // Disable keep-alive to allow quick server shutdown
+      res.setHeader('Connection', 'close');
       if (resolved) {
         res.writeHead(200);
         res.end('Already processed');
@@ -152,7 +155,7 @@ function startCallbackServer(
           </body>
           </html>
         `);
-        server.close();
+        forceClose();
         reject(new Error(errorDescription ?? error));
         return;
       }
@@ -188,7 +191,7 @@ function startCallbackServer(
           </body>
           </html>
         `);
-        server.close();
+        forceClose();
         reject(new Error('State mismatch - possible CSRF attack'));
         return;
       }
@@ -208,9 +211,24 @@ function startCallbackServer(
         </html>
       `);
 
-      server.close();
+      forceClose();
       resolve({ code, state });
     });
+
+    // Track connections for forced shutdown
+    server.on('connection', (socket) => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+    });
+
+    // Helper to forcefully close server and all connections
+    const forceClose = () => {
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+      sockets.clear();
+      server.close();
+    };
 
     server.listen(port, '127.0.0.1', () => {
       // Server started
@@ -227,7 +245,7 @@ function startCallbackServer(
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        server.close();
+        forceClose();
         reject(new Error('Authorization timed out. Please try again.'));
       }
     }, timeoutMs);
