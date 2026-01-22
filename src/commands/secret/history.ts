@@ -47,11 +47,16 @@ export function registerHistoryCommand(secretCmd: Command): void {
         });
 
         for (const entry of history) {
+          // Handle both camelCase and snake_case from server
+          const createdAt = entry.createdAt || entry.created_at;
+          const supersededAt = entry.supersededAt || entry.superseded_at;
+          const createdBy = entry.createdBy || entry.created_by;
+
           table.push([
             String(entry.version),
-            formatDate(entry.createdAt),
-            entry.supersededAt ? formatDate(entry.supersededAt) : '-',
-            entry.createdBy || '-',
+            formatDate(createdAt),
+            supersededAt ? formatDate(supersededAt) : '-',
+            createdBy || '-',
           ]);
         }
 

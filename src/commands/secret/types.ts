@@ -122,9 +122,13 @@ export interface SecretsListResponse {
 
 export interface HistoryEntry {
   version: number;
-  createdAt: string;
+  // Server returns camelCase, but we handle both for robustness
+  createdAt?: string;
+  created_at?: string;
   createdBy?: string;
+  created_by?: string;
   supersededAt?: string;
+  superseded_at?: string;
 }
 
 export interface HistoryResponse {
