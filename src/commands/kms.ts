@@ -193,7 +193,7 @@ async function listKeys(options: ListOptions): Promise<void> {
     for (const key of response.items) {
       table.push([
         key.keyId,
-        key.alias || '-',
+        key.alias ?? '-',
         formatKeyState(key.keyState),
         formatDate(key.createdDate),
       ]);
@@ -228,13 +228,13 @@ async function getKey(keyId: string, options: GetOptions): Promise<void> {
 
     table.push(
       ['Key ID', key.keyId],
-      ['Alias', key.alias || '-'],
-      ['ARN', key.arn || '-'],
+      ['Alias', key.alias ?? '-'],
+      ['ARN', key.arn ?? '-'],
       ['State', formatKeyState(key.keyState)],
       ['Usage', key.keyUsage],
       ['Key Spec', key.keySpec],
-      ['Description', key.description || '-'],
-      ['Tenant', key.tenant || '-'],
+      ['Description', key.description ?? '-'],
+      ['Tenant', key.tenant ?? '-'],
       ['Created', formatDate(key.createdDate)],
     );
 
@@ -306,7 +306,7 @@ async function createKey(options: CreateOptions): Promise<void> {
 
     output.success('KMS key created successfully!');
     console.log(`  Key ID:  ${result.keyId}`);
-    console.log(`  Alias:   ${result.alias || '-'}`);
+    console.log(`  Alias:   ${result.alias ?? '-'}`);
     console.log(`  ARN:     ${result.arn}`);
     console.log(`  State:   ${result.keyState}`);
     console.log(`  Usage:   ${result.keyUsage}`);

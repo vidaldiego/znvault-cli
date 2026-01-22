@@ -52,7 +52,7 @@ export function registerHealthCommands(program: Command): void {
           const dbStatus = db.status === 'connected' ? 'success' : 'error';
           let dbValue = db.status === 'connected' ? 'Connected' : db.status;
           if (db.role) dbValue += ` (${db.role})`;
-          healthData['PostgreSQL'] = { value: dbValue, status: dbStatus };
+          healthData.PostgreSQL = { value: dbValue, status: dbStatus };
         }
 
         if (health.redis) {
@@ -60,7 +60,7 @@ export function registerHealthCommands(program: Command): void {
           const redisStatus = redis.status === 'connected' ? 'success' : 'error';
           let redisValue = redis.status === 'connected' ? 'Connected' : redis.status;
           if (redis.sentinelNodes !== undefined) redisValue += ` (${redis.sentinelNodes}/3)`;
-          healthData['Redis'] = { value: redisValue, status: redisStatus };
+          healthData.Redis = { value: redisValue, status: redisStatus };
         }
 
         // Add HA info if available
@@ -173,10 +173,10 @@ export function registerHealthCommands(program: Command): void {
             'Mode': { value: l.status, status: securityStatus },
           };
           if (l.reason) {
-            securityData['Reason'] = { value: l.reason };
+            securityData.Reason = { value: l.reason };
           }
           if (l.triggeredAt) {
-            securityData['Since'] = { value: output.formatDate(l.triggeredAt) ?? 'Unknown' };
+            securityData.Since = { value: output.formatDate(l.triggeredAt) };
           }
           console.log(visual.statusBox('SECURITY', securityData));
         } else {

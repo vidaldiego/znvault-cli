@@ -4,7 +4,7 @@
 import type { Command } from 'commander';
 import type { VaultClient } from '../lib/client.js';
 import type { FullConfig } from '../types/index.js';
-import * as output from '../lib/output.js';
+import type * as output from '../lib/output.js';
 
 /**
  * CLI plugin interface

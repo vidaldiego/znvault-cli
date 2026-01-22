@@ -161,7 +161,8 @@ export function registerAuthCommands(program: Command): void {
         }
 
         // Only prompt for TOTP if not running in CI mode and credentials weren't provided via CLI
-        const isNonInteractive = process.env.CI === 'true' || (options.username && (options.password || options.passwordFile));
+        const hasPasswordOption = options.password != null || options.passwordFile != null;
+        const isNonInteractive = process.env.CI === 'true' || (options.username != null && hasPasswordOption);
         const totp = options.totp ?? (isNonInteractive ? undefined : await promptTotp());
 
         const spinner = ora('Authenticating...').start();
@@ -208,7 +209,7 @@ export function registerAuthCommands(program: Command): void {
     .command('logout')
     .description('Clear stored credentials')
     .option('--json', 'Output as JSON')
-    .action(async (options: LogoutOptions) => {
+    .action((options: LogoutOptions) => {
       const profileName = getActiveProfileName();
       clearCredentials();
 
@@ -224,7 +225,7 @@ export function registerAuthCommands(program: Command): void {
     .command('whoami')
     .description('Show current authenticated user')
     .option('--json', 'Output as JSON')
-    .action(async (options: JsonOutputOptions) => {
+    .action((options: JsonOutputOptions) => {
       const credentials = getCredentials();
       const profileName = getActiveProfileName();
 

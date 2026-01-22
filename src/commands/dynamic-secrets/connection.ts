@@ -93,21 +93,21 @@ export async function getConnection(nameOrId: string, options: { json?: boolean 
 
 export async function createConnection(options: ConnectionCreateOptions): Promise<void> {
   // Interactive prompts if options not provided
-  const name = options.name ?? (await inquirer.prompt([{
+  const name = options.name ?? (await inquirer.prompt<{ name: string }>([{
     type: 'input',
     name: 'name',
     message: 'Connection name:',
     validate: (input: string) => input.trim() ? true : 'Name is required',
   }])).name;
 
-  const connectionType = options.type?.toUpperCase() ?? (await inquirer.prompt([{
+  const connectionType = options.type?.toUpperCase() ?? (await inquirer.prompt<{ type: string }>([{
     type: 'list',
     name: 'type',
     message: 'Database type:',
     choices: ['POSTGRESQL', 'MYSQL'],
   }])).type;
 
-  const connectionString = options.connectionString ?? (await inquirer.prompt([{
+  const connectionString = options.connectionString ?? (await inquirer.prompt<{ connectionString: string }>([{
     type: 'password',
     name: 'connectionString',
     message: 'Connection string:',
@@ -174,7 +174,7 @@ export async function updateConnection(nameOrId: string, options: ConnectionUpda
 
 export async function deleteConnection(nameOrId: string, options: { force?: boolean; json?: boolean }): Promise<void> {
   if (!options.force) {
-    const { confirm } = await inquirer.prompt([{
+    const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
       name: 'confirm',
       message: `Are you sure you want to delete connection "${nameOrId}"? This will also delete all associated roles.`,

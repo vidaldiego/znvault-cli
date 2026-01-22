@@ -45,40 +45,40 @@ _znvault_completions() {
 
     case "\${cword}" in
         1)
-            COMPREPLY=( \$(compgen -W "\${commands}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${commands}" -- "\${cur}") )
             ;;
         2)
             case "\${prev}" in
-                cluster) COMPREPLY=( \$(compgen -W "\${cluster_cmds}" -- "\${cur}") ) ;;
-                tenant) COMPREPLY=( \$(compgen -W "\${tenant_cmds}" -- "\${cur}") ) ;;
-                user) COMPREPLY=( \$(compgen -W "\${user_cmds}" -- "\${cur}") ) ;;
-                superadmin) COMPREPLY=( \$(compgen -W "\${superadmin_cmds}" -- "\${cur}") ) ;;
-                lockdown) COMPREPLY=( \$(compgen -W "\${lockdown_cmds}" -- "\${cur}") ) ;;
-                audit) COMPREPLY=( \$(compgen -W "\${audit_cmds}" -- "\${cur}") ) ;;
-                agent) COMPREPLY=( \$(compgen -W "\${agent_cmds}" -- "\${cur}") ) ;;
-                update) COMPREPLY=( \$(compgen -W "\${update_cmds}" -- "\${cur}") ) ;;
-                apikey|api-key) COMPREPLY=( \$(compgen -W "\${apikey_cmds}" -- "\${cur}") ) ;;
-                policy) COMPREPLY=( \$(compgen -W "\${policy_cmds}" -- "\${cur}") ) ;;
-                secret) COMPREPLY=( \$(compgen -W "\${secret_cmds}" -- "\${cur}") ) ;;
-                kms) COMPREPLY=( \$(compgen -W "\${kms_cmds}" -- "\${cur}") ) ;;
-                role) COMPREPLY=( \$(compgen -W "\${role_cmds}" -- "\${cur}") ) ;;
-                backup) COMPREPLY=( \$(compgen -W "\${backup_cmds}" -- "\${cur}") ) ;;
-                notification) COMPREPLY=( \$(compgen -W "\${notification_cmds}" -- "\${cur}") ) ;;
-                advisor) COMPREPLY=( \$(compgen -W "\${advisor_cmds}" -- "\${cur}") ) ;;
-                profile) COMPREPLY=( \$(compgen -W "\${profile_cmds}" -- "\${cur}") ) ;;
-                crypto) COMPREPLY=( \$(compgen -W "\${crypto_cmds}" -- "\${cur}") ) ;;
-                device) COMPREPLY=( \$(compgen -W "\${device_cmds}" -- "\${cur}") ) ;;
-                unseal) COMPREPLY=( \$(compgen -W "\${unseal_cmds}" -- "\${cur}") ) ;;
-                completion) COMPREPLY=( \$(compgen -W "\${completion_cmds}" -- "\${cur}") ) ;;
+                cluster) COMPREPLY=( $(compgen -W "\${cluster_cmds}" -- "\${cur}") ) ;;
+                tenant) COMPREPLY=( $(compgen -W "\${tenant_cmds}" -- "\${cur}") ) ;;
+                user) COMPREPLY=( $(compgen -W "\${user_cmds}" -- "\${cur}") ) ;;
+                superadmin) COMPREPLY=( $(compgen -W "\${superadmin_cmds}" -- "\${cur}") ) ;;
+                lockdown) COMPREPLY=( $(compgen -W "\${lockdown_cmds}" -- "\${cur}") ) ;;
+                audit) COMPREPLY=( $(compgen -W "\${audit_cmds}" -- "\${cur}") ) ;;
+                agent) COMPREPLY=( $(compgen -W "\${agent_cmds}" -- "\${cur}") ) ;;
+                update) COMPREPLY=( $(compgen -W "\${update_cmds}" -- "\${cur}") ) ;;
+                apikey|api-key) COMPREPLY=( $(compgen -W "\${apikey_cmds}" -- "\${cur}") ) ;;
+                policy) COMPREPLY=( $(compgen -W "\${policy_cmds}" -- "\${cur}") ) ;;
+                secret) COMPREPLY=( $(compgen -W "\${secret_cmds}" -- "\${cur}") ) ;;
+                kms) COMPREPLY=( $(compgen -W "\${kms_cmds}" -- "\${cur}") ) ;;
+                role) COMPREPLY=( $(compgen -W "\${role_cmds}" -- "\${cur}") ) ;;
+                backup) COMPREPLY=( $(compgen -W "\${backup_cmds}" -- "\${cur}") ) ;;
+                notification) COMPREPLY=( $(compgen -W "\${notification_cmds}" -- "\${cur}") ) ;;
+                advisor) COMPREPLY=( $(compgen -W "\${advisor_cmds}" -- "\${cur}") ) ;;
+                profile) COMPREPLY=( $(compgen -W "\${profile_cmds}" -- "\${cur}") ) ;;
+                crypto) COMPREPLY=( $(compgen -W "\${crypto_cmds}" -- "\${cur}") ) ;;
+                device) COMPREPLY=( $(compgen -W "\${device_cmds}" -- "\${cur}") ) ;;
+                unseal) COMPREPLY=( $(compgen -W "\${unseal_cmds}" -- "\${cur}") ) ;;
+                completion) COMPREPLY=( $(compgen -W "\${completion_cmds}" -- "\${cur}") ) ;;
                 *) ;;
             esac
             ;;
         3)
             # Handle nested subcommands (e.g., advisor llm, apikey managed)
             if [[ "\${words[1]}" == "advisor" && "\${prev}" == "llm" ]]; then
-                COMPREPLY=( \$(compgen -W "\${advisor_llm_cmds}" -- "\${cur}") )
+                COMPREPLY=( $(compgen -W "\${advisor_llm_cmds}" -- "\${cur}") )
             elif [[ "\${words[1]}" == "apikey" && "\${prev}" == "managed" ]] || [[ "\${words[1]}" == "api-key" && "\${prev}" == "managed" ]]; then
-                COMPREPLY=( \$(compgen -W "\${apikey_managed_cmds}" -- "\${cur}") )
+                COMPREPLY=( $(compgen -W "\${apikey_managed_cmds}" -- "\${cur}") )
             fi
             ;;
         *)
@@ -114,7 +114,7 @@ _znvault_completions() {
             esac
             # Add global options
             opts="\${opts} --url --insecure --profile --plain --help -h"
-            COMPREPLY=( \$(compgen -W "\${opts}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${opts}" -- "\${cur}") )
             ;;
     esac
 }
@@ -132,14 +132,14 @@ function generateZshCompletion(): string {
 #   source <(znvault completion zsh)
 # Or:
 #   znvault completion zsh > ~/.zsh/completions/_znvault
-#   fpath=(~/.zsh/completions \$fpath)
+#   fpath=(~/.zsh/completions $fpath)
 
 autoload -Uz compinit
 compinit -u 2>/dev/null
 
 _znvault() {
     local -a commands subcommands opts
-    local curcontext="\$curcontext" state line
+    local curcontext="$curcontext" state line
 
     _arguments -C \\
         '--url[Vault server URL]:url:_urls' \\
@@ -151,10 +151,10 @@ _znvault() {
         '1: :->command' \\
         '*:: :->args'
 
-    case \$state in
+    case $state in
         profiles)
             local -a profiles
-            profiles=(\${(f)"\$(znvault profile list --plain 2>/dev/null | awk '{print \$1}')"})
+            profiles=(\${(f)"$(znvault profile list --plain 2>/dev/null | awk '{print $1}')"})
             _describe -t profiles 'profile' profiles
             ;;
         command)
@@ -198,7 +198,7 @@ _znvault() {
             _describe -t commands 'command' commands
             ;;
         args)
-            case \$words[1] in
+            case $words[1] in
                 cluster)
                     subcommands=(
                         'status:Show cluster status'

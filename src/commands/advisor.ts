@@ -121,7 +121,7 @@ export function registerAdvisorCommands(program: Command): void {
 
       try {
         // Use 'me' if no tenant specified (server will use auth context)
-        const tenant = options.tenant || 'me';
+        const tenant = options.tenant ?? 'me';
         const body: Record<string, unknown> = {};
         if (options.category) {
           body.categories = [options.category];
@@ -266,7 +266,7 @@ export function registerAdvisorCommands(program: Command): void {
       const spinner = ora('Getting AI suggestions...').start();
 
       try {
-        const tenant = options.tenant || 'me';
+        const tenant = options.tenant ?? 'me';
         const body: Record<string, unknown> = { description };
         const hints: Record<string, string> = {};
         if (options.environment) hints.environment = options.environment;
@@ -302,21 +302,21 @@ export function registerAdvisorCommands(program: Command): void {
         output.keyValue({
           'Alias': result.alias,
           'Type': result.type,
-          'Sub-Type': result.subType || '-',
-          'Tags': result.tags.join(', ') || 'none',
+          'Sub-Type': result.subType ?? '-',
+          'Tags': result.tags.length > 0 ? result.tags.join(', ') : 'none',
           'Expiration': result.expiresInDays ? `${result.expiresInDays} days` : '-',
-          'Rotation': result.rotationRecommendation || '-',
+          'Rotation': result.rotationRecommendation ?? '-',
           'Confidence': `${Math.round(result.confidence * 100)}%`,
         });
 
         if (result.alternativeAliases && result.alternativeAliases.length > 0) {
           output.section('Alternative Names');
-          result.alternativeAliases.forEach(a => console.log(`  - ${a}`));
+          result.alternativeAliases.forEach(a => { console.log(`  - ${a}`); });
         }
 
         if (result.warnings && result.warnings.length > 0) {
           output.section('Warnings');
-          result.warnings.forEach(w => console.log(`  ⚠ ${w}`));
+          result.warnings.forEach(w => { console.log(`  ⚠ ${w}`); });
         }
 
         output.section('Reasoning');
@@ -357,8 +357,8 @@ export function registerAdvisorCommands(program: Command): void {
         output.keyValue({
           'Configured': status.configured ? 'Yes' : 'No',
           'Enabled': status.enabled ? 'Yes' : 'No',
-          'Provider': status.provider || '-',
-          'Model': status.model || '-',
+          'Provider': status.provider ?? '-',
+          'Model': status.model ?? '-',
         });
 
         if (!status.configured) {
@@ -397,7 +397,7 @@ export function registerAdvisorCommands(program: Command): void {
 
         output.keyValue({
           'Provider': config.provider,
-          'API Key': config.apiKeyConfigured ? `${config.apiKeyPrefix}...` : 'Not set',
+          'API Key': config.apiKeyConfigured ? `${config.apiKeyPrefix ?? ''}...` : 'Not set',
           'Model': config.model,
           'Max Tokens': config.maxTokens,
           'Enabled': config.enabled ? 'Yes' : 'No',
@@ -442,7 +442,7 @@ export function registerAdvisorCommands(program: Command): void {
         output.success('LLM configuration updated');
         output.keyValue({
           'Provider': response.data.provider,
-          'API Key': response.data.apiKeyConfigured ? `${response.data.apiKeyPrefix}...` : 'Not set',
+          'API Key': response.data.apiKeyConfigured ? `${response.data.apiKeyPrefix ?? ''}...` : 'Not set',
           'Model': response.data.model,
           'Max Tokens': response.data.maxTokens,
           'Enabled': response.data.enabled ? 'Yes' : 'No',

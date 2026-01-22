@@ -349,9 +349,9 @@ export function registerAgentCommands(program: Command): void {
         console.log('Basic Information:');
         console.log(`  ID:          ${agent.id}`);
         console.log(`  Tenant:      ${agent.tenantId}`);
-        console.log(`  Platform:    ${agent.platform || 'Unknown'}`);
+        console.log(`  Platform:    ${agent.platform ?? 'Unknown'}`);
         console.log(`  Version:     ${agent.version ? `v${agent.version}` : 'Unknown'}`);
-        console.log(`  IP Address:  ${agent.lastIpAddress || 'Unknown'}`);
+        console.log(`  IP Address:  ${agent.lastIpAddress ?? 'Unknown'}`);
         console.log();
 
         // API Key Info
@@ -419,12 +419,12 @@ export function registerAgentCommands(program: Command): void {
         console.log();
 
         // Subscriptions
-        const certCount = agent.subscriptions?.certificates?.length ?? 0;
-        const secretCount = agent.subscriptions?.secrets?.length ?? 0;
+        const certCount = agent.subscriptions.certificates.length;
+        const secretCount = agent.subscriptions.secrets.length;
         console.log('Subscriptions:');
         console.log(`  Certificates: ${certCount}`);
         console.log(`  Secrets:      ${secretCount}`);
-        if (agent.subscriptions?.updates) {
+        if (agent.subscriptions.updates) {
           console.log(`  Updates:      ${agent.subscriptions.updates}`);
         }
         console.log();

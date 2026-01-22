@@ -40,8 +40,8 @@ export interface ValidatePolicyResponse {
 }
 
 export interface PolicyAttachmentsResponse {
-  users: import('../../types/index.js').PolicyAttachment[];
-  roles: import('../../types/index.js').PolicyAttachment[];
+  users: Array<import('../../types/index.js').PolicyAttachment>;
+  roles: Array<import('../../types/index.js').PolicyAttachment>;
 }
 
 /**

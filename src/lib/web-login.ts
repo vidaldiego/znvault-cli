@@ -96,9 +96,9 @@ async function findAvailablePort(): Promise<number> {
       const address = server.address();
       if (address && typeof address === 'object') {
         const port = address.port;
-        server.close(() => resolve(port));
+        server.close(() => { resolve(port); });
       } else {
-        server.close(() => reject(new Error('Failed to get port')));
+        server.close(() => { reject(new Error('Failed to get port')); });
       }
     });
 

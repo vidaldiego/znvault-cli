@@ -93,24 +93,26 @@ export async function getRole(roleId: string, options: { json?: boolean }): Prom
 
 export async function createRole(connectionId: string, options: RoleCreateOptions): Promise<void> {
   // Interactive prompts if options not provided
-  const name = options.name ?? (await inquirer.prompt([{
+  const name = options.name ?? (await inquirer.prompt<{ name: string }>([{
     type: 'input',
     name: 'name',
     message: 'Role name:',
     validate: (input: string) => input.trim() ? true : 'Name is required',
   }])).name;
 
-  const creationStatements = options.creationStatements?.split(';').filter(s => s.trim()) ?? (await inquirer.prompt([{
-    type: 'editor',
-    name: 'statements',
-    message: 'Creation SQL statements (one per line, use {{username}} and {{password}} placeholders):',
-  }])).statements.split('\n').filter((s: string) => s.trim());
+  const creationStatements = options.creationStatements?.split(';').filter(s => s.trim()) ??
+    (await inquirer.prompt<{ statements: string }>([{
+      type: 'editor',
+      name: 'statements',
+      message: 'Creation SQL statements (one per line, use {{username}} and {{password}} placeholders):',
+    }])).statements.split('\n').filter(s => s.trim());
 
-  const revocationStatements = options.revocationStatements?.split(';').filter(s => s.trim()) ?? (await inquirer.prompt([{
-    type: 'editor',
-    name: 'statements',
-    message: 'Revocation SQL statements (one per line, use {{username}} placeholder):',
-  }])).statements.split('\n').filter((s: string) => s.trim());
+  const revocationStatements = options.revocationStatements?.split(';').filter(s => s.trim()) ??
+    (await inquirer.prompt<{ statements: string }>([{
+      type: 'editor',
+      name: 'statements',
+      message: 'Revocation SQL statements (one per line, use {{username}} placeholder):',
+    }])).statements.split('\n').filter(s => s.trim());
 
   const spinner = ora('Creating role...').start();
 
@@ -169,7 +171,7 @@ export async function updateRole(roleId: string, options: RoleUpdateOptions): Pr
 
 export async function deleteRole(roleId: string, options: { force?: boolean; json?: boolean }): Promise<void> {
   if (!options.force) {
-    const { confirm } = await inquirer.prompt([{
+    const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
       name: 'confirm',
       message: `Are you sure you want to delete this role? Active leases will be revoked.`,

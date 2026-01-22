@@ -135,7 +135,7 @@ async function showConfig(options: ConfigOptions): Promise<void> {
       ['Username', config.auth.user],
       ['Password', config.auth.pass], // Already redacted by server
       ['From Address', config.from],
-      ['From Name', config.fromName || '-'],
+      ['From Name', config.fromName ?? '-'],
     );
 
     console.log('\nSMTP Configuration:');

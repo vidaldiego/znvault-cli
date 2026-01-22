@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "2.20.2",
+  "version": "2.20.3",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,7 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "pretest": "npm run build",
-    "test": "../scripts/sdk-test-run.sh npm run test:all",
+    "test": "npm run test:unit",
     "test:all": "vitest run --config vitest.integration.config.ts",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",

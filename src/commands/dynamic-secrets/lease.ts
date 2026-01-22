@@ -125,7 +125,7 @@ export async function renewLease(leaseId: string, options: {
 
 export async function revokeLease(leaseId: string, options: LeaseRevokeOptions): Promise<void> {
   if (!options.force) {
-    const { confirm } = await inquirer.prompt([{
+    const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
       name: 'confirm',
       message: `Are you sure you want to revoke lease "${leaseId}"? This will immediately revoke the database credentials.`,

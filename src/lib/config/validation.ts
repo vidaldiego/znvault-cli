@@ -62,7 +62,7 @@ export function validateEnvironment(): ValidationResult {
   if (password !== undefined && username === undefined) {
     errors.push('ZNVAULT_PASSWORD is set but ZNVAULT_USERNAME is missing');
   }
-  if (username !== undefined && username.trim() === '') {
+  if (username?.trim() === '') {
     errors.push('ZNVAULT_USERNAME is set but empty');
   }
   if (password !== undefined && password === '') {

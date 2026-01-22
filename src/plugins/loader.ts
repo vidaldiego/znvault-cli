@@ -33,7 +33,7 @@ function getPluginsDir(): string {
  * Plugins are npm packages or local files that export a CLIPlugin.
  */
 export class CLIPluginLoader {
-  private plugins: Map<string, LoadedCLIPlugin> = new Map();
+  private plugins = new Map<string, LoadedCLIPlugin>();
   private context: CLIPluginContext;
 
   constructor(
@@ -137,7 +137,7 @@ export class CLIPluginLoader {
       // Support both direct export and factory function
       let plugin: CLIPlugin;
       if (typeof module.default === 'function') {
-        plugin = (module.default as CLIPluginFactory)(pluginOptions);
+        plugin = (module.default)(pluginOptions);
       } else {
         plugin = module.default;
       }

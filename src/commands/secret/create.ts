@@ -62,16 +62,16 @@ export function registerCreateCommand(secretCmd: Command): void {
             if (fileInfo.pemInfo) {
               analysisInfo['PEM Type'] = formatPemType(fileInfo.pemInfo.type);
               if (fileInfo.pemInfo.algorithm) {
-                analysisInfo['Algorithm'] = fileInfo.pemInfo.algorithm.toUpperCase();
+                analysisInfo.Algorithm = fileInfo.pemInfo.algorithm.toUpperCase();
               }
               if (fileInfo.pemInfo.detectedPurpose) {
                 analysisInfo['Detected Purpose'] = fileInfo.pemInfo.detectedPurpose;
               }
               if (fileInfo.pemInfo.isAppleP8) {
-                analysisInfo['Special'] = 'Apple .p8 authentication key';
+                analysisInfo.Special = 'Apple .p8 authentication key';
               }
               if (fileInfo.pemInfo.certificateCount && fileInfo.pemInfo.certificateCount > 1) {
-                analysisInfo['Certificates'] = `${fileInfo.pemInfo.certificateCount} (chain/bundle)`;
+                analysisInfo.Certificates = `${fileInfo.pemInfo.certificateCount} (chain/bundle)`;
               }
             }
 

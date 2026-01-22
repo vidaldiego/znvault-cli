@@ -47,7 +47,7 @@ Examples:
 
           // Check if it's a file-based secret
           if ('content' in secret.data && typeof secret.data.content === 'string') {
-            const content = Buffer.from(secret.data.content as string, 'base64');
+            const content = Buffer.from(secret.data.content, 'base64');
             fs.writeFileSync(options.output, content);
             output.success(`File written to: ${options.output}`);
             return;
