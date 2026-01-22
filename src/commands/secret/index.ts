@@ -17,6 +17,7 @@ import { registerDeleteCommand } from './delete.js';
 import { registerRotateCommand } from './rotate.js';
 import { registerHistoryCommand } from './history.js';
 import { registerCopyCommand } from './copy.js';
+import { registerPatchCommand } from './patch.js';
 
 // Help text for secret identifier format
 const SECRET_ID_HELP = `
@@ -53,6 +54,7 @@ export function registerSecretCommands(program: Command): void {
   registerRotateCommand(secretCmd);
   registerHistoryCommand(secretCmd);
   registerCopyCommand(secretCmd);
+  registerPatchCommand(secretCmd);
 }
 
 // Re-export types for external use

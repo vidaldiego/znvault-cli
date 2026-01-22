@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "2.18.1",
+  "version": "2.19.0",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +58,9 @@
     "ora": "^9.0.0",
     "pg": "^8.17.1",
     "react": "^19.2.3",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "yaml": "^2.4.0",
+    "@iarna/toml": "^2.2.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -68,6 +70,7 @@
     "@types/node": "^25.0.9",
     "@types/pg": "^8.16.0",
     "@types/react": "^19.2.8",
+    "@types/iarna__toml": "^2.0.5",
     "@vitest/coverage-v8": "^4.0.17",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
