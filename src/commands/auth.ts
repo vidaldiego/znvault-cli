@@ -20,6 +20,7 @@ import {
 } from '../lib/config.js';
 import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+import { webLogin, isWebLoginSupported } from '../lib/web-login.js';
 
 /**
  * Read password from a file.
@@ -51,6 +52,7 @@ interface LoginOptions {
   passwordFile?: string;
   totp?: string;
   json?: boolean;
+  web?: boolean;
 }
 
 interface LogoutOptions {
@@ -97,11 +99,51 @@ export function registerAuthCommands(program: Command): void {
     .option('-p, --password <password>', 'Password (WARNING: visible in process list - prefer --password-file)')
     .option('--password-file <path>', 'Read password from file (more secure than -p)')
     .option('-t, --totp <code>', 'TOTP code (if 2FA enabled)')
+    .option('--web', 'Login via web browser (supports 2FA and passkeys)')
     .option('--json', 'Output as JSON')
     .action(async (options: LoginOptions) => {
       const profileName = getActiveProfileName();
 
       try {
+        // Web-based login flow
+        if (options.web) {
+          if (!isWebLoginSupported()) {
+            output.error('Web login requires Node.js 18+ with fetch API support');
+            process.exit(1);
+          }
+
+          const result = await webLogin();
+
+          if (!result.success) {
+            if (options.json) {
+              output.json({ success: false, error: result.error });
+            } else {
+              output.error(result.error ?? 'Web login failed');
+            }
+            process.exit(1);
+          }
+
+          if (options.json) {
+            output.json({
+              success: true,
+              profile: profileName,
+              user: result.user,
+            });
+          } else {
+            output.success(`Login successful (profile: ${profileName})`);
+            output.keyValue({
+              'User ID': result.user?.id ?? 'N/A',
+              'Username': result.user?.username ?? 'N/A',
+              'Role': result.user?.role ?? 'N/A',
+              'Tenant': result.user?.tenantId ?? 'None (superadmin)',
+              'MFA Verified': result.user?.mfaVerified ? 'Yes' : 'No',
+            });
+            console.log('\nSession stored. Auto-refreshes when needed (valid for 7 days of inactivity).');
+          }
+          return;
+        }
+
+        // Standard interactive login
         const username = options.username ?? await promptUsername();
 
         // Password resolution: file > CLI arg > interactive prompt

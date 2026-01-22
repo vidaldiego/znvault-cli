@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "2.19.5",
+  "version": "2.20.0",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -54,6 +54,7 @@
     "ink-text-input": "^6.0.0",
     "ink-ui": "^0.4.0",
     "inquirer": "^13.2.0",
+    "open": "^10.1.0",
     "openpgp": "^6.3.0",
     "ora": "^9.0.0",
     "pg": "^8.17.1",
