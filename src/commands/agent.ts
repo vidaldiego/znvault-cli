@@ -353,26 +353,44 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
 
     if (response.agents.length === 0) {
       console.log('No agents registered with the vault');
+      console.log('Use: znvault agent ping <host:port>');
       return null;
     }
 
-    // Filter agents with IP addresses
-    const agentsWithIp = response.agents.filter(a => a.lastIpAddress);
+    // Build choices - include all agents but mark those without IP
+    const choices: Array<{ name: string; value: string; short: string; disabled?: string }> = [];
 
-    if (agentsWithIp.length === 0) {
-      console.log('No agents with known IP addresses');
-      return null;
-    }
+    // Sort: online first, then by hostname
+    const sortedAgents = [...response.agents].sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'online' ? -1 : 1;
+      return a.hostname.localeCompare(b.hostname);
+    });
 
-    // Build choices for inquirer
-    const choices = agentsWithIp.map(a => {
+    for (const a of sortedAgents) {
       const statusIcon = a.status === 'online' ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
       const version = a.version ? `v${a.version}` : 'unknown';
-      return {
-        name: `${statusIcon} ${a.hostname} (${a.lastIpAddress}) - ${version}`,
-        value: a.lastIpAddress!,
-        short: a.hostname,
-      };
+
+      if (a.lastIpAddress) {
+        choices.push({
+          name: `${statusIcon} ${a.hostname} (${a.lastIpAddress}) - ${version}`,
+          value: a.lastIpAddress,
+          short: a.hostname,
+        });
+      } else {
+        choices.push({
+          name: `${statusIcon} ${a.hostname} (no IP) - ${version}`,
+          value: '',
+          short: a.hostname,
+          disabled: 'no IP address',
+        });
+      }
+    }
+
+    // Add manual entry option
+    choices.push({
+      name: '\x1b[36m→ Enter IP manually\x1b[0m',
+      value: '__manual__',
+      short: 'manual',
     });
 
     const { selectedIp } = await inquirer.prompt<{ selectedIp: string }>([
@@ -384,6 +402,22 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
         pageSize: 15,
       },
     ]);
+
+    // Handle manual entry
+    if (selectedIp === '__manual__') {
+      const { manualHost } = await inquirer.prompt<{ manualHost: string }>([
+        {
+          type: 'input',
+          name: 'manualHost',
+          message: 'Enter host:port (e.g., 192.168.1.100:9100):',
+          validate: (input: string) => {
+            if (!input.trim()) return 'Host is required';
+            return true;
+          },
+        },
+      ]);
+      return parseHostPort(manualHost.trim());
+    }
 
     return { host: selectedIp, port: 9100 };
   } catch (err) {
