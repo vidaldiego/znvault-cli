@@ -11,7 +11,7 @@ export type { Profile, ConfigStore, ProfileInfo, ApiKeyInfo } from './types.js';
 export { CONFIG_DEFAULTS, DEFAULT_PROFILE } from './types.js';
 
 // Store
-export { store, setRuntimeProfile, resetConfig, getConfigPath } from './store.js';
+export { store, setRuntimeProfile, resetConfig, getConfigPath, _resetStoreInstance } from './store.js';
 
 // Migration
 export { ensureMigrated, resetMigrationState } from './migration.js';

@@ -6,7 +6,7 @@
  * to prevent tests from modifying the user's real configuration.
  */
 
-import { vi, beforeAll, afterAll, afterEach } from 'vitest';
+import { vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -90,7 +90,7 @@ class MockConf<T extends Record<string, unknown> = Record<string, unknown>> {
   }
 }
 
-// Mock the conf module globally
+// Mock the conf module globally - MUST be before any imports that use conf
 vi.mock('conf', () => ({
   default: MockConf,
 }));
@@ -101,14 +101,25 @@ beforeAll(() => {
 
   // Set environment variables to ensure isolation
   process.env.ZNVAULT_TEST_MODE = 'true';
+  process.env.ZNVAULT_CONFIG_DIR = TEST_CONFIG_DIR;
+});
+
+beforeEach(async () => {
+  // Clear all mock stores before each test
+  mockStores.clear();
+
+  // Reset the config store instance to pick up the mock
+  try {
+    const { _resetStoreInstance } = await import('../src/lib/config/store.js');
+    _resetStoreInstance();
+  } catch {
+    // Ignore if module not yet loaded
+  }
 });
 
 afterEach(() => {
   // Clear all mock stores between tests to prevent state leakage
   mockStores.clear();
-
-  // Reset any runtime state in modules
-  vi.resetModules();
 });
 
 afterAll(() => {
@@ -120,6 +131,7 @@ afterAll(() => {
   }
 
   delete process.env.ZNVAULT_TEST_MODE;
+  delete process.env.ZNVAULT_CONFIG_DIR;
 });
 
 // Export for tests that need direct access
