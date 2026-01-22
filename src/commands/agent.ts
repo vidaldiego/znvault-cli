@@ -2,6 +2,7 @@
 
 import { type Command } from 'commander';
 import ora from 'ora';
+import inquirer from 'inquirer';
 import * as mode from '../lib/mode.js';
 import * as output from '../lib/output.js';
 
@@ -333,6 +334,76 @@ async function triggerAgentUpdate(host: string, port: number): Promise<AgentUpda
   }
 
   return response.json() as Promise<AgentUpdateResponse>;
+}
+
+/**
+ * Fetch agents from vault and let user select one interactively
+ * Returns the selected agent's host:port string
+ */
+async function selectAgentInteractively(): Promise<{ host: string; port: number } | null> {
+  const spinner = ora('Fetching agents from vault...').start();
+
+  try {
+    const response = await mode.apiGet<{
+      agents: RemoteAgent[];
+      pagination: { totalItems: number };
+    }>('/v1/agents?pageSize=100');
+
+    spinner.stop();
+
+    if (response.agents.length === 0) {
+      console.log('No agents registered with the vault');
+      return null;
+    }
+
+    // Filter agents with IP addresses
+    const agentsWithIp = response.agents.filter(a => a.lastIpAddress);
+
+    if (agentsWithIp.length === 0) {
+      console.log('No agents with known IP addresses');
+      return null;
+    }
+
+    // Build choices for inquirer
+    const choices = agentsWithIp.map(a => {
+      const statusIcon = a.status === 'online' ? '\x1b[32m●\x1b[0m' : '\x1b[31m○\x1b[0m';
+      const version = a.version ? `v${a.version}` : 'unknown';
+      return {
+        name: `${statusIcon} ${a.hostname} (${a.lastIpAddress}) - ${version}`,
+        value: a.lastIpAddress!,
+        short: a.hostname,
+      };
+    });
+
+    const { selectedIp } = await inquirer.prompt<{ selectedIp: string }>([
+      {
+        type: 'list',
+        name: 'selectedIp',
+        message: 'Select an agent:',
+        choices,
+        pageSize: 15,
+      },
+    ]);
+
+    return { host: selectedIp, port: 9100 };
+  } catch (err) {
+    spinner.stop();
+    // If not authenticated or can't reach vault, return null
+    output.error(`Failed to fetch agents: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  } finally {
+    await mode.closeLocalClient();
+  }
+}
+
+/**
+ * Get host:port from argument or interactive selection
+ */
+async function resolveHostPort(hostPort?: string): Promise<{ host: string; port: number } | null> {
+  if (hostPort) {
+    return parseHostPort(hostPort);
+  }
+  return selectAgentInteractively();
 }
 
 interface AgentDetailResponse {
@@ -848,11 +919,15 @@ export function registerAgentCommands(program: Command): void {
 
   // Ping an agent directly
   agent
-    .command('ping <hostPort>')
-    .description('Check agent health directly via HTTP (format: host:port or host)')
+    .command('ping [hostPort]')
+    .description('Check agent health directly via HTTP (format: host:port or host, or select from list)')
     .option('--json', 'Output as JSON')
-    .action(async (hostPort: string, options: { json?: boolean }) => {
-      const { host, port } = parseHostPort(hostPort);
+    .action(async (hostPort: string | undefined, options: { json?: boolean }) => {
+      const resolved = await resolveHostPort(hostPort);
+      if (!resolved) {
+        process.exit(1);
+      }
+      const { host, port } = resolved;
       const spinner = ora(`Checking agent at ${host}:${port}...`).start();
 
       try {
@@ -896,11 +971,15 @@ export function registerAgentCommands(program: Command): void {
 
   // Check plugin versions on an agent
   agent
-    .command('plugins <hostPort>')
-    .description('Check plugin versions on an agent (format: host:port or host)')
+    .command('plugins [hostPort]')
+    .description('Check plugin versions on an agent (format: host:port or host, or select from list)')
     .option('--json', 'Output as JSON')
-    .action(async (hostPort: string, options: { json?: boolean }) => {
-      const { host, port } = parseHostPort(hostPort);
+    .action(async (hostPort: string | undefined, options: { json?: boolean }) => {
+      const resolved = await resolveHostPort(hostPort);
+      if (!resolved) {
+        process.exit(1);
+      }
+      const { host, port } = resolved;
       const spinner = ora(`Checking plugins at ${host}:${port}...`).start();
 
       try {
@@ -931,7 +1010,7 @@ export function registerAgentCommands(program: Command): void {
         console.log();
         if (response.hasUpdates) {
           console.log(`\x1b[33m${response.versions.filter(v => v.updateAvailable).length} update(s) available\x1b[0m`);
-          console.log(`Run: znvault agent update-plugins ${hostPort}`);
+          console.log(`Run: znvault agent update-plugins ${host}:${port}`);
         } else {
           console.log('\x1b[32m✓\x1b[0m All plugins up to date');
         }
@@ -945,12 +1024,16 @@ export function registerAgentCommands(program: Command): void {
 
   // Update plugins on an agent
   agent
-    .command('update-plugins <hostPort>')
-    .description('Trigger plugin updates on an agent (format: host:port or host)')
+    .command('update-plugins [hostPort]')
+    .description('Trigger plugin updates on an agent (format: host:port or host, or select from list)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('--json', 'Output as JSON')
-    .action(async (hostPort: string, options: { yes?: boolean; json?: boolean }) => {
-      const { host, port } = parseHostPort(hostPort);
+    .action(async (hostPort: string | undefined, options: { yes?: boolean; json?: boolean }) => {
+      const resolved = await resolveHostPort(hostPort);
+      if (!resolved) {
+        process.exit(1);
+      }
+      const { host, port } = resolved;
 
       // First check what needs updating
       const checkSpinner = ora(`Checking plugins at ${host}:${port}...`).start();
@@ -1056,11 +1139,15 @@ export function registerAgentCommands(program: Command): void {
 
   // Check agent version
   agent
-    .command('version <hostPort>')
-    .description('Check agent version and available updates (format: host:port or host)')
+    .command('version [hostPort]')
+    .description('Check agent version and available updates (format: host:port or host, or select from list)')
     .option('--json', 'Output as JSON')
-    .action(async (hostPort: string, options: { json?: boolean }) => {
-      const { host, port } = parseHostPort(hostPort);
+    .action(async (hostPort: string | undefined, options: { json?: boolean }) => {
+      const resolved = await resolveHostPort(hostPort);
+      if (!resolved) {
+        process.exit(1);
+      }
+      const { host, port } = resolved;
       const spinner = ora(`Checking agent version at ${host}:${port}...`).start();
 
       try {
@@ -1082,7 +1169,7 @@ export function registerAgentCommands(program: Command): void {
 
         if (response.updateAvailable) {
           console.log(`\x1b[33m↑ Update available: ${response.current} → ${response.latest}\x1b[0m`);
-          console.log(`Run: znvault agent update ${hostPort}`);
+          console.log(`Run: znvault agent update ${host}:${port}`);
         } else {
           console.log('\x1b[32m✓\x1b[0m Agent is up to date');
         }
@@ -1096,12 +1183,16 @@ export function registerAgentCommands(program: Command): void {
 
   // Update agent
   agent
-    .command('update <hostPort>')
-    .description('Trigger agent self-update (format: host:port or host)')
+    .command('update [hostPort]')
+    .description('Trigger agent self-update (format: host:port or host, or select from list)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('--json', 'Output as JSON')
-    .action(async (hostPort: string, options: { yes?: boolean; json?: boolean }) => {
-      const { host, port } = parseHostPort(hostPort);
+    .action(async (hostPort: string | undefined, options: { yes?: boolean; json?: boolean }) => {
+      const resolved = await resolveHostPort(hostPort);
+      if (!resolved) {
+        process.exit(1);
+      }
+      const { host, port } = resolved;
 
       // First check what version is available
       const checkSpinner = ora(`Checking agent version at ${host}:${port}...`).start();
