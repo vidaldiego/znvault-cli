@@ -11,6 +11,7 @@ interface ClusterStatusOptions {
 
 interface ClusterConfirmOptions {
   yes?: boolean;
+  json?: boolean;
 }
 
 export function registerClusterCommands(program: Command): void {
@@ -91,6 +92,7 @@ export function registerClusterCommands(program: Command): void {
     .command('takeover')
     .description('Force this node to become cluster leader')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster takeover requires API mode with authentication');
@@ -114,11 +116,16 @@ export function registerClusterCommands(program: Command): void {
         try {
           const result = await client.clusterTakeover();
           spinner.succeed('Leadership takeover successful');
-          output.keyValue({
-            'Success': result.success,
-            'Message': result.message,
-            'Node ID': result.nodeId,
-          });
+
+          if (options.json) {
+            output.json(result);
+          } else {
+            output.keyValue({
+              'Success': result.success,
+              'Message': result.message,
+              'Node ID': result.nodeId,
+            });
+          }
         } catch (err) {
           spinner.fail('Takeover failed');
           throw err;
@@ -134,10 +141,17 @@ export function registerClusterCommands(program: Command): void {
     .command('promote <nodeId>')
     .description('Promote a specific node to become leader')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (nodeId: string, options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster promote requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
+        process.exit(1);
+      }
+
+      // Validate nodeId is not empty
+      if (!nodeId || nodeId.trim() === '') {
+        output.error('Node ID is required');
         process.exit(1);
       }
 
@@ -157,10 +171,15 @@ export function registerClusterCommands(program: Command): void {
         try {
           const result = await client.clusterPromote(nodeId);
           spinner.succeed('Node promoted successfully');
-          output.keyValue({
-            'Success': result.success,
-            'Message': result.message,
-          });
+
+          if (options.json) {
+            output.json(result);
+          } else {
+            output.keyValue({
+              'Success': result.success,
+              'Message': result.message,
+            });
+          }
         } catch (err) {
           spinner.fail('Promotion failed');
           throw err;
@@ -176,6 +195,7 @@ export function registerClusterCommands(program: Command): void {
     .command('release')
     .description('Release leadership from this node')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster release requires API mode with authentication');
@@ -199,10 +219,15 @@ export function registerClusterCommands(program: Command): void {
         try {
           const result = await client.clusterRelease();
           spinner.succeed('Leadership released');
-          output.keyValue({
-            'Success': result.success,
-            'Message': result.message,
-          });
+
+          if (options.json) {
+            output.json(result);
+          } else {
+            output.keyValue({
+              'Success': result.success,
+              'Message': result.message,
+            });
+          }
         } catch (err) {
           spinner.fail('Release failed');
           throw err;
@@ -218,6 +243,7 @@ export function registerClusterCommands(program: Command): void {
     .command('maintenance <action>')
     .description('Enable or disable maintenance mode (enable|disable)')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (action: string, options: ClusterConfirmOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Cluster maintenance requires API mode with authentication');
@@ -248,10 +274,15 @@ export function registerClusterCommands(program: Command): void {
         try {
           const result = await client.clusterMaintenance(enable);
           spinner.succeed(`Maintenance mode ${enable ? 'enabled' : 'disabled'}`);
-          output.keyValue({
-            'Success': result.success,
-            'Maintenance Mode': result.maintenanceMode,
-          });
+
+          if (options.json) {
+            output.json(result);
+          } else {
+            output.keyValue({
+              'Success': result.success,
+              'Maintenance Mode': result.maintenanceMode,
+            });
+          }
         } catch (err) {
           spinner.fail(`Failed to ${action} maintenance mode`);
           throw err;

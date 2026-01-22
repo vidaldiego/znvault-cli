@@ -16,6 +16,11 @@ interface CreateOptions {
 
 interface DisableOptions {
   yes?: boolean;
+  json?: boolean;
+}
+
+interface JsonOptions {
+  json?: boolean;
 }
 
 export function registerSuperadminCommands(program: Command): void {
@@ -113,7 +118,8 @@ export function registerSuperadminCommands(program: Command): void {
   superadmin
     .command('reset-password <username> [newPassword]')
     .description('Reset superadmin password')
-    .action(async (username: string, newPassword?: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (username: string, newPassword: string | undefined, options: JsonOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin password reset requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -127,7 +133,9 @@ export function registerSuperadminCommands(program: Command): void {
         try {
           const result = await client.resetSuperadminPassword(username, password);
           spinner.succeed('Password reset successfully');
-          if (result.message) {
+          if (options.json) {
+            output.json({ success: true, username, ...result });
+          } else if (result.message) {
             output.info(result.message);
           }
         } catch (err) {
@@ -144,7 +152,8 @@ export function registerSuperadminCommands(program: Command): void {
   superadmin
     .command('unlock <username>')
     .description('Unlock a locked superadmin account')
-    .action(async (username: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (username: string, options: JsonOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin unlock requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -156,7 +165,9 @@ export function registerSuperadminCommands(program: Command): void {
       try {
         const result = await client.unlockSuperadmin(username);
         spinner.succeed('Superadmin unlocked successfully');
-        if (result.message) {
+        if (options.json) {
+          output.json({ success: true, username, ...result });
+        } else if (result.message) {
           output.info(result.message);
         }
       } catch (err) {
@@ -171,6 +182,7 @@ export function registerSuperadminCommands(program: Command): void {
     .command('disable <username>')
     .description('Disable a superadmin account')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (username: string, options: DisableOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin disable requires API mode with authentication');
@@ -194,7 +206,9 @@ export function registerSuperadminCommands(program: Command): void {
         try {
           const result = await client.disableSuperadmin(username);
           spinner.succeed('Superadmin disabled successfully');
-          if (result.message) {
+          if (options.json) {
+            output.json({ success: true, username, ...result });
+          } else if (result.message) {
             output.info(result.message);
           }
         } catch (err) {
@@ -211,7 +225,8 @@ export function registerSuperadminCommands(program: Command): void {
   superadmin
     .command('enable <username>')
     .description('Enable a disabled superadmin account')
-    .action(async (username: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (username: string, options: JsonOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Superadmin enable requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
@@ -223,7 +238,9 @@ export function registerSuperadminCommands(program: Command): void {
       try {
         const result = await client.enableSuperadmin(username);
         spinner.succeed('Superadmin enabled successfully');
-        if (result.message) {
+        if (options.json) {
+          output.json({ success: true, username, ...result });
+        } else if (result.message) {
           output.info(result.message);
         }
       } catch (err) {

@@ -6,7 +6,7 @@
  */
 
 import { type Command } from 'commander';
-import { execSync, spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import ora from 'ora';
@@ -25,6 +25,11 @@ interface SelfUpdateOptions {
   force?: boolean;
   yes?: boolean;
   skipPlugins?: boolean;
+  json?: boolean;
+}
+
+interface VersionOptions {
+  json?: boolean;
 }
 
 interface PluginUpdateInfo {
@@ -63,7 +68,7 @@ function getInstalledVersion(packageName: string, pluginsDir: string): string | 
  */
 function getLatestVersion(packageName: string): string | null {
   try {
-    return execSync(`npm view ${packageName} version`, { stdio: 'pipe' }).toString().trim();
+    return execFileSync('npm', ['view', packageName, 'version'], { stdio: 'pipe' }).toString().trim();
   } catch {
     return null;
   }
@@ -173,6 +178,7 @@ export function registerSelfUpdateCommands(program: Command): void {
     .option('-f, --force', 'Force update even if already on latest version')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('--skip-plugins', 'Skip plugin updates')
+    .option('--json', 'Output as JSON')
     .action(async (options: SelfUpdateOptions) => {
       const spinner = ora('Checking for updates...').start();
 
@@ -185,6 +191,25 @@ export function registerSelfUpdateCommands(program: Command): void {
         const pluginUpdates = options.skipPlugins ? [] : checkPluginUpdates();
 
         spinner.stop();
+
+        const hasCliUpdate = cliResult.updateAvailable || options.force;
+        const hasPluginUpdates = pluginUpdates.length > 0;
+
+        // JSON output for check mode or when no updates
+        if (options.json) {
+          if (options.check || (!hasCliUpdate && !hasPluginUpdates)) {
+            output.json({
+              cli: {
+                currentVersion: cliResult.currentVersion,
+                latestVersion: cliResult.latestVersion,
+                updateAvailable: cliResult.updateAvailable,
+              },
+              plugins: pluginUpdates,
+              hasUpdates: hasCliUpdate || hasPluginUpdates,
+            });
+            return;
+          }
+        }
 
         // Display CLI update info
         console.log();
@@ -213,9 +238,6 @@ export function registerSelfUpdateCommands(program: Command): void {
           output.warn('Could not check npm registry. Check your network connection.');
           return;
         }
-
-        const hasCliUpdate = cliResult.updateAvailable || options.force;
-        const hasPluginUpdates = pluginUpdates.length > 0;
 
         if (!hasCliUpdate && !hasPluginUpdates) {
           console.log(chalk.green('✓ Everything is up to date!'));
@@ -296,6 +318,15 @@ export function registerSelfUpdateCommands(program: Command): void {
           }
         }
 
+        if (options.json) {
+          output.json({
+            success: true,
+            cli: hasCliUpdate ? { updated: true, version: cliResult.latestVersion } : { updated: false },
+            plugins: hasPluginUpdates ? pluginUpdates.map(p => ({ name: p.name, version: p.latestVersion })) : [],
+          });
+          return;
+        }
+
         console.log();
         if (hasCliUpdate) {
           console.log(chalk.dim('Run "znvault --version" to verify the new CLI version.'));
@@ -314,8 +345,32 @@ export function registerSelfUpdateCommands(program: Command): void {
   program
     .command('version')
     .description('Show version and check for updates')
-    .action(async () => {
+    .option('--json', 'Output as JSON')
+    .action(async (options: VersionOptions) => {
       const currentVersion = getCurrentVersion();
+
+      if (options.json) {
+        const spinner = ora('Checking for updates...').start();
+        try {
+          const result = await checkForUpdate(true);
+          const pluginUpdates = checkPluginUpdates();
+          spinner.stop();
+
+          output.json({
+            version: currentVersion,
+            cli: {
+              latestVersion: result.latestVersion,
+              updateAvailable: result.updateAvailable,
+            },
+            plugins: pluginUpdates,
+          });
+        } catch {
+          spinner.stop();
+          output.json({ version: currentVersion, error: 'Could not check for updates' });
+        }
+        return;
+      }
+
       console.log(`znvault version ${currentVersion}`);
 
       const spinner = ora('Checking for updates...').start();

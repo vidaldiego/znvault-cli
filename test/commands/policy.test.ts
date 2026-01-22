@@ -18,6 +18,7 @@ vi.mock('ora', () => ({
 vi.mock('fs', () => ({
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
+  existsSync: vi.fn().mockReturnValue(true),
 }));
 
 // Mock client
@@ -72,6 +73,9 @@ describe('Policy Commands', () => {
     program = new Command();
     program.exitOverride();
     registerPolicyCommands(program);
+
+    // Reset existsSync to return true by default
+    vi.mocked(fs.existsSync).mockReturnValue(true);
 
     mockExit = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null | undefined): never => {
       throw new Error(`process.exit(${code})`);
@@ -949,12 +953,10 @@ describe('Policy Commands', () => {
     });
 
     it('should handle file read errors', async () => {
-      vi.mocked(fs.readFileSync).mockImplementation(() => {
-        throw new Error('File not found');
-      });
+      vi.mocked(fs.existsSync).mockReturnValue(false);
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'import', '/invalid/path.json'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('File not found');
+      expect(output.error).toHaveBeenCalledWith('File not found: /invalid/path.json');
     });
   });
 });

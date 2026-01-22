@@ -306,7 +306,7 @@ async function updateConnection(nameOrId: string, options: {
   }
 }
 
-async function deleteConnection(nameOrId: string, options: { force?: boolean }): Promise<void> {
+async function deleteConnection(nameOrId: string, options: { force?: boolean; json?: boolean }): Promise<void> {
   if (!options.force) {
     const { confirm } = await inquirer.prompt([{
       type: 'confirm',
@@ -325,6 +325,10 @@ async function deleteConnection(nameOrId: string, options: { force?: boolean }):
   try {
     await client.delete(`/v1/dynamic-secrets/connections/${nameOrId}`);
     spinner.succeed(`Connection "${nameOrId}" deleted`);
+
+    if (options.json) {
+      output.json({ success: true, id: nameOrId });
+    }
   } catch (err) {
     spinner.fail('Failed to delete connection');
     output.error(err instanceof Error ? err.message : String(err));
@@ -533,7 +537,7 @@ async function updateRole(roleId: string, options: {
   }
 }
 
-async function deleteRole(roleId: string, options: { force?: boolean }): Promise<void> {
+async function deleteRole(roleId: string, options: { force?: boolean; json?: boolean }): Promise<void> {
   if (!options.force) {
     const { confirm } = await inquirer.prompt([{
       type: 'confirm',
@@ -552,6 +556,10 @@ async function deleteRole(roleId: string, options: { force?: boolean }): Promise
   try {
     await client.delete(`/v1/dynamic-secrets/roles/${roleId}`);
     spinner.succeed('Role deleted');
+
+    if (options.json) {
+      output.json({ success: true, roleId });
+    }
   } catch (err) {
     spinner.fail('Failed to delete role');
     output.error(err instanceof Error ? err.message : String(err));
@@ -721,6 +729,7 @@ async function renewLease(leaseId: string, options: {
 async function revokeLease(leaseId: string, options: {
   reason?: string;
   force?: boolean;
+  json?: boolean;
 }): Promise<void> {
   if (!options.force) {
     const { confirm } = await inquirer.prompt([{
@@ -743,6 +752,10 @@ async function revokeLease(leaseId: string, options: {
 
     await client.post(`/v1/dynamic-secrets/leases/${leaseId}/revoke`, body);
     spinner.succeed('Lease revoked');
+
+    if (options.json) {
+      output.json({ success: true, leaseId });
+    }
   } catch (err) {
     spinner.fail('Failed to revoke lease');
     output.error(err instanceof Error ? err.message : String(err));
@@ -831,6 +844,7 @@ Examples:
     .alias('rm')
     .description('Delete a database connection')
     .option('--force', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(deleteConnection);
 
   connection
@@ -887,6 +901,7 @@ Examples:
     .alias('rm')
     .description('Delete a role')
     .option('--force', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(deleteRole);
 
   // -------------------------------------------------------------------------
@@ -934,5 +949,6 @@ Examples:
     .description('Revoke a lease (immediately revokes database credentials)')
     .option('--reason <reason>', 'Revocation reason')
     .option('--force', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(revokeLease);
 }

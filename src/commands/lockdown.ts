@@ -11,10 +11,12 @@ interface LockdownStatusOptions {
 
 interface LockdownTriggerOptions {
   yes?: boolean;
+  json?: boolean;
 }
 
 interface LockdownClearOptions {
   yes?: boolean;
+  json?: boolean;
 }
 
 interface LockdownHistoryOptions {
@@ -89,6 +91,7 @@ export function registerLockdownCommands(program: Command): void {
     .command('trigger <level> <reason>')
     .description('Manually trigger a lockdown (level 1-4)')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (level: string, reason: string, options: LockdownTriggerOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Lockdown trigger requires API mode with authentication');
@@ -123,6 +126,12 @@ export function registerLockdownCommands(program: Command): void {
         try {
           const result = await client.triggerLockdown(levelNum as 1 | 2 | 3 | 4, reason);
           spinner.succeed('Lockdown triggered');
+
+          if (options.json) {
+            output.json(result);
+            return;
+          }
+
           output.keyValue({
             'Success': result.success,
             'New Status': result.status,
@@ -142,6 +151,7 @@ export function registerLockdownCommands(program: Command): void {
     .command('clear <reason>')
     .description('Clear the current lockdown')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (reason: string, options: LockdownClearOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Lockdown clear requires API mode with authentication');
@@ -165,6 +175,12 @@ export function registerLockdownCommands(program: Command): void {
         try {
           const result = await client.clearLockdown(reason);
           spinner.succeed('Lockdown cleared');
+
+          if (options.json) {
+            output.json(result);
+            return;
+          }
+
           output.keyValue({
             'Success': result.success,
             'Previous Status': result.previousStatus,

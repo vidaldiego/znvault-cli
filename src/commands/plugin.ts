@@ -26,6 +26,23 @@ const ZINCAPP_PREFIX = '@zincapp/znvault-plugin-';
 interface PluginInstallOptions {
   force?: boolean;
   global?: boolean;
+  json?: boolean;
+}
+
+interface PluginUninstallOptions {
+  json?: boolean;
+}
+
+interface PluginUpdateOptions {
+  json?: boolean;
+}
+
+interface PluginEnableDisableOptions {
+  json?: boolean;
+}
+
+interface PluginInfoOptions {
+  json?: boolean;
 }
 
 interface PluginListOptions {
@@ -243,6 +260,7 @@ export function registerPluginCommands(program: Command): void {
     .description('Install a CLI plugin')
     .option('-f, --force', 'Force reinstall even if already installed')
     .option('-g, --global', 'Install globally instead of in plugins directory')
+    .option('--json', 'Output as JSON')
     .action(async (name: string, options: PluginInstallOptions) => {
       const spinner = ora('Resolving plugin...').start();
 
@@ -279,6 +297,10 @@ export function registerPluginCommands(program: Command): void {
 
         if (alreadyConfigured && !options.force) {
           spinner.info(`Plugin ${chalk.cyan(getShortName(packageName))} is already installed.`);
+          if (options.json) {
+            output.json({ success: false, name: getShortName(packageName), package: packageName, alreadyInstalled: true });
+            return;
+          }
           console.log(`Use ${chalk.cyan('--force')} to reinstall.`);
           return;
         }
@@ -316,6 +338,11 @@ export function registerPluginCommands(program: Command): void {
         const version = getInstalledVersion(packageName, pluginsDir);
         spinner.succeed(`Installed ${chalk.cyan(getShortName(packageName))}${version ? ` v${version}` : ''}`);
 
+        if (options.json) {
+          output.json({ success: true, name: getShortName(packageName), package: packageName, version: version ?? 'unknown' });
+          return;
+        }
+
         console.log();
         console.log(chalk.dim('Plugin will be loaded on next command execution.'));
 
@@ -336,7 +363,8 @@ export function registerPluginCommands(program: Command): void {
     .command('uninstall <name>')
     .alias('remove')
     .description('Uninstall a CLI plugin')
-    .action(async (name: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (name: string, options: PluginUninstallOptions) => {
       const spinner = ora('Uninstalling plugin...').start();
 
       try {
@@ -374,6 +402,10 @@ export function registerPluginCommands(program: Command): void {
         removePlugin(actualPackage);
 
         spinner.succeed(`Uninstalled ${chalk.cyan(getShortName(actualPackage))}`);
+
+        if (options.json) {
+          output.json({ success: true, name: getShortName(actualPackage), package: actualPackage });
+        }
       } catch (err) {
         spinner.fail('Uninstall failed');
         output.error(err instanceof Error ? err.message : String(err));
@@ -452,7 +484,8 @@ export function registerPluginCommands(program: Command): void {
     .command('update [name]')
     .alias('upgrade')
     .description('Update plugins (all or specific)')
-    .action(async (name?: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (name: string | undefined, options: PluginUpdateOptions) => {
       const plugins = getPlugins();
 
       if (plugins.length === 0) {
@@ -498,6 +531,9 @@ export function registerPluginCommands(program: Command): void {
 
         if (updates.length === 0) {
           spinner.succeed('All plugins are up to date.');
+          if (options.json) {
+            output.json({ success: true, updates: [] });
+          }
           return;
         }
 
@@ -514,6 +550,12 @@ export function registerPluginCommands(program: Command): void {
         }
 
         spinner.succeed('Plugins updated');
+
+        if (options.json) {
+          output.json({ success: true, updates });
+          return;
+        }
+
         console.log();
 
         for (const u of updates) {
@@ -532,7 +574,8 @@ export function registerPluginCommands(program: Command): void {
   plugin
     .command('enable <name>')
     .description('Enable a disabled plugin')
-    .action((name: string) => {
+    .option('--json', 'Output as JSON')
+    .action((name: string, options: PluginEnableDisableOptions) => {
       const plugins = getPlugins();
       const packageName = resolvePluginName(name);
 
@@ -549,11 +592,19 @@ export function registerPluginCommands(program: Command): void {
       }
 
       if (found.enabled !== false) {
+        if (options.json) {
+          output.json({ success: true, name: getShortName(found.package ?? name), alreadyEnabled: true });
+          return;
+        }
         console.log(`Plugin ${chalk.cyan(getShortName(found.package ?? name))} is already enabled.`);
         return;
       }
 
       setPluginEnabled(found.package ?? found.path ?? '', true);
+      if (options.json) {
+        output.json({ success: true, name: getShortName(found.package ?? name) });
+        return;
+      }
       output.success(`Enabled plugin: ${getShortName(found.package ?? name)}`);
     });
 
@@ -563,7 +614,8 @@ export function registerPluginCommands(program: Command): void {
   plugin
     .command('disable <name>')
     .description('Disable a plugin without uninstalling')
-    .action((name: string) => {
+    .option('--json', 'Output as JSON')
+    .action((name: string, options: PluginEnableDisableOptions) => {
       const plugins = getPlugins();
       const packageName = resolvePluginName(name);
 
@@ -580,11 +632,19 @@ export function registerPluginCommands(program: Command): void {
       }
 
       if (found.enabled === false) {
+        if (options.json) {
+          output.json({ success: true, name: getShortName(found.package ?? name), alreadyDisabled: true });
+          return;
+        }
         console.log(`Plugin ${chalk.cyan(getShortName(found.package ?? name))} is already disabled.`);
         return;
       }
 
       setPluginEnabled(found.package ?? found.path ?? '', false);
+      if (options.json) {
+        output.json({ success: true, name: getShortName(found.package ?? name) });
+        return;
+      }
       output.success(`Disabled plugin: ${getShortName(found.package ?? name)}`);
     });
 
@@ -594,7 +654,8 @@ export function registerPluginCommands(program: Command): void {
   plugin
     .command('info <name>')
     .description('Show plugin information')
-    .action(async (name: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (name: string, options: PluginInfoOptions) => {
       const spinner = ora('Fetching plugin info...').start();
 
       try {
@@ -637,8 +698,32 @@ export function registerPluginCommands(program: Command): void {
         spinner.stop();
 
         if (!installed && !npmInfo) {
+          if (options.json) {
+            output.json({ success: false, error: `Plugin not found: ${name}` });
+            process.exit(1);
+          }
           output.error(`Plugin not found: ${name}`);
           process.exit(1);
+        }
+
+        if (options.json) {
+          const localVersion = installed?.package ? getInstalledVersion(installed.package, pluginsDir) : null;
+          output.json({
+            name: getShortName(packageName),
+            package: packageName,
+            npm: npmInfo ? {
+              version: npmInfo.version,
+              description: npmInfo.description,
+              homepage: npmInfo.homepage,
+            } : null,
+            local: installed ? {
+              installed: true,
+              version: localVersion ?? 'unknown',
+              enabled: installed.enabled !== false,
+              updateAvailable: npmInfo && localVersion && localVersion !== npmInfo.version,
+            } : null,
+          });
+          return;
         }
 
         console.log();

@@ -34,6 +34,7 @@ interface TenantUpdateOptions {
 
 interface TenantDeleteOptions {
   yes?: boolean;
+  json?: boolean;
 }
 
 interface TenantUsageOptions {
@@ -262,6 +263,7 @@ export function registerTenantCommands(program: Command): void {
     .command('delete <id>')
     .description('Archive a tenant (soft delete)')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (id: string, options: TenantDeleteOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Tenant deletion requires API mode with authentication');
@@ -285,6 +287,10 @@ export function registerTenantCommands(program: Command): void {
         try {
           await client.deleteTenant(id);
           spinner.succeed(`Tenant '${id}' archived successfully`);
+
+          if (options.json) {
+            output.json({ success: true, id, message: 'Tenant archived successfully' });
+          }
         } catch (err) {
           spinner.fail('Failed to archive tenant');
           throw err;

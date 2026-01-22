@@ -41,6 +41,7 @@ interface UpdateInstallOptions {
   force?: boolean;
   path?: string;
   yes?: boolean;
+  json?: boolean;
 }
 
 /**
@@ -200,6 +201,7 @@ export function registerUpdateCommands(program: Command): void {
     .option('--force', 'Force reinstall even if up to date')
     .option('--path <path>', 'Installation path')
     .option('-y, --yes', 'Skip confirmation prompts')
+    .option('--json', 'Output as JSON')
     .action(async (options: UpdateInstallOptions) => {
       const config = loadConfig();
       const channel = (options.channel ?? config.channel) as UpdateChannel;
@@ -239,6 +241,9 @@ export function registerUpdateCommands(program: Command): void {
 
         if (!result.updateAvailable && !options.force) {
           spinner.succeed('Already running the latest version');
+          if (options.json) {
+            output.json({ success: true, upToDate: true, version: result.currentVersion });
+          }
           return;
         }
 
@@ -295,6 +300,16 @@ export function registerUpdateCommands(program: Command): void {
 
         const installerWithProgress = createUpdateInstaller(installPath, progressHandler);
         await installerWithProgress.install(result.artifact, result.latestVersion);
+
+        if (options.json) {
+          output.json({
+            success: true,
+            previousVersion: result.currentVersion,
+            newVersion: result.latestVersion,
+            installPath,
+          });
+          return;
+        }
 
         console.log();
         console.log('✓ Update installed successfully!');

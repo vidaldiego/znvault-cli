@@ -58,6 +58,24 @@ interface SetupOptions {
 
 interface TestOptions {
   email?: string;
+  json?: boolean;
+}
+
+interface RemoveOptions {
+  yes?: boolean;
+  json?: boolean;
+}
+
+interface SetRecipientsOptions {
+  json?: boolean;
+}
+
+interface AddRecipientOptions {
+  json?: boolean;
+}
+
+interface RemoveRecipientOptions {
+  json?: boolean;
 }
 
 interface RecipientsOptions {
@@ -281,6 +299,11 @@ async function testEmail(options: TestOptions): Promise<void> {
     const result = await client.post<{ message: string }>('/v1/admin/notifications/test', body);
     spinner.stop();
 
+    if (options.json) {
+      output.json({ success: true, ...result });
+      return;
+    }
+
     output.success(result.message);
   } catch (error) {
     spinner.fail('Failed to send test email');
@@ -289,19 +312,21 @@ async function testEmail(options: TestOptions): Promise<void> {
   }
 }
 
-async function removeConfig(): Promise<void> {
-  const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
-    {
-      type: 'confirm',
-      name: 'confirm',
-      message: 'Remove SMTP configuration and disable email notifications?',
-      default: false,
-    },
-  ]);
+async function removeConfig(options: RemoveOptions): Promise<void> {
+  if (!options.yes) {
+    const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: 'Remove SMTP configuration and disable email notifications?',
+        default: false,
+      },
+    ]);
 
-  if (!confirm) {
-    output.info('Cancelled');
-    return;
+    if (!confirm) {
+      output.info('Cancelled');
+      return;
+    }
   }
 
   const spinner = ora('Removing SMTP configuration...').start();
@@ -309,6 +334,11 @@ async function removeConfig(): Promise<void> {
   try {
     const result = await client.delete<{ message: string; configured: boolean }>('/v1/admin/notifications/config');
     spinner.stop();
+
+    if (options.json) {
+      output.json({ success: true, ...result });
+      return;
+    }
 
     output.success(result.message);
   } catch (error) {
@@ -348,7 +378,7 @@ async function showRecipients(options: RecipientsOptions): Promise<void> {
   }
 }
 
-async function setRecipients(emails: string): Promise<void> {
+async function setRecipients(emails: string, options: SetRecipientsOptions): Promise<void> {
   // Validate emails
   const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -368,6 +398,11 @@ async function setRecipients(emails: string): Promise<void> {
     });
     spinner.stop();
 
+    if (options.json) {
+      output.json({ success: true, recipients: emailList, ...result });
+      return;
+    }
+
     output.success(result.message);
     console.log(`  Recipients: ${emailList.join(', ')}`);
   } catch (error) {
@@ -377,7 +412,7 @@ async function setRecipients(emails: string): Promise<void> {
   }
 }
 
-async function addRecipient(email: string): Promise<void> {
+async function addRecipient(email: string, options: AddRecipientOptions): Promise<void> {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
     output.error(`Invalid email format: ${email}`);
@@ -393,6 +428,10 @@ async function addRecipient(email: string): Promise<void> {
 
     if (currentEmails.includes(email)) {
       spinner.stop();
+      if (options.json) {
+        output.json({ success: true, email, alreadyExists: true });
+        return;
+      }
       output.info(`${email} is already a recipient`);
       return;
     }
@@ -404,6 +443,11 @@ async function addRecipient(email: string): Promise<void> {
     });
     spinner.stop();
 
+    if (options.json) {
+      output.json({ success: true, email, recipients: currentEmails });
+      return;
+    }
+
     output.success(`Added ${email} to notification recipients`);
   } catch (error) {
     spinner.fail('Failed to add recipient');
@@ -412,7 +456,7 @@ async function addRecipient(email: string): Promise<void> {
   }
 }
 
-async function removeRecipient(email: string): Promise<void> {
+async function removeRecipient(email: string, options: RemoveRecipientOptions): Promise<void> {
   const spinner = ora('Removing recipient...').start();
 
   try {
@@ -423,6 +467,10 @@ async function removeRecipient(email: string): Promise<void> {
     const index = currentEmails.indexOf(email);
     if (index === -1) {
       spinner.stop();
+      if (options.json) {
+        output.json({ success: true, email, notFound: true });
+        return;
+      }
       output.info(`${email} is not in the recipients list`);
       return;
     }
@@ -433,6 +481,11 @@ async function removeRecipient(email: string): Promise<void> {
       recipients: currentEmails.join(','),
     });
     spinner.stop();
+
+    if (options.json) {
+      output.json({ success: true, email, recipients: currentEmails });
+      return;
+    }
 
     output.success(`Removed ${email} from notification recipients`);
   } catch (error) {
@@ -485,12 +538,15 @@ export function registerNotificationCommands(program: Command): void {
     .command('test')
     .description('Send a test email')
     .option('--email <address>', 'Send test to specific address')
+    .option('--json', 'Output as JSON')
     .action(testEmail);
 
   // Remove config
   notification
     .command('remove')
     .description('Remove SMTP configuration (disable notifications)')
+    .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(removeConfig);
 
   // Show recipients
@@ -504,17 +560,20 @@ export function registerNotificationCommands(program: Command): void {
   notification
     .command('set-recipients <emails>')
     .description('Set notification recipients (comma-separated)')
+    .option('--json', 'Output as JSON')
     .action(setRecipients);
 
   // Add recipient
   notification
     .command('add-recipient <email>')
     .description('Add a notification recipient')
+    .option('--json', 'Output as JSON')
     .action(addRecipient);
 
   // Remove recipient
   notification
     .command('remove-recipient <email>')
     .description('Remove a notification recipient')
+    .option('--json', 'Output as JSON')
     .action(removeRecipient);
 }

@@ -65,6 +65,11 @@ interface UpdateOptions {
 
 interface DeleteOptions {
   force?: boolean;
+  json?: boolean;
+}
+
+interface RemoveRoleOptions {
+  json?: boolean;
 }
 
 interface AssignOptions {
@@ -304,6 +309,12 @@ async function deleteRole(roleId: string, options: DeleteOptions): Promise<void>
   try {
     await client.delete(`/v1/roles/${roleId}`);
     deleteSpinner.stop();
+
+    if (options.json) {
+      output.json({ success: true, roleId });
+      return;
+    }
+
     output.success('Role deleted successfully');
   } catch (error) {
     deleteSpinner.fail('Failed to delete role');
@@ -332,12 +343,18 @@ async function assignRole(roleId: string, userId: string, options: AssignOptions
   }
 }
 
-async function removeRole(roleId: string, userId: string): Promise<void> {
+async function removeRole(roleId: string, userId: string, options: RemoveRoleOptions): Promise<void> {
   const spinner = ora('Removing role...').start();
 
   try {
     await client.delete(`/v1/users/${userId}/roles/${roleId}`);
     spinner.stop();
+
+    if (options.json) {
+      output.json({ success: true, roleId, userId });
+      return;
+    }
+
     output.success(`Role ${roleId} removed from user ${userId}`);
   } catch (error) {
     spinner.fail('Failed to remove role');
@@ -494,6 +511,7 @@ export function registerRoleCommands(program: Command): void {
     .command('delete <roleId>')
     .description('Delete a custom role')
     .option('-f, --force', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(deleteRole);
 
   // Assign role to user
@@ -507,6 +525,7 @@ export function registerRoleCommands(program: Command): void {
   role
     .command('remove <roleId> <userId>')
     .description('Remove a role from a user')
+    .option('--json', 'Output as JSON')
     .action(removeRole);
 
   // Get user's roles

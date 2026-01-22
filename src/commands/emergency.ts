@@ -6,20 +6,27 @@ import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 
 // Option interfaces for each command
+interface TestDbOptions {
+  json?: boolean;
+}
+
 interface UserStatusOptions {
   json?: boolean;
 }
 
 interface ResetPasswordOptions {
   yes?: boolean;
+  json?: boolean;
 }
 
 interface UnlockOptions {
   yes?: boolean;
+  json?: boolean;
 }
 
 interface DisableTotpOptions {
   yes?: boolean;
+  json?: boolean;
 }
 
 function checkEmergencyAccess(): void {
@@ -51,7 +58,8 @@ export function registerEmergencyCommands(program: Command): void {
   emergency
     .command('test-db')
     .description('Test database connection')
-    .action(async () => {
+    .option('--json', 'Output as JSON')
+    .action(async (options: TestDbOptions) => {
       checkEmergencyAccess();
 
       const spinner = ora('Testing database connection...').start();
@@ -62,9 +70,17 @@ export function registerEmergencyCommands(program: Command): void {
 
         if (result.success) {
           spinner.succeed('Database connection successful');
+          if (options.json) {
+            output.json(result);
+            return;
+          }
           output.info(result.message);
         } else {
           spinner.fail('Database connection failed');
+          if (options.json) {
+            output.json(result);
+            process.exit(1);
+          }
           output.error(result.message);
           process.exit(1);
         }
@@ -126,6 +142,7 @@ export function registerEmergencyCommands(program: Command): void {
     .command('reset-password <username> [newPassword]')
     .description('Reset user password directly in database')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (username: string, newPassword: string | undefined, options: ResetPasswordOptions) => {
       checkEmergencyAccess();
 
@@ -156,11 +173,19 @@ export function registerEmergencyCommands(program: Command): void {
 
           if (result.success) {
             spinner.succeed('Password reset successful');
+            if (options.json) {
+              output.json({ username, ...result });
+              return;
+            }
             output.info(result.message);
             console.log();
             output.warn('User will be required to change password on next login.');
           } else {
             spinner.fail('Password reset failed');
+            if (options.json) {
+              output.json({ username, ...result });
+              process.exit(1);
+            }
             output.error(result.message);
             process.exit(1);
           }
@@ -179,6 +204,7 @@ export function registerEmergencyCommands(program: Command): void {
     .command('unlock <username>')
     .description('Unlock a locked user account directly in database')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (username: string, options: UnlockOptions) => {
       checkEmergencyAccess();
 
@@ -201,9 +227,17 @@ export function registerEmergencyCommands(program: Command): void {
 
           if (result.success) {
             spinner.succeed('User unlocked');
+            if (options.json) {
+              output.json({ username, ...result });
+              return;
+            }
             output.info(result.message);
           } else {
             spinner.fail('Unlock failed');
+            if (options.json) {
+              output.json({ username, ...result });
+              process.exit(1);
+            }
             output.error(result.message);
             process.exit(1);
           }
@@ -222,6 +256,7 @@ export function registerEmergencyCommands(program: Command): void {
     .command('disable-totp <username>')
     .description('Disable TOTP/2FA for a user directly in database')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (username: string, options: DisableTotpOptions) => {
       checkEmergencyAccess();
 
@@ -247,9 +282,17 @@ export function registerEmergencyCommands(program: Command): void {
 
           if (result.success) {
             spinner.succeed('TOTP disabled');
+            if (options.json) {
+              output.json({ username, ...result });
+              return;
+            }
             output.info(result.message);
           } else {
             spinner.fail('Failed to disable TOTP');
+            if (options.json) {
+              output.json({ username, ...result });
+              process.exit(1);
+            }
             output.error(result.message);
             process.exit(1);
           }

@@ -50,6 +50,11 @@ interface LoginOptions {
   password?: string;
   passwordFile?: string;
   totp?: string;
+  json?: boolean;
+}
+
+interface LogoutOptions {
+  json?: boolean;
 }
 
 interface JsonOutputOptions {
@@ -92,6 +97,7 @@ export function registerAuthCommands(program: Command): void {
     .option('-p, --password <password>', 'Password (WARNING: visible in process list - prefer --password-file)')
     .option('--password-file <path>', 'Read password from file (more secure than -p)')
     .option('-t, --totp <code>', 'TOTP code (if 2FA enabled)')
+    .option('--json', 'Output as JSON')
     .action(async (options: LoginOptions) => {
       const profileName = getActiveProfileName();
 
@@ -123,15 +129,28 @@ export function registerAuthCommands(program: Command): void {
 
           spinner.succeed(`Login successful (profile: ${profileName})`);
 
-          output.keyValue({
-            'User ID': response.user.id,
-            'Username': response.user.username,
-            'Role': response.user.role,
-            'Tenant': response.user.tenantId ?? 'None (superadmin)',
-          });
+          if (options.json) {
+            output.json({
+              success: true,
+              profile: profileName,
+              user: {
+                id: response.user.id,
+                username: response.user.username,
+                role: response.user.role,
+                tenantId: response.user.tenantId ?? null,
+              },
+            });
+          } else {
+            output.keyValue({
+              'User ID': response.user.id,
+              'Username': response.user.username,
+              'Role': response.user.role,
+              'Tenant': response.user.tenantId ?? 'None (superadmin)',
+            });
 
-          // Session persists via refresh token (7 days) - auto-refreshes when needed
-          console.log('\nSession stored. Auto-refreshes when needed (valid for 7 days of inactivity).');
+            // Session persists via refresh token (7 days) - auto-refreshes when needed
+            console.log('\nSession stored. Auto-refreshes when needed (valid for 7 days of inactivity).');
+          }
         } catch (err) {
           spinner.fail('Login failed');
           throw err;
@@ -146,10 +165,16 @@ export function registerAuthCommands(program: Command): void {
   program
     .command('logout')
     .description('Clear stored credentials')
-    .action(async () => {
+    .option('--json', 'Output as JSON')
+    .action(async (options: LogoutOptions) => {
       const profileName = getActiveProfileName();
       clearCredentials();
-      output.success(`Logged out successfully (profile: ${profileName})`);
+
+      if (options.json) {
+        output.json({ success: true, profile: profileName, message: 'Logged out successfully' });
+      } else {
+        output.success(`Logged out successfully (profile: ${profileName})`);
+      }
     });
 
   // Whoami command

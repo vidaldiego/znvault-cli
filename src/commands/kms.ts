@@ -104,6 +104,11 @@ interface RotateOptions {
 interface DeleteOptions {
   days?: string;
   force?: boolean;
+  json?: boolean;
+}
+
+interface EnableDisableOptions {
+  json?: boolean;
 }
 
 interface GenerateDataKeyOptions {
@@ -494,6 +499,11 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     );
     deleteSpinner.stop();
 
+    if (options.json) {
+      output.json(result);
+      return;
+    }
+
     output.success('Key deletion scheduled');
     console.log(`  Key ID:          ${result.keyId}`);
     console.log(`  Deletion Date:   ${formatDate(result.deletionDate)}`);
@@ -550,12 +560,18 @@ async function generateDataKey(keyId: string, options: GenerateDataKeyOptions): 
   }
 }
 
-async function enableKey(keyId: string): Promise<void> {
+async function enableKey(keyId: string, options: EnableDisableOptions): Promise<void> {
   const spinner = ora('Enabling key...').start();
 
   try {
-    await client.post(`/v1/kms/keys/${keyId}/enable`, {});
+    const result = await client.post<{ keyId: string; message?: string }>(`/v1/kms/keys/${keyId}/enable`, {});
     spinner.stop();
+
+    if (options.json) {
+      output.json({ success: true, ...result });
+      return;
+    }
+
     output.success(`Key ${keyId} enabled`);
   } catch (error) {
     spinner.fail('Failed to enable key');
@@ -564,12 +580,18 @@ async function enableKey(keyId: string): Promise<void> {
   }
 }
 
-async function disableKey(keyId: string): Promise<void> {
+async function disableKey(keyId: string, options: EnableDisableOptions): Promise<void> {
   const spinner = ora('Disabling key...').start();
 
   try {
-    await client.post(`/v1/kms/keys/${keyId}/disable`, {});
+    const result = await client.post<{ keyId: string; message?: string }>(`/v1/kms/keys/${keyId}/disable`, {});
     spinner.stop();
+
+    if (options.json) {
+      output.json({ success: true, ...result });
+      return;
+    }
+
     output.success(`Key ${keyId} disabled`);
   } catch (error) {
     spinner.fail('Failed to disable key');
@@ -696,18 +718,21 @@ export function registerKmsCommands(program: Command): void {
     .description('Schedule key deletion')
     .option('--days <days>', 'Waiting period in days (7-30)', '30')
     .option('-f, --force', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(deleteKey);
 
   // Enable key
   kms
     .command('enable <keyId>')
     .description('Enable a disabled key')
+    .option('--json', 'Output as JSON')
     .action(enableKey);
 
   // Disable key
   kms
     .command('disable <keyId>')
     .description('Disable a key')
+    .option('--json', 'Output as JSON')
     .action(disableKey);
 
   // List versions

@@ -24,6 +24,7 @@ interface GetOptions {
 interface DecryptOptions {
   output?: string;
   purpose: string;
+  json?: boolean;
 }
 
 interface ExpiringOptions {
@@ -46,6 +47,7 @@ interface StoreOptions {
   clientName?: string;
   contact?: string;
   tags?: string;
+  json?: boolean;
 }
 
 interface RotateOptions {
@@ -53,10 +55,12 @@ interface RotateOptions {
   type: string;
   passphrase?: string;
   reason: string;
+  json?: boolean;
 }
 
 interface DeleteOptions {
   force?: boolean;
+  json?: boolean;
 }
 
 export function registerCertCommands(program: Command): void {
@@ -192,6 +196,7 @@ export function registerCertCommands(program: Command): void {
     .description('Decrypt and download certificate')
     .option('--output <file>', 'Write to file instead of stdout')
     .option('--purpose <purpose>', 'Purpose for access (required)', 'CLI access')
+    .option('--json', 'Output as JSON')
     .action(async (id: string, options: DecryptOptions) => {
       const spinner = ora('Decrypting certificate...').start();
 
@@ -206,7 +211,13 @@ export function registerCertCommands(program: Command): void {
         if (options.output) {
           const fs = await import('node:fs');
           fs.writeFileSync(options.output, certData);
-          console.log(`Certificate written to ${options.output}`);
+          if (options.json) {
+            output.json({ success: true, file: options.output, id });
+          } else {
+            console.log(`Certificate written to ${options.output}`);
+          }
+        } else if (options.json) {
+          output.json({ id, certificateData: certData });
         } else {
           console.log(certData);
         }
@@ -322,6 +333,7 @@ export function registerCertCommands(program: Command): void {
     .option('--client-name <name>', 'Client display name')
     .option('--contact <email>', 'Contact email for notifications')
     .option('--tags <tags>', 'Comma-separated tags')
+    .option('--json', 'Output as JSON')
     .action(async (options: StoreOptions) => {
       const spinner = ora('Storing certificate...').start();
 
@@ -352,6 +364,11 @@ export function registerCertCommands(program: Command): void {
         const result = await mode.apiPost<CertificateMetadata>('/v1/certificates', body);
         spinner.stop();
 
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
         console.log();
         console.log(`Certificate stored successfully!`);
         console.log();
@@ -378,6 +395,7 @@ export function registerCertCommands(program: Command): void {
     .option('--type <type>', 'Certificate type (PEM, P12, DER)', 'PEM')
     .option('--passphrase <pass>', 'Passphrase for P12 certificates')
     .option('--reason <reason>', 'Reason for rotation', 'Certificate renewal')
+    .option('--json', 'Output as JSON')
     .action(async (id: string, options: RotateOptions) => {
       const spinner = ora('Rotating certificate...').start();
 
@@ -402,6 +420,11 @@ export function registerCertCommands(program: Command): void {
         const result = await mode.apiPost<CertificateMetadata>(`/v1/certificates/${id}/rotate`, body);
         spinner.stop();
 
+        if (options.json) {
+          output.json(result);
+          return;
+        }
+
         console.log();
         console.log(`Certificate rotated successfully!`);
         console.log();
@@ -424,6 +447,7 @@ export function registerCertCommands(program: Command): void {
     .command('delete <id>')
     .description('Delete a certificate')
     .option('--force', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (id: string, options: DeleteOptions) => {
       try {
         if (!options.force) {
@@ -448,6 +472,11 @@ export function registerCertCommands(program: Command): void {
 
         await mode.apiDelete(`/v1/certificates/${id}`);
         spinner.stop();
+
+        if (options.json) {
+          output.json({ success: true, id });
+          return;
+        }
 
         console.log('Certificate deleted successfully');
       } catch (err) {

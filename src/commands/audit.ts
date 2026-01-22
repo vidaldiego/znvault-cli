@@ -21,6 +21,7 @@ interface AuditExportOptions {
   format: 'json' | 'csv';
   days: string;
   output?: string;
+  json?: boolean;
 }
 
 export function registerAuditCommands(program: Command): void {
@@ -145,6 +146,7 @@ export function registerAuditCommands(program: Command): void {
     .option('--format <format>', 'Output format (json|csv)', 'json')
     .option('--days <number>', 'Export entries from last N days', '30')
     .option('--output <file>', 'Output file (default: stdout)')
+    .option('--json', 'Output result as JSON')
     .action(async (options: AuditExportOptions) => {
       if (mode.getMode() === 'local') {
         output.error('Audit export requires API mode with authentication');
@@ -167,7 +169,11 @@ export function registerAuditCommands(program: Command): void {
 
         if (options.output) {
           fs.writeFileSync(options.output, typeof data === 'string' ? data : JSON.stringify(data, null, 2));
-          output.success(`Exported to ${options.output}`);
+          if (options.json) {
+            output.json({ success: true, file: options.output, format: options.format });
+          } else {
+            output.success(`Exported to ${options.output}`);
+          }
         } else {
           console.log(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
         }

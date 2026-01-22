@@ -38,6 +38,15 @@ interface DeleteUserOptions {
 
 interface TotpDisableOptions {
   yes?: boolean;
+  json?: boolean;
+}
+
+interface UnlockOptions {
+  json?: boolean;
+}
+
+interface ResetPasswordOptions {
+  json?: boolean;
 }
 
 export function registerUserCommands(program: Command): void {
@@ -284,7 +293,8 @@ export function registerUserCommands(program: Command): void {
   user
     .command('unlock <id>')
     .description('Unlock a locked user account')
-    .action(async (id: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (id: string, options: UnlockOptions) => {
       const spinner = ora('Unlocking user...').start();
 
       try {
@@ -293,7 +303,11 @@ export function registerUserCommands(program: Command): void {
           const result = await mode.unlockUser(id);
           if (result.success) {
             spinner.succeed('User unlocked successfully');
-            output.info(result.message);
+            if (options.json) {
+              output.json({ success: true, id, message: result.message });
+            } else {
+              output.info(result.message);
+            }
           } else {
             spinner.fail('Failed to unlock user');
             output.error(result.message);
@@ -303,7 +317,9 @@ export function registerUserCommands(program: Command): void {
           // API mode
           const result = await client.unlockUser(id);
           spinner.succeed('User unlocked successfully');
-          if (result.message) {
+          if (options.json) {
+            output.json({ success: true, id, ...result });
+          } else if (result.message) {
             output.info(result.message);
           }
         }
@@ -320,7 +336,8 @@ export function registerUserCommands(program: Command): void {
   user
     .command('reset-password <id> [newPassword]')
     .description('Reset user password')
-    .action(async (id: string, newPassword?: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (id: string, newPassword: string | undefined, options: ResetPasswordOptions) => {
       try {
         const password = newPassword ?? await promptNewPassword();
         const spinner = ora('Resetting password...').start();
@@ -331,7 +348,11 @@ export function registerUserCommands(program: Command): void {
             const result = await mode.resetPassword(id, password);
             if (result.success) {
               spinner.succeed('Password reset successfully');
-              output.info(result.message);
+              if (options.json) {
+                output.json({ success: true, id, message: result.message });
+              } else {
+                output.info(result.message);
+              }
             } else {
               spinner.fail('Failed to reset password');
               output.error(result.message);
@@ -341,7 +362,9 @@ export function registerUserCommands(program: Command): void {
             // API mode
             const result = await client.resetUserPassword(id, password);
             spinner.succeed('Password reset successfully');
-            if (result.message) {
+            if (options.json) {
+              output.json({ success: true, id, ...result });
+            } else if (result.message) {
               output.info(result.message);
             }
           }
@@ -362,6 +385,7 @@ export function registerUserCommands(program: Command): void {
     .command('totp-disable <id>')
     .description('Disable 2FA/TOTP for a user')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (id: string, options: TotpDisableOptions) => {
       try {
         if (!options.yes) {
@@ -382,7 +406,11 @@ export function registerUserCommands(program: Command): void {
             const result = await mode.disableTotp(id);
             if (result.success) {
               spinner.succeed('TOTP disabled successfully');
-              output.info(result.message);
+              if (options.json) {
+                output.json({ success: true, id, message: result.message });
+              } else {
+                output.info(result.message);
+              }
             } else {
               spinner.fail('Failed to disable TOTP');
               output.error(result.message);
@@ -392,7 +420,9 @@ export function registerUserCommands(program: Command): void {
             // API mode
             const result = await client.disableUserTotp(id);
             spinner.succeed('TOTP disabled successfully');
-            if (result.message) {
+            if (options.json) {
+              output.json({ success: true, id, ...result });
+            } else if (result.message) {
               output.info(result.message);
             }
           }

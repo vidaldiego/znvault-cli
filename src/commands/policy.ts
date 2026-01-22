@@ -8,6 +8,63 @@ import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import type { CreatePolicyInput, UpdatePolicyInput, PolicyEffect } from '../types/index.js';
 
+// ============ Helper Functions ============
+
+/**
+ * Safely read a file with proper error handling
+ */
+function safeReadFile(filePath: string): string {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.message.includes('EACCES')) {
+        throw new Error(`Permission denied: ${filePath}`);
+      }
+      if (err.message.includes('EISDIR')) {
+        throw new Error(`Path is a directory, not a file: ${filePath}`);
+      }
+    }
+    throw new Error(`Failed to read file: ${filePath}`);
+  }
+}
+
+/**
+ * Safely parse JSON with proper error handling
+ */
+function safeParseJson<T>(content: string, context: string): T {
+  try {
+    return JSON.parse(content) as T;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error(`Invalid JSON in ${context}: ${err.message}`);
+    }
+    throw new Error(`Failed to parse ${context} as JSON`);
+  }
+}
+
+/**
+ * Safely write a file with proper error handling
+ */
+function safeWriteFile(filePath: string, content: string): void {
+  try {
+    fs.writeFileSync(filePath, content);
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.message.includes('EACCES')) {
+        throw new Error(`Permission denied: ${filePath}`);
+      }
+      if (err.message.includes('ENOENT')) {
+        throw new Error(`Directory does not exist: ${filePath}`);
+      }
+    }
+    throw new Error(`Failed to write file: ${filePath}`);
+  }
+}
+
 // ============ Option Interfaces ============
 
 interface PolicyListOptions {
@@ -50,6 +107,15 @@ interface PolicyUpdateOptions {
 
 interface PolicyDeleteOptions {
   yes?: boolean;
+  json?: boolean;
+}
+
+interface PolicyToggleOptions {
+  json?: boolean;
+}
+
+interface PolicyAttachOptions {
+  json?: boolean;
 }
 
 interface PolicyValidateOptions {
@@ -238,25 +304,40 @@ export function registerPolicyCommands(program: Command): void {
 
         if (options.fromFile) {
           // Load from file
-          const content = fs.readFileSync(options.fromFile, 'utf-8');
-          policyData = JSON.parse(content) as CreatePolicyInput;
+          const content = safeReadFile(options.fromFile);
+          policyData = safeParseJson<CreatePolicyInput>(content, options.fromFile);
         } else {
+          // Parse and validate priority
+          const priority = parseInt(options.priority, 10);
+          if (isNaN(priority) || priority < 0) {
+            output.error('Priority must be a non-negative number');
+            process.exit(1);
+          }
+
           // Build from options
           policyData = {
             name: options.name,
             description: options.description,
             effect: options.effect as PolicyEffect,
             actions: options.actions.split(',').map((a: string) => a.trim()),
-            priority: parseInt(options.priority, 10),
+            priority,
             tenantId: options.tenant,
           };
 
           if (options.resources) {
-            policyData.resources = JSON.parse(options.resources) as CreatePolicyInput['resources'];
+            policyData.resources = safeParseJson<CreatePolicyInput['resources']>(options.resources, '--resources');
           }
           if (options.conditions) {
-            policyData.conditions = JSON.parse(options.conditions) as CreatePolicyInput['conditions'];
+            policyData.conditions = safeParseJson<CreatePolicyInput['conditions']>(options.conditions, '--conditions');
           }
+        }
+
+        // Validate priority from file if loaded (ensure default and validate)
+        if (policyData.priority === undefined) {
+          policyData.priority = 0;
+        } else if (typeof policyData.priority !== 'number' || isNaN(policyData.priority) || policyData.priority < 0) {
+          output.error('Priority must be a non-negative number');
+          process.exit(1);
         }
 
         const spinner = ora('Creating policy...').start();
@@ -299,17 +380,24 @@ export function registerPolicyCommands(program: Command): void {
         let updates: UpdatePolicyInput;
 
         if (options.fromFile) {
-          const content = fs.readFileSync(options.fromFile, 'utf-8');
-          updates = JSON.parse(content) as UpdatePolicyInput;
+          const content = safeReadFile(options.fromFile);
+          updates = safeParseJson<UpdatePolicyInput>(content, options.fromFile);
         } else {
           updates = {};
           if (options.name) updates.name = options.name;
           if (options.description) updates.description = options.description;
           if (options.effect) updates.effect = options.effect as PolicyEffect;
           if (options.actions) updates.actions = options.actions.split(',').map((a: string) => a.trim());
-          if (options.priority) updates.priority = parseInt(options.priority, 10);
-          if (options.resources) updates.resources = JSON.parse(options.resources) as UpdatePolicyInput['resources'];
-          if (options.conditions) updates.conditions = JSON.parse(options.conditions) as UpdatePolicyInput['conditions'];
+          if (options.priority) {
+            const priority = parseInt(options.priority, 10);
+            if (isNaN(priority) || priority < 0) {
+              output.error('Priority must be a non-negative number');
+              process.exit(1);
+            }
+            updates.priority = priority;
+          }
+          if (options.resources) updates.resources = safeParseJson<UpdatePolicyInput['resources']>(options.resources, '--resources');
+          if (options.conditions) updates.conditions = safeParseJson<UpdatePolicyInput['conditions']>(options.conditions, '--conditions');
         }
 
         if (Object.keys(updates).length === 0) {
@@ -343,6 +431,7 @@ export function registerPolicyCommands(program: Command): void {
     .command('delete <id>')
     .description('Delete an ABAC policy')
     .option('-y, --yes', 'Skip confirmation')
+    .option('--json', 'Output as JSON')
     .action(async (id: string, options: PolicyDeleteOptions) => {
       try {
         if (!options.yes) {
@@ -358,6 +447,10 @@ export function registerPolicyCommands(program: Command): void {
         const spinner = ora('Deleting policy...').start();
         await client.deletePolicy(id);
         spinner.succeed(`Policy '${id}' deleted successfully`);
+
+        if (options.json) {
+          output.json({ success: true, id, message: 'Policy deleted successfully' });
+        }
       } catch (err) {
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
@@ -368,17 +461,23 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('enable <id>')
     .description('Enable an ABAC policy')
-    .action(async (id: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (id: string, options: PolicyToggleOptions) => {
       const spinner = ora('Enabling policy...').start();
 
       try {
         const result = await client.togglePolicy(id, true);
         spinner.succeed('Policy enabled successfully');
-        output.keyValue({
-          'ID': result.id,
-          'Name': result.name,
-          'Status': 'Enabled',
-        });
+
+        if (options.json) {
+          output.json(result);
+        } else {
+          output.keyValue({
+            'ID': result.id,
+            'Name': result.name,
+            'Status': 'Enabled',
+          });
+        }
       } catch (err) {
         spinner.fail('Failed to enable policy');
         output.error(err instanceof Error ? err.message : String(err));
@@ -390,17 +489,23 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('disable <id>')
     .description('Disable an ABAC policy')
-    .action(async (id: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (id: string, options: PolicyToggleOptions) => {
       const spinner = ora('Disabling policy...').start();
 
       try {
         const result = await client.togglePolicy(id, false);
         spinner.succeed('Policy disabled successfully');
-        output.keyValue({
-          'ID': result.id,
-          'Name': result.name,
-          'Status': 'Disabled',
-        });
+
+        if (options.json) {
+          output.json(result);
+        } else {
+          output.keyValue({
+            'ID': result.id,
+            'Name': result.name,
+            'Status': 'Disabled',
+          });
+        }
       } catch (err) {
         spinner.fail('Failed to disable policy');
         output.error(err instanceof Error ? err.message : String(err));
@@ -425,22 +530,28 @@ export function registerPolicyCommands(program: Command): void {
         let policyData: CreatePolicyInput;
 
         if (options.fromFile) {
-          const content = fs.readFileSync(options.fromFile, 'utf-8');
-          policyData = JSON.parse(content) as CreatePolicyInput;
+          const content = safeReadFile(options.fromFile);
+          policyData = safeParseJson<CreatePolicyInput>(content, options.fromFile);
         } else {
+          const priority = parseInt(options.priority, 10);
+          if (isNaN(priority) || priority < 0) {
+            output.error('Priority must be a non-negative number');
+            process.exit(1);
+          }
+
           policyData = {
             name: options.name,
             description: options.description,
             effect: options.effect as PolicyEffect,
             actions: options.actions.split(',').map((a: string) => a.trim()),
-            priority: parseInt(options.priority, 10),
+            priority,
           };
 
           if (options.resources) {
-            policyData.resources = JSON.parse(options.resources) as CreatePolicyInput['resources'];
+            policyData.resources = safeParseJson<CreatePolicyInput['resources']>(options.resources, '--resources');
           }
           if (options.conditions) {
-            policyData.conditions = JSON.parse(options.conditions) as CreatePolicyInput['conditions'];
+            policyData.conditions = safeParseJson<CreatePolicyInput['conditions']>(options.conditions, '--conditions');
           }
         }
 
@@ -522,12 +633,17 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('attach-user <policyId> <userId>')
     .description('Attach a policy to a user')
-    .action(async (policyId: string, userId: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (policyId: string, userId: string, options: PolicyAttachOptions) => {
       const spinner = ora('Attaching policy to user...').start();
 
       try {
         await client.attachPolicyToUser(policyId, userId);
         spinner.succeed('Policy attached to user successfully');
+
+        if (options.json) {
+          output.json({ success: true, policyId, userId, message: 'Policy attached to user successfully' });
+        }
       } catch (err) {
         spinner.fail('Failed to attach policy');
         output.error(err instanceof Error ? err.message : String(err));
@@ -539,12 +655,17 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('attach-role <policyId> <roleId>')
     .description('Attach a policy to a role')
-    .action(async (policyId: string, roleId: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (policyId: string, roleId: string, options: PolicyAttachOptions) => {
       const spinner = ora('Attaching policy to role...').start();
 
       try {
         await client.attachPolicyToRole(policyId, roleId);
         spinner.succeed('Policy attached to role successfully');
+
+        if (options.json) {
+          output.json({ success: true, policyId, roleId, message: 'Policy attached to role successfully' });
+        }
       } catch (err) {
         spinner.fail('Failed to attach policy');
         output.error(err instanceof Error ? err.message : String(err));
@@ -556,12 +677,17 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('detach-user <policyId> <userId>')
     .description('Detach a policy from a user')
-    .action(async (policyId: string, userId: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (policyId: string, userId: string, options: PolicyAttachOptions) => {
       const spinner = ora('Detaching policy from user...').start();
 
       try {
         await client.detachPolicyFromUser(policyId, userId);
         spinner.succeed('Policy detached from user successfully');
+
+        if (options.json) {
+          output.json({ success: true, policyId, userId, message: 'Policy detached from user successfully' });
+        }
       } catch (err) {
         spinner.fail('Failed to detach policy');
         output.error(err instanceof Error ? err.message : String(err));
@@ -573,12 +699,17 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('detach-role <policyId> <roleId>')
     .description('Detach a policy from a role')
-    .action(async (policyId: string, roleId: string) => {
+    .option('--json', 'Output as JSON')
+    .action(async (policyId: string, roleId: string, options: PolicyAttachOptions) => {
       const spinner = ora('Detaching policy from role...').start();
 
       try {
         await client.detachPolicyFromRole(policyId, roleId);
         spinner.succeed('Policy detached from role successfully');
+
+        if (options.json) {
+          output.json({ success: true, policyId, roleId, message: 'Policy detached from role successfully' });
+        }
       } catch (err) {
         spinner.fail('Failed to detach policy');
         output.error(err instanceof Error ? err.message : String(err));
@@ -765,7 +896,7 @@ export function registerPolicyCommands(program: Command): void {
         const jsonString = JSON.stringify(exportData, null, 2);
 
         if (options.output) {
-          fs.writeFileSync(options.output, jsonString);
+          safeWriteFile(options.output, jsonString);
           output.success(`Policy exported to ${options.output}`);
         } else {
           console.log(jsonString);
@@ -785,8 +916,8 @@ export function registerPolicyCommands(program: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (path: string, options: PolicyImportOptions) => {
       try {
-        const content = fs.readFileSync(path, 'utf-8');
-        const policyData = JSON.parse(content) as CreatePolicyInput;
+        const content = safeReadFile(path);
+        const policyData = safeParseJson<CreatePolicyInput>(content, path);
 
         if (options.tenant) {
           policyData.tenantId = options.tenant;
