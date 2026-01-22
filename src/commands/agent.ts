@@ -395,15 +395,30 @@ async function selectAgentInteractively(): Promise<{ host: string; port: number 
       short: 'manual',
     });
 
+    // Filter out disabled choices for the actual prompt (inquirer shows them but they can cause issues)
+    const enabledChoices = choices.filter(c => !c.disabled);
+
+    if (enabledChoices.length === 0) {
+      console.log('No agents with reachable IP addresses');
+      console.log('Use: znvault agent ping <host:port>');
+      return null;
+    }
+
     const { selectedIp } = await inquirer.prompt<{ selectedIp: string }>([
       {
         type: 'list',
         name: 'selectedIp',
         message: 'Select an agent:',
-        choices,
+        choices: enabledChoices,
         pageSize: 15,
       },
     ]);
+
+    // Validate selection
+    if (!selectedIp || selectedIp === '') {
+      output.error('No agent selected');
+      return null;
+    }
 
     // Handle manual entry
     if (selectedIp === '__manual__') {
