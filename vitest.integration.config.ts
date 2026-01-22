@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Setup file runs before all tests to ensure config isolation
+    setupFiles: ['./test/setup.ts'],
     // Run all tests including integration tests
     include: ['test/**/*.test.ts'],
     // Longer timeout for integration tests

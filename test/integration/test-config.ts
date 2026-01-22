@@ -95,8 +95,9 @@ export const TestConfig = {
       ...args,
     ];
 
-    // Use a consistent home directory for all test commands so credentials persist
-    const testHome = process.env.TEST_HOME || '/tmp/znvault-cli-test';
+    // Use a consistent config directory for all test commands so credentials persist
+    // This is separate from the user's real config directory
+    const testConfigDir = process.env.TEST_CONFIG_DIR || '/tmp/znvault-cli-test-config';
 
     const result: SpawnSyncReturns<Buffer> = spawnSync('node', fullArgs, {
       encoding: 'buffer',
@@ -112,11 +113,9 @@ export const TestConfig = {
         // DO NOT set ZNVAULT_USERNAME/PASSWORD - use stored credentials from login
         ZNVAULT_USERNAME: '',
         ZNVAULT_PASSWORD: '',
-        // Use isolated config directory to avoid profile conflicts
-        HOME: testHome,
-        // Ensure XDG dirs also use test home
-        XDG_CONFIG_HOME: `${testHome}/.config`,
-        XDG_DATA_HOME: `${testHome}/.local/share`,
+        // Use isolated config directory to avoid modifying user's real config
+        // This env var is checked by src/lib/config/store.ts
+        ZNVAULT_CONFIG_DIR: testConfigDir,
       },
     });
 

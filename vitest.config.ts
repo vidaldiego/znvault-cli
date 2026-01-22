@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Setup file runs before all tests to ensure config isolation
+    setupFiles: ['./test/setup.ts'],
     // Exclude integration tests from regular runs
     include: ['test/**/*.test.ts'],
     exclude: ['test/integration/**'],
