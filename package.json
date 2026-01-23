@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "2.24.1",
+  "version": "2.25.0",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -40,6 +40,7 @@
     "url": "https://github.com/vidaldiego/znvault-cli"
   },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "@types/bcryptjs": "^3.0.0",
     "@types/ws": "^8.18.1",
     "bcryptjs": "^3.0.3",
@@ -57,21 +58,21 @@
     "open": "^10.1.0",
     "openpgp": "^6.3.0",
     "ora": "^9.0.0",
+    "otpauth": "^9.4.1",
     "pg": "^8.17.1",
     "react": "^19.2.3",
     "ws": "^8.19.0",
-    "yaml": "^2.4.0",
-    "@iarna/toml": "^2.2.5"
+    "yaml": "^2.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/figlet": "^1.7.0",
     "@types/gradient-string": "^1.1.6",
+    "@types/iarna__toml": "^2.0.5",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^25.0.9",
     "@types/pg": "^8.16.0",
     "@types/react": "^19.2.8",
-    "@types/iarna__toml": "^2.0.5",
     "@vitest/coverage-v8": "^4.0.17",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",

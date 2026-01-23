@@ -24,6 +24,7 @@ export interface Profile {
   apiKey?: string;  // Stored API key for this profile
   apiKeyId?: string;  // API key ID (for revocation on logout)
   apiKeyName?: string;  // API key name (for display)
+  autoUnsealSecret?: string;  // TOTP secret for auto-unseal (dev convenience)
 }
 
 export interface ConfigStore {

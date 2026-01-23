@@ -85,3 +85,13 @@ export {
   getValidatedUrl,
   type ValidationResult,
 } from './validation.js';
+
+// Auto-unseal
+export {
+  storeAutoUnsealSecret,
+  getAutoUnsealSecret,
+  hasAutoUnsealSecret,
+  clearAutoUnsealSecret,
+  generateTOTPCode,
+  parseOTPAuthURI,
+} from './autounseal.js';

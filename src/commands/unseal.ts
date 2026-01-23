@@ -11,6 +11,14 @@ import { client } from '../lib/client.js';
 import { promptInput } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import * as visual from '../lib/visual.js';
+import {
+  hasAutoUnsealSecret,
+  generateTOTPCode,
+  storeAutoUnsealSecret,
+  clearAutoUnsealSecret,
+  parseOTPAuthURI,
+  getActiveProfileName,
+} from '../lib/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,6 +35,7 @@ interface UnsealStatusResponse {
 interface UnsealOptions {
   otp?: boolean;
   device?: boolean;
+  auto?: boolean;
   json?: boolean;
 }
 
@@ -161,17 +170,30 @@ export function registerUnsealCommands(program: Command): void {
   unsealCmd
     .option('--otp', 'Force OTP unseal')
     .option('--device', 'Force device unseal')
+    .option('--auto', 'Auto-unseal using stored TOTP secret (no prompts)')
     .option('--json', 'Output as JSON')
     .action(async (options: UnsealOptions) => {
       try {
-        if (options.otp) {
+        if (options.auto) {
+          // Auto-unseal using stored TOTP secret
+          await unsealWithAutoOTP(options);
+        } else if (options.otp) {
           // User explicitly requested OTP
           await unsealWithOTP(options);
         } else if (options.device) {
           // User explicitly requested device
           await unsealWithDevice(options);
         } else {
-          // Auto-detect: try device first on macOS if enrolled
+          // Auto-detect: try auto-unseal first if configured
+          if (hasAutoUnsealSecret()) {
+            output.info('Auto-unseal secret detected. Using --auto mode.');
+            output.info('(Use --otp or --device to override)');
+            console.log();
+            await unsealWithAutoOTP(options);
+            return;
+          }
+
+          // Try device on macOS if enrolled
           if (os.platform() === 'darwin') {
             const keyType = detectKeyType();
             if (keyType !== 'none') {
@@ -259,6 +281,96 @@ export function registerUnsealCommands(program: Command): void {
         process.exit(1);
       }
     });
+
+  // Setup auto-unseal subcommand
+  unsealCmd
+    .command('setup-auto')
+    .description('Configure auto-unseal with your TOTP secret (for dev convenience)')
+    .option('--secret <secret>', 'TOTP secret (Base32 string from your authenticator setup)')
+    .option('--uri <uri>', 'otpauth:// URI (from QR code)')
+    .action(async (options: { secret?: string; uri?: string }) => {
+      try {
+        let secret: string;
+
+        if (options.uri) {
+          // Parse otpauth:// URI
+          secret = parseOTPAuthURI(options.uri);
+          output.info('Parsed TOTP secret from URI');
+        } else if (options.secret) {
+          secret = options.secret;
+        } else {
+          // Prompt for secret
+          console.log();
+          output.info('Enter your TOTP secret (the Base32 string shown when setting up 2FA).');
+          output.info('You can also use --uri with the otpauth:// URI from your QR code.');
+          console.log();
+          const input = await promptInput('TOTP Secret');
+          if (!input) {
+            output.error('No secret provided');
+            process.exit(1);
+          }
+          // Check if it looks like a URI
+          if (input.startsWith('otpauth://')) {
+            secret = parseOTPAuthURI(input);
+          } else {
+            secret = input;
+          }
+        }
+
+        // Store the secret
+        storeAutoUnsealSecret(secret);
+
+        const profileName = getActiveProfileName();
+        console.log();
+        output.success(`Auto-unseal configured for profile "${profileName}"`);
+        output.info('You can now use "znvault unseal --auto" or just "znvault unseal"');
+        console.log();
+
+        // Show a test code to verify it works
+        const testCode = generateTOTPCode();
+        output.info(`Current TOTP code: ${testCode}`);
+        output.info('Verify this matches your authenticator app to confirm setup is correct.');
+      } catch (err) {
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Clear auto-unseal subcommand
+  unsealCmd
+    .command('clear-auto')
+    .description('Remove auto-unseal configuration')
+    .action(() => {
+      try {
+        if (!hasAutoUnsealSecret()) {
+          output.info('No auto-unseal secret configured for this profile.');
+          return;
+        }
+
+        clearAutoUnsealSecret();
+        output.success('Auto-unseal configuration removed.');
+      } catch (err) {
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // Show auto-unseal status subcommand
+  unsealCmd
+    .command('auto-status')
+    .description('Check if auto-unseal is configured')
+    .action(() => {
+      const profileName = getActiveProfileName();
+      const configured = hasAutoUnsealSecret();
+
+      if (configured) {
+        output.success(`Auto-unseal is configured for profile "${profileName}"`);
+        output.info('Use "znvault unseal --auto" or just "znvault unseal" to auto-unseal.');
+      } else {
+        output.info(`Auto-unseal is not configured for profile "${profileName}"`);
+        output.info('Use "znvault unseal setup-auto" to configure.');
+      }
+    });
 }
 
 async function unsealWithOTP(options: UnsealOptions): Promise<void> {
@@ -289,6 +401,39 @@ async function unsealWithOTP(options: UnsealOptions): Promise<void> {
     console.log();
   } catch (err) {
     spinner.fail('Unseal failed');
+    throw err;
+  }
+}
+
+async function unsealWithAutoOTP(options: UnsealOptions): Promise<void> {
+  if (!hasAutoUnsealSecret()) {
+    output.error('No auto-unseal secret configured.');
+    output.info('Run "znvault unseal setup-auto" to configure.');
+    process.exit(1);
+  }
+
+  const spinner = ora('Generating TOTP code and unsealing...').start();
+
+  try {
+    // Generate TOTP code from stored secret
+    const code = generateTOTPCode();
+
+    const result = await client.post<UnsealStatusResponse>('/v1/auth/unseal', {
+      totpCode: code,
+    });
+
+    spinner.succeed('Vault unsealed (auto)');
+
+    if (options.json) {
+      output.json(result);
+      return;
+    }
+
+    console.log();
+    output.success(`Crypto access granted for ${formatDuration(result.remainingSeconds)}`);
+    console.log();
+  } catch (err) {
+    spinner.fail('Auto-unseal failed');
     throw err;
   }
 }

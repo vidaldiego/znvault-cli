@@ -81,4 +81,12 @@ export {
   getValidatedApiKey,
   getValidatedUrl,
   type ValidationResult,
+
+  // Auto-unseal
+  storeAutoUnsealSecret,
+  getAutoUnsealSecret,
+  hasAutoUnsealSecret,
+  clearAutoUnsealSecret,
+  generateTOTPCode,
+  parseOTPAuthURI,
 } from './config/index.js';
