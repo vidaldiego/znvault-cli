@@ -50,7 +50,10 @@ export function registerHistoryCommand(secretCmd: Command): void {
           // Handle both camelCase and snake_case from server
           const createdAt = entry.createdAt || entry.created_at;
           const supersededAt = entry.supersededAt || entry.superseded_at;
-          const createdBy = entry.createdBy || entry.created_by;
+          // Prefer username over UUID for display
+          const createdByUsername = entry.createdByUsername || entry.created_by_username;
+          const createdById = entry.createdBy || entry.created_by;
+          const createdBy = createdByUsername || createdById;
 
           table.push([
             String(entry.version),

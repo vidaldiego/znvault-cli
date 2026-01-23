@@ -127,8 +127,14 @@ export interface HistoryEntry {
   created_at?: string;
   createdBy?: string;
   created_by?: string;
+  createdByUsername?: string;
+  created_by_username?: string;
   supersededAt?: string;
   superseded_at?: string;
+  supersededBy?: string;
+  superseded_by?: string;
+  supersededByUsername?: string;
+  superseded_by_username?: string;
 }
 
 export interface HistoryResponse {
