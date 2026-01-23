@@ -88,7 +88,7 @@ export function registerConfigCommand(parentCmd: Command): void {
           }
 
           const updated = await mode.apiPut<HostConfig>(
-            `/v1/hosts/${encodeURIComponent(hostname)}/config`,
+            `/v1/hosts/${encodeURIComponent(hostname)}`,
             { config: newConfig }
           );
 
@@ -136,7 +136,7 @@ export function registerConfigCommand(parentCmd: Command): void {
           spinner.start();
 
           const updated = await mode.apiPut<HostConfig>(
-            `/v1/hosts/${encodeURIComponent(hostname)}/config`,
+            `/v1/hosts/${encodeURIComponent(hostname)}`,
             { config: newConfig }
           );
 
