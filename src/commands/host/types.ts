@@ -167,7 +167,10 @@ export interface BootstrapTokenResponse {
   expiresAt: string;
   bootstrapUrl: string;
   hostConfigId: string;
+  /** Host config name (template) */
   hostname: string;
+  /** Agent hostname (may differ from config name for multi-host templates) */
+  agentHostname: string;
 }
 
 /**
@@ -229,6 +232,8 @@ export interface DeleteOptions {
 
 export interface BootstrapTokenOptions {
   expires?: string;
+  /** Agent hostname (for multi-host templates, defaults to host config name) */
+  agentHostname?: string;
   json?: boolean;
 }
 
