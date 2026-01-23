@@ -106,11 +106,9 @@ export function registerStatsCommand(parentCmd: Command): void {
         console.log('Host Configuration Statistics');
         console.log('─'.repeat(35));
         console.log(`  Total hosts:      ${response.total}`);
-        console.log(`  Active:           ${response.byStatus.active ?? 0}`);
-        console.log(`  Disabled:         ${response.byStatus.disabled ?? 0}`);
-        console.log(`  Pending:          ${response.byStatus.pending ?? 0}`);
-        console.log(`  Recently pulled:  ${response.recentlyPulled}`);
-        console.log(`  Avg version:      ${response.averageVersion.toFixed(1)}`);
+        console.log(`  Active:           ${response.active}`);
+        console.log(`  Disabled:         ${response.disabled}`);
+        console.log(`  Pending:          ${response.pending}`);
       } catch (err) {
         spinner.fail('Failed to get statistics');
         output.error(err instanceof Error ? err.message : String(err));

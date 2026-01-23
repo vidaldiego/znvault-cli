@@ -143,9 +143,9 @@ export interface HostListResponse {
  */
 export interface HostStatsResponse {
   total: number;
-  byStatus: Record<HostStatus, number>;
-  recentlyPulled: number;
-  averageVersion: number;
+  active: number;
+  disabled: number;
+  pending: number;
 }
 
 /**
