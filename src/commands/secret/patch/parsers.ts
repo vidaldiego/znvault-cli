@@ -2,7 +2,7 @@
 
 /**
  * Format parsers for secret patching
- * Supports: JSON, YAML, env, properties, TOML
+ * Supports: JSON, YAML, env, properties, TOML, conf
  */
 
 import YAML from 'yaml';
@@ -272,6 +272,63 @@ const tomlParser: FormatParser = {
 };
 
 // ============================================================================
+// CONF Parser (Generic config: .conf, .cfg, .config, .ini)
+// ============================================================================
+
+const confParser: FormatParser = {
+  parse(content: string): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // Skip empty lines and comments (# or ;)
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue;
+
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex === -1) continue;
+
+      const key = trimmed.slice(0, eqIndex).trim();
+      let value = trimmed.slice(eqIndex + 1).trim();
+
+      // Handle quoted values
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+
+      result[key] = value;
+    }
+
+    return result;
+  },
+
+  stringify(data: Record<string, unknown>): string {
+    const lines: string[] = [];
+
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null || value === undefined) continue;
+
+      // Convert value to string safely
+      let strValue: string;
+      if (typeof value === 'object') {
+        strValue = JSON.stringify(value);
+      } else if (typeof value === 'string') {
+        strValue = value;
+      } else if (typeof value === 'number' || typeof value === 'boolean') {
+        strValue = String(value);
+      } else {
+        strValue = JSON.stringify(value);
+      }
+
+      lines.push(`${key}=${strValue}`);
+    }
+
+    return lines.join('\n');
+  },
+};
+
+// ============================================================================
 // Parser Registry
 // ============================================================================
 
@@ -281,6 +338,7 @@ const parsers: Record<SecretFormat, FormatParser> = {
   env: envParser,
   properties: propertiesParser,
   toml: tomlParser,
+  conf: confParser,
 };
 
 /**
@@ -309,6 +367,7 @@ export function detectFormatFromMetadata(
     if (subTypeLower === 'env' || subTypeLower === 'dotenv') return 'env';
     if (subTypeLower === 'properties' || subTypeLower === 'props') return 'properties';
     if (subTypeLower === 'toml') return 'toml';
+    if (subTypeLower === 'conf' || subTypeLower === 'cfg' || subTypeLower === 'ini') return 'conf';
   }
 
   // Check contentType

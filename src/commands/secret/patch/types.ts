@@ -29,12 +29,12 @@ export interface PatchOperation {
 /**
  * Supported data formats for secrets
  */
-export type SecretFormat = 'json' | 'yaml' | 'env' | 'properties' | 'toml';
+export type SecretFormat = 'json' | 'yaml' | 'env' | 'properties' | 'toml' | 'conf';
 
 /**
  * All supported formats as an array for validation
  */
-export const SUPPORTED_FORMATS: SecretFormat[] = ['json', 'yaml', 'env', 'properties', 'toml'];
+export const SUPPORTED_FORMATS: SecretFormat[] = ['json', 'yaml', 'env', 'properties', 'toml', 'conf'];
 
 // ============================================================================
 // Path Segment Types
