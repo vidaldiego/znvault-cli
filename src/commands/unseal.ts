@@ -288,31 +288,62 @@ export function registerUnsealCommands(program: Command): void {
     .description('Configure auto-unseal with your TOTP secret (for dev convenience)')
     .option('--secret <secret>', 'TOTP secret (Base32 string from your authenticator setup)')
     .option('--uri <uri>', 'otpauth:// URI (from QR code)')
-    .action(async (options: { secret?: string; uri?: string }) => {
+    .option('--code <code>', 'Current TOTP code (retrieves secret from server)')
+    .action(async (options: { secret?: string; uri?: string; code?: string }) => {
       try {
         let secret: string;
 
-        if (options.uri) {
+        if (options.code) {
+          // Retrieve secret from server using TOTP code
+          const spinner = ora('Retrieving TOTP secret from server...').start();
+          try {
+            const result = await client.post<{ secret: string; message: string }>(
+              '/auth/2fa/reveal-secret',
+              { totpCode: options.code }
+            );
+            secret = result.secret;
+            spinner.succeed('TOTP secret retrieved from server');
+          } catch (err) {
+            spinner.fail('Failed to retrieve secret');
+            throw err;
+          }
+        } else if (options.uri) {
           // Parse otpauth:// URI
           secret = parseOTPAuthURI(options.uri);
           output.info('Parsed TOTP secret from URI');
         } else if (options.secret) {
           secret = options.secret;
         } else {
-          // Prompt for secret
+          // Prompt for code or secret
           console.log();
-          output.info('Enter your TOTP secret (the Base32 string shown when setting up 2FA).');
-          output.info('You can also use --uri with the otpauth:// URI from your QR code.');
+          output.info('Enter your current TOTP code to auto-configure, or provide the secret directly.');
           console.log();
-          const input = await promptInput('TOTP Secret');
+          const input = await promptInput('TOTP code or secret');
           if (!input) {
-            output.error('No secret provided');
+            output.error('No input provided');
             process.exit(1);
           }
-          // Check if it looks like a URI
-          if (input.startsWith('otpauth://')) {
+
+          // Check if it's a 6-digit code
+          if (/^\d{6}$/.test(input)) {
+            // It's a TOTP code - retrieve secret from server
+            const spinner = ora('Retrieving TOTP secret from server...').start();
+            try {
+              const result = await client.post<{ secret: string; message: string }>(
+                '/auth/2fa/reveal-secret',
+                { totpCode: input }
+              );
+              secret = result.secret;
+              spinner.succeed('TOTP secret retrieved from server');
+            } catch (err) {
+              spinner.fail('Failed to retrieve secret');
+              throw err;
+            }
+          } else if (input.startsWith('otpauth://')) {
+            // It's an otpauth URI
             secret = parseOTPAuthURI(input);
           } else {
+            // Assume it's the secret directly
             secret = input;
           }
         }
