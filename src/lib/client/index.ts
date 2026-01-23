@@ -16,6 +16,7 @@ import { AuditClient } from './audit.js';
 import { ApiKeysClient } from './apikeys.js';
 import { ManagedKeysClient } from './managed-keys.js';
 import { PoliciesClient, PermissionsClient } from './policies.js';
+import { QuarantineClient } from './quarantine.js';
 
 import type { LoginResponse } from '../../types/index.js';
 import type { ClientConfig } from './types.js';
@@ -30,6 +31,7 @@ export { AuditClient } from './audit.js';
 export { ApiKeysClient } from './apikeys.js';
 export { ManagedKeysClient } from './managed-keys.js';
 export { PoliciesClient, PermissionsClient } from './policies.js';
+export { QuarantineClient } from './quarantine.js';
 
 // Re-export types
 export * from './types.js';
@@ -53,6 +55,7 @@ export class VaultClient extends HttpClient {
   private _managedKeysClient?: ManagedKeysClient;
   private _policiesClient?: PoliciesClient;
   private _permissionsClient?: PermissionsClient;
+  private _quarantineClient?: QuarantineClient;
 
   // Lazy getters for domain clients
   private get healthClient(): HealthClient {
@@ -97,6 +100,10 @@ export class VaultClient extends HttpClient {
 
   private get permissionsClient(): PermissionsClient {
     return this._permissionsClient ??= new PermissionsClient();
+  }
+
+  private get quarantineClient(): QuarantineClient {
+    return this._quarantineClient ??= new QuarantineClient();
   }
 
   // ============ Authentication (inherited from HttpClient) ============
@@ -278,6 +285,28 @@ export class VaultClient extends HttpClient {
     this.policiesClient.getRolePolicies(roleId);
   testPolicy = (request: Parameters<PoliciesClient['test']>[0]) =>
     this.policiesClient.test(request);
+
+  // ============ IP Quarantine ============
+
+  listQuarantines = (options?: Parameters<QuarantineClient['list']>[0]) =>
+    this.quarantineClient.list(options);
+  getQuarantine = (id: string) =>
+    this.quarantineClient.getById(id);
+  releaseQuarantine = (id: string, reason: string) =>
+    this.quarantineClient.release(id, reason);
+  releaseQuarantineIp = (ip: string, reason: string, tenantId?: string) =>
+    this.quarantineClient.releaseIp(ip, reason, tenantId);
+  getQuarantineHistory = (ip: string, options?: Parameters<QuarantineClient['getHistory']>[1]) =>
+    this.quarantineClient.getHistory(ip, options);
+  getQuarantineStats = (tenantId?: string) =>
+    this.quarantineClient.getStats(tenantId);
+  getQuarantineConfig = (tenantId?: string) =>
+    this.quarantineClient.getConfig(tenantId);
+  updateQuarantineConfig = (
+    config: Parameters<QuarantineClient['updateConfig']>[0],
+    tenantId?: string
+  ) =>
+    this.quarantineClient.updateConfig(config, tenantId);
 }
 
 // Export singleton instance for backward compatibility

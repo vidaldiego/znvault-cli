@@ -553,3 +553,69 @@ export interface UpdateManagedKeyConfigRequest {
   notifyBefore?: string;
   webhookUrl?: string;
 }
+
+// IP Quarantine types
+export interface IpQuarantine {
+  id: string;
+  ipAddress: string;
+  tenantId: string | null;
+  status: 'active' | 'released' | 'expired';
+  failureCount: number;
+  backoffLevel: number;
+  blockedUntil: string;
+  reason: string;
+  lastFailurePath: string | null;
+  lastFailureMethod: string | null;
+  userAgent: string | null;
+  apiKeyId: string | null;
+  agentId: string | null;
+  releasedAt: string | null;
+  releasedBy: string | null;
+  releaseReason: string | null;
+  firstFailureAt: string;
+  lastFailureAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IpFailureHistory {
+  id: string;
+  ipAddress: string;
+  tenantId: string | null;
+  failureType: string;
+  path: string | null;
+  method: string | null;
+  apiKeyPrefix: string | null;
+  username: string | null;
+  userAgent: string | null;
+  quarantineId: string | null;
+  contributedToLockdown: boolean;
+  ts: string;
+}
+
+export interface IpQuarantineStats {
+  activeQuarantines: number;
+  totalQuarantines24h: number;
+  uniqueIpsQuarantined24h: number;
+  failuresLast1h: number;
+  failuresLast24h: number;
+  topFailingIps: { ip: string; count: number }[];
+}
+
+export interface IpQuarantineConfig {
+  id: string;
+  tenantId: string | null;
+  enabled: boolean;
+  failuresBeforeQuarantine: number;
+  backoffLevel1Seconds: number;
+  backoffLevel2Seconds: number;
+  backoffLevel3Seconds: number;
+  backoffLevel4Seconds: number;
+  backoffLevel5Seconds: number;
+  lockdownThresholdIps: number;
+  lockdownThresholdWindowSeconds: number;
+  ipAllowlist: string[];
+  autoExpireAfterSeconds: number;
+  createdAt: string;
+  updatedAt: string;
+}

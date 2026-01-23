@@ -481,6 +481,16 @@ export async function apiPatch<T = unknown>(endpoint: string, body: unknown): Pr
 }
 
 /**
+ * Generic PUT request (API mode only)
+ */
+export async function apiPut<T = unknown>(endpoint: string, body: unknown): Promise<T> {
+  if (getMode() === 'local') {
+    throw new Error('This operation requires API mode');
+  }
+  return client.put<T>(endpoint, body);
+}
+
+/**
  * Get WebSocket URL for a given endpoint path
  */
 export function getWebSocketUrl(wsPath: string): string {
