@@ -6,7 +6,7 @@ import ora from 'ora';
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { BootstrapTokenOptions, BootstrapTokenResponse } from './types.js';
-import { parseDuration, formatRelativeTime } from './helpers.js';
+import { parseDuration } from './helpers.js';
 
 /**
  * Register the bootstrap-token command
@@ -44,23 +44,43 @@ export function registerBootstrapTokenCommand(parentCmd: Command): void {
           return;
         }
 
+        // Build the one-command URL
+        const oneCommandUrl = `${response.bootstrapUrl}?token=${response.token}`;
+
         console.log();
-        console.log('Bootstrap Token for ' + hostname);
-        console.log('─'.repeat(60));
+        output.section('Bootstrap Token for ' + hostname);
         console.log();
-        console.log('  Token:    ' + response.token);
-        console.log('  Expires:  ' + new Date(response.expiresAt).toLocaleString());
+        output.keyValue({
+          'Token': response.token,
+          'Expires': new Date(response.expiresAt).toLocaleString(),
+        });
+
         console.log();
-        console.log('Bootstrap Commands:');
+        output.section('Quick Start (One Command)');
         console.log();
-        console.log('  # Option 1: Use bootstrap script (recommended)');
-        console.log(`  curl -sL ${response.bootstrapUrl} | sudo bash -s -- --token ${response.token}`);
+        console.log('  Run this on the target server to install and configure the agent:');
         console.log();
-        console.log('  # Option 2: Manual installation');
-        console.log('  sudo npm install -g @zincapp/zn-vault-agent');
-        console.log(`  sudo zn-vault-agent bootstrap --token ${response.token}`);
+        console.log(`    curl -sL "${oneCommandUrl}" | sudo bash`);
         console.log();
-        console.log('Note: The token can only be used once and expires in ' + (options.expires ?? '24h'));
+
+        output.section('Review First (Recommended)');
+        console.log();
+        console.log('  Download the script, review it, then run:');
+        console.log();
+        console.log(`    curl -sL "${oneCommandUrl}" -o bootstrap-${hostname}.sh`);
+        console.log(`    less bootstrap-${hostname}.sh`);
+        console.log(`    sudo bash bootstrap-${hostname}.sh`);
+        console.log();
+
+        output.section('Alternative: Manual Installation');
+        console.log();
+        console.log('  If you prefer to install manually:');
+        console.log();
+        console.log('    sudo npm install -g @zincapp/zn-vault-agent');
+        console.log('    # Then add the bootstrap token to /etc/zn-vault-agent/config.json');
+        console.log();
+
+        output.info(`Token expires in ${options.expires ?? '24h'} and can only be used once.`);
       } catch (err) {
         spinner.fail('Failed to generate bootstrap token');
         output.error(err instanceof Error ? err.message : String(err));
