@@ -107,15 +107,34 @@ export interface ExecSecret {
 }
 
 /**
+ * Host list item (summary view, not full config)
+ */
+export interface HostListItem {
+  id: string;
+  tenantId: string;
+  hostname: string;
+  description?: string;
+  version: number;
+  managedKeyName?: string;
+  status: HostStatus;
+  lastPulledAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  certTargetCount: number;
+  secretTargetCount: number;
+  linkedAgentCount: number;
+}
+
+/**
  * Host list response
  */
 export interface HostListResponse {
-  items: HostConfig[];
+  items: HostListItem[];
   pagination: {
-    page: number;
-    pageSize: number;
-    totalItems: number;
-    totalPages: number;
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
   };
 }
 

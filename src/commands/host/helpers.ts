@@ -1,7 +1,7 @@
 // Path: src/commands/host/helpers.ts
 // Helper functions for host management commands
 
-import type { HostConfig, HostStatus } from './types.js';
+import type { HostConfig, HostStatus, HostListItem } from './types.js';
 
 /**
  * ANSI color codes
@@ -54,19 +54,31 @@ export function formatRelativeTime(dateString: string | undefined): string {
 }
 
 /**
- * Format config summary for display
+ * Format config summary for display (supports both list item and full config)
  */
-export function formatConfigSummary(config: HostConfig['config']): string {
+export function formatConfigSummary(item: HostListItem | HostConfig['config']): string {
   const parts: string[] = [];
 
-  const certCount = config.targets?.length ?? 0;
-  const secretCount = config.secretTargets?.length ?? 0;
-  const pluginCount = config.plugins?.filter((p) => p.enabled !== false).length ?? 0;
+  // Check if this is a list item (has certTargetCount) or full config (has targets)
+  if ('certTargetCount' in item) {
+    // List item format
+    const certCount = item.certTargetCount ?? 0;
+    const secretCount = item.secretTargetCount ?? 0;
 
-  if (certCount > 0) parts.push(`${certCount} cert(s)`);
-  if (secretCount > 0) parts.push(`${secretCount} secret(s)`);
-  if (pluginCount > 0) parts.push(`${pluginCount} plugin(s)`);
-  if (config.exec) parts.push('exec mode');
+    if (certCount > 0) parts.push(`${certCount} cert(s)`);
+    if (secretCount > 0) parts.push(`${secretCount} secret(s)`);
+  } else {
+    // Full config format
+    const config = item as HostConfig['config'];
+    const certCount = config.targets?.length ?? 0;
+    const secretCount = config.secretTargets?.length ?? 0;
+    const pluginCount = config.plugins?.filter((p) => p.enabled !== false).length ?? 0;
+
+    if (certCount > 0) parts.push(`${certCount} cert(s)`);
+    if (secretCount > 0) parts.push(`${secretCount} secret(s)`);
+    if (pluginCount > 0) parts.push(`${pluginCount} plugin(s)`);
+    if (config.exec) parts.push('exec mode');
+  }
 
   return parts.length > 0 ? parts.join(', ') : 'empty';
 }

@@ -5,7 +5,7 @@ import type { Command } from 'commander';
 import ora from 'ora';
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
-import type { ListOptions, HostListResponse, HostStatsResponse } from './types.js';
+import type { ListOptions, HostListResponse, HostStatsResponse, HostListItem } from './types.js';
 import { formatStatus, formatRelativeTime, formatConfigSummary } from './helpers.js';
 
 /**
@@ -28,8 +28,11 @@ export function registerListCommand(parentCmd: Command): void {
         const params = new URLSearchParams();
         if (options.status) params.set('status', options.status);
         if (options.tenant) params.set('tenantId', options.tenant);
-        params.set('page', String(options.page ?? 1));
-        params.set('pageSize', String(options.pageSize ?? 50));
+        // Convert page/pageSize to offset/limit for server
+        const page = options.page ?? 1;
+        const pageSize = options.pageSize ?? 50;
+        params.set('limit', String(pageSize));
+        params.set('offset', String((page - 1) * pageSize));
 
         const query = params.toString();
         const response = await mode.apiGet<HostListResponse>(
@@ -50,16 +53,21 @@ export function registerListCommand(parentCmd: Command): void {
           return;
         }
 
-        console.log(`Found ${response.pagination.totalItems} host(s) (page ${response.pagination.page}/${response.pagination.totalPages})`);
+        // Calculate page info from offset/limit/total
+        const { total, limit, offset } = response.pagination;
+        const currentPage = Math.floor(offset / limit) + 1;
+        const totalPages = Math.ceil(total / limit);
+
+        console.log(`Found ${total} host(s) (page ${currentPage}/${totalPages})`);
         console.log();
 
         output.table(
           ['Hostname', 'Status', 'Version', 'Config', 'Last Pull', 'Managed Key'],
-          response.items.map((host) => [
+          response.items.map((host: HostListItem) => [
             host.hostname,
             formatStatus(host.status),
             String(host.version),
-            formatConfigSummary(host.config),
+            formatConfigSummary(host),
             formatRelativeTime(host.lastPulledAt),
             host.managedKeyName ?? '-',
           ])
