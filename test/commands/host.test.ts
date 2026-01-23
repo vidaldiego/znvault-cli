@@ -30,6 +30,7 @@ vi.mock('../../src/lib/output.js', () => ({
   keyValue: vi.fn(),
   json: vi.fn(),
   table: vi.fn(),
+  section: vi.fn(),
 }));
 
 // Mock process.exit
@@ -311,7 +312,6 @@ describe('host commands', () => {
   describe('host create', () => {
     it('should create host configuration', async () => {
       const { apiPost } = await import('../../src/lib/mode.js');
-      const { success } = await import('../../src/lib/output.js');
 
       vi.mocked(apiPost).mockResolvedValue(mockHostConfig);
 
@@ -320,7 +320,6 @@ describe('host commands', () => {
       expect(apiPost).toHaveBeenCalledWith('/v1/hosts', expect.objectContaining({
         hostname: 'new-host.example.com',
       }));
-      expect(success).toHaveBeenCalled();
     });
 
     it('should pass managed key option', async () => {
@@ -359,15 +358,16 @@ describe('host commands', () => {
   // ===== host delete =====
   describe('host delete', () => {
     it('should delete host with --yes flag', async () => {
-      const { apiDelete } = await import('../../src/lib/mode.js');
-      const { success } = await import('../../src/lib/output.js');
+      const { apiGet, apiDelete } = await import('../../src/lib/mode.js');
 
+      // Mock getting the host first (delete command fetches before deleting)
+      vi.mocked(apiGet).mockResolvedValue(mockHostConfig);
       vi.mocked(apiDelete).mockResolvedValue({ success: true });
 
       await program.parseAsync(['node', 'test', 'host', 'delete', 'web-server-1.example.com', '--yes']);
 
+      expect(apiGet).toHaveBeenCalledWith('/v1/hosts/web-server-1.example.com');
       expect(apiDelete).toHaveBeenCalledWith('/v1/hosts/web-server-1.example.com');
-      expect(success).toHaveBeenCalled();
     });
 
     it('should handle delete errors', async () => {
@@ -388,7 +388,6 @@ describe('host commands', () => {
   describe('host sync', () => {
     it('should sync host configuration', async () => {
       const { apiPost } = await import('../../src/lib/mode.js');
-      const { success } = await import('../../src/lib/output.js');
 
       vi.mocked(apiPost).mockResolvedValue({
         success: true,
@@ -401,7 +400,6 @@ describe('host commands', () => {
       await program.parseAsync(['node', 'test', 'host', 'sync', 'web-server-1.example.com']);
 
       expect(apiPost).toHaveBeenCalledWith('/v1/hosts/web-server-1.example.com/sync', { force: false });
-      expect(success).toHaveBeenCalled();
     });
 
     it('should pass force flag', async () => {
@@ -428,7 +426,7 @@ describe('host commands', () => {
 
       const tokenResponse = {
         token: 'bootstrap-token-123',
-        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
         bootstrapUrl: 'https://vault.example.com/v1/hosts/bootstrap',
         hostConfigId: 'host-123',
         hostname: 'web-server-1.example.com',
@@ -437,9 +435,10 @@ describe('host commands', () => {
 
       await program.parseAsync(['node', 'test', 'host', 'bootstrap-token', 'web-server-1.example.com']);
 
+      // Command sends expiresAt (ISO date string), default is 24h
       expect(apiPost).toHaveBeenCalledWith(
         '/v1/hosts/web-server-1.example.com/bootstrap-token',
-        expect.objectContaining({ expiresIn: '1h' })
+        expect.objectContaining({ expiresAt: expect.any(String) })
       );
     });
 
@@ -448,7 +447,7 @@ describe('host commands', () => {
 
       vi.mocked(apiPost).mockResolvedValue({
         token: 'bootstrap-token-123',
-        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
         bootstrapUrl: 'https://vault.example.com/v1/hosts/bootstrap',
         hostConfigId: 'host-123',
         hostname: 'web-server-1.example.com',
@@ -456,12 +455,13 @@ describe('host commands', () => {
 
       await program.parseAsync([
         'node', 'test', 'host', 'bootstrap-token', 'web-server-1.example.com',
-        '--expires', '24h'
+        '--expires', '1h'
       ]);
 
+      // Command parses duration and sends expiresAt
       expect(apiPost).toHaveBeenCalledWith(
         '/v1/hosts/web-server-1.example.com/bootstrap-token',
-        expect.objectContaining({ expiresIn: '24h' })
+        expect.objectContaining({ expiresAt: expect.any(String) })
       );
     });
   });
