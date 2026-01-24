@@ -32,7 +32,10 @@ import { registerDeviceCommands } from './commands/device.js';
 import { registerCryptoCommands } from './commands/crypto.js';
 import { registerPluginCommands } from './commands/plugin.js';
 import { registerSSOCommands } from './commands/sso.js';
+import { registerGroupCommands } from './commands/group.js';
 import { registerDynamicSecretsCommands } from './commands/dynamic-secrets.js';
+import { registerSSHCommands } from './commands/ssh.js';
+import { registerSSHCACommands } from './commands/ssh-ca.js';
 import { client } from './lib/client.js';
 import {
   setRuntimeProfile,
@@ -131,7 +134,10 @@ registerDeviceCommands(program);
 registerCryptoCommands(program);
 registerPluginCommands(program);
 registerSSOCommands(program);
+registerGroupCommands(program);
 registerDynamicSecretsCommands(program);
+registerSSHCommands(program);
+registerSSHCACommands(program);
 
 // Configure context-aware help (hides superadmin-only commands for regular users)
 configureContextHelp(program);
