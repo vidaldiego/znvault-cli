@@ -211,6 +211,8 @@ Examples:
     .option('--public-key <key>', 'SSH public key string')
     .option('--file <path>', 'Path to SSH public key file')
     .option('--ttl <seconds>', 'Certificate TTL in seconds')
+    .option('--principals <list>', 'Direct principal specification (admin override, comma-separated). Requires ssh:ca:admin permission.')
+    .option('--tenant <id>', 'Target tenant ID (superadmin only, required with --principals)')
     .option('--json', 'Output as JSON')
     .action(signCertificate);
 }

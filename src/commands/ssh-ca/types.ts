@@ -113,6 +113,17 @@ export interface SignOptions {
   publicKey?: string;
   file?: string;
   ttl?: string;
+  /**
+   * Direct principal specification (admin override).
+   * Requires ssh:ca:admin permission.
+   * Bypasses SSO group → principal mapping resolution.
+   */
+  principals?: string;
+  /**
+   * Target tenant ID (superadmin only).
+   * Required when superadmin uses admin override to sign for a specific tenant.
+   */
+  tenant?: string;
   json?: boolean;
 }
 
