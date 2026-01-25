@@ -36,15 +36,12 @@ export async function signCertificate(options: SignOptions): Promise<void> {
   const spinner = ora('Signing certificate...').start();
 
   try {
-    const body: { publicKey: string; ttlSeconds?: number; principals?: string[]; tenantId?: string } = { publicKey };
+    const body: { publicKey: string; ttlSeconds?: number; principals?: string[] } = { publicKey };
     if (options.ttl) {
       body.ttlSeconds = parseInt(options.ttl, 10);
     }
     if (options.principals) {
       body.principals = options.principals.split(',').map(p => p.trim()).filter(p => p);
-    }
-    if (options.tenant) {
-      body.tenantId = options.tenant;
     }
 
     const response = await client.post<SignedCertificate>('/v1/ssh/sign', body);

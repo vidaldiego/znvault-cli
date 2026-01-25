@@ -231,7 +231,51 @@ src/commands/backup/
 
 ## Release Process
 
-1. Update version in `package.json`
-2. Commit: `git commit -m "chore: bump version to X.Y.Z"`
-3. Tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
-4. GitHub Actions publishes to npm via OIDC
+**Publishing is handled automatically by GitHub Actions CI/CD.**
+
+### Steps to Release
+
+1. Update version in `package.json`:
+   ```bash
+   npm version patch  # or minor/major
+   ```
+
+2. Commit the version bump:
+   ```bash
+   git add package.json package-lock.json
+   git commit -m "chore(release): vX.Y.Z"
+   ```
+
+3. Create and push tag:
+   ```bash
+   git tag vX.Y.Z
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+4. GitHub Actions automatically:
+   - Runs tests
+   - Builds the package
+   - Publishes to npm using OIDC authentication (no npm token needed)
+
+### npm Package
+
+- **Package:** `@zincapp/znvault-cli`
+- **Registry:** https://www.npmjs.com/package/@zincapp/znvault-cli
+
+### Verification
+
+```bash
+# Check published version
+npm view @zincapp/znvault-cli version
+
+# Install latest
+npm install -g @zincapp/znvault-cli
+```
+
+### CI/CD Configuration
+
+The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
+- Running tests on PRs
+- Publishing to npm on version tags (`v*`)
+- OIDC-based npm authentication (provenance enabled)

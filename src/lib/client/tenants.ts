@@ -36,21 +36,19 @@ export class TenantsClient extends HttpClient {
     maxKmsKeys?: number;
     contactEmail?: string;
   }): Promise<Tenant> {
-    const response = await this.request<{ success: boolean; data: Tenant }>({
+    return this.request<Tenant>({
       method: 'POST',
       path: '/v1/tenants',
       body: data,
     });
-    return response.data;
   }
 
   async getById(id: string, withUsage?: boolean): Promise<TenantWithUsage> {
-    const response = await this.request<{ success: boolean; data: TenantWithUsage }>({
+    return this.request<TenantWithUsage>({
       method: 'GET',
       path: `/v1/tenants/${id}`,
       query: { withUsage },
     });
-    return response.data;
   }
 
   async update(id: string, data: {
@@ -60,12 +58,11 @@ export class TenantsClient extends HttpClient {
     contactEmail?: string;
     status?: 'active' | 'suspended';
   }): Promise<Tenant> {
-    const response = await this.request<{ success: boolean; data: Tenant }>({
+    return this.request<Tenant>({
       method: 'PATCH',
       path: `/v1/tenants/${id}`,
       body: data,
     });
-    return response.data;
   }
 
   async deleteById(id: string): Promise<void> {

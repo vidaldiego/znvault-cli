@@ -17,6 +17,7 @@ export function registerBootstrapTokenCommand(parentCmd: Command): void {
     .alias('token')
     .description('Generate a bootstrap token for a host')
     .option('-e, --expires <duration>', 'Token expiration (e.g., 1h, 24h, 7d)', '24h')
+    .option('-a, --agent-hostname <hostname>', 'Agent hostname (for multi-host templates, defaults to host config name)')
     .option('--json', 'Output as JSON')
     .action(async (hostname: string, options: BootstrapTokenOptions) => {
       // Parse expiration
@@ -32,9 +33,15 @@ export function registerBootstrapTokenCommand(parentCmd: Command): void {
       const spinner = ora('Generating bootstrap token...').start();
 
       try {
+        // Build request body
+        const body: Record<string, unknown> = { expiresAt };
+        if (options.agentHostname) {
+          body.agentHostname = options.agentHostname;
+        }
+
         const response = await mode.apiPost<BootstrapTokenResponse>(
           `/v1/hosts/${encodeURIComponent(hostname)}/bootstrap-token`,
-          { expiresAt }
+          body
         );
 
         spinner.succeed('Bootstrap token generated');
@@ -44,32 +51,44 @@ export function registerBootstrapTokenCommand(parentCmd: Command): void {
           return;
         }
 
-        // Build the one-command URL
-        const oneCommandUrl = `${response.bootstrapUrl}?token=${response.token}`;
+        // Use bootstrapUrl directly (now includes token and hostname)
+        const bootstrapUrl = response.bootstrapUrl;
+        const agentHostname = response.agentHostname;
+        const isMultiHost = agentHostname !== hostname;
 
         console.log();
-        output.section('Bootstrap Token for ' + hostname);
+        if (isMultiHost) {
+          output.section(`Bootstrap Token for ${agentHostname} (template: ${hostname})`);
+        } else {
+          output.section('Bootstrap Token for ' + hostname);
+        }
         console.log();
-        output.keyValue({
+
+        const tokenInfo: Record<string, string> = {
           'Token': response.token,
           'Expires': new Date(response.expiresAt).toLocaleString(),
-        });
+        };
+        if (isMultiHost) {
+          tokenInfo['Host Config'] = hostname;
+          tokenInfo['Agent Hostname'] = agentHostname;
+        }
+        output.keyValue(tokenInfo);
 
         console.log();
         output.section('Quick Start (One Command)');
         console.log();
         console.log('  Run this on the target server to install and configure the agent:');
         console.log();
-        console.log(`    curl -sL "${oneCommandUrl}" | sudo bash`);
+        console.log(`    curl -sL "${bootstrapUrl}" | sudo bash`);
         console.log();
 
         output.section('Review First (Recommended)');
         console.log();
         console.log('  Download the script, review it, then run:');
         console.log();
-        console.log(`    curl -sL "${oneCommandUrl}" -o bootstrap-${hostname}.sh`);
-        console.log(`    less bootstrap-${hostname}.sh`);
-        console.log(`    sudo bash bootstrap-${hostname}.sh`);
+        console.log(`    curl -sL "${bootstrapUrl}" -o bootstrap-${agentHostname}.sh`);
+        console.log(`    less bootstrap-${agentHostname}.sh`);
+        console.log(`    sudo bash bootstrap-${agentHostname}.sh`);
         console.log();
 
         output.section('Alternative: Manual Installation');
