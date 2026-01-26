@@ -48,6 +48,29 @@ export function error(message: string): void {
 }
 
 /**
+ * Extract error message from unknown error type
+ * Use this instead of: err instanceof Error ? err.message : String(err)
+ */
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  return String(err);
+}
+
+/**
+ * Print error and exit with code 1
+ * Use for fatal errors that should stop execution
+ */
+export function fatal(message: string, exitCode = 1): never {
+  error(message);
+  process.exit(exitCode);
+}
+
+/**
  * Print warning message
  */
 export function warn(message: string): void {

@@ -12,6 +12,9 @@ import { client } from '../lib/client.js';
 import { promptConfirm, promptInput } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import * as visual from '../lib/visual.js';
+import { createDebugLogger } from '../lib/debug.js';
+
+const log = createDebugLogger('device');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -124,8 +127,8 @@ function execSecureEnclaveHelper<T>(args: string[]): T {
     if (stdout) {
       try {
         return JSON.parse(stdout.trim()) as T;
-      } catch {
-        // Fall through
+      } catch (parseErr) {
+        log.silenced('execSecureEnclaveHelper:parseStdout', parseErr);
       }
     }
     const stderr = error.stderr?.toString();
@@ -140,7 +143,8 @@ function getMacOSVersion(): string {
   try {
     const result = execSync('sw_vers -productVersion', { encoding: 'utf-8' });
     return result.trim();
-  } catch {
+  } catch (err) {
+    log.silenced('getMacOSVersion', err);
     return 'unknown';
   }
 }
@@ -153,7 +157,8 @@ function getCliVersion(): string {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require('../../package.json') as { version: string };
     return pkg.version;
-  } catch {
+  } catch (err) {
+    log.silenced('getCliVersion', err);
     return 'unknown';
   }
 }
@@ -394,8 +399,8 @@ export function registerDeviceCommands(program: Command): void {
         // Clean up the generated key on failure
         try {
           execSecureEnclaveHelper(['delete']);
-        } catch {
-          // Ignore cleanup errors
+        } catch (cleanupErr) {
+          log.silenced('enroll:cleanupKey', cleanupErr);
         }
         process.exit(1);
       }

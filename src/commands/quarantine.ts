@@ -5,6 +5,7 @@ import ora from 'ora';
 import { client } from '../lib/client.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+import { formatTtl as formatDuration } from '../lib/format-helpers.js';
 
 interface ListOptions {
   status?: 'active' | 'released' | 'expired';
@@ -44,13 +45,6 @@ interface SetConfigOptions {
 function formatBackoffLevel(level: number): string {
   const labels = ['', '1m', '5m', '30m', '4h', '24h'];
   return labels[level] ?? `Level ${level}`;
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
 }
 
 export function registerQuarantineCommands(program: Command): void {

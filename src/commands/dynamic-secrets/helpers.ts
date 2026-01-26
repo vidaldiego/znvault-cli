@@ -5,13 +5,13 @@
  */
 
 import * as output from '../../lib/output.js';
+import { formatDate as formatDateBase, formatTtl as formatTtlBase } from '../../lib/format-helpers.js';
 
-export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
-}
+// Re-export formatDate from centralized location
+export { formatDate } from '../../lib/format-helpers.js';
+
+// Alias formatTtl as formatDuration for semantic clarity in this context
+export const formatDuration = formatTtlBase;
 
 export function formatStatus(status: string): string {
   switch (status) {
@@ -25,12 +25,7 @@ export function formatStatus(status: string): string {
   }
 }
 
-export function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
-}
-
 export function formatTtl(seconds: number | null): string {
   if (seconds === null) return 'inherit';
-  return formatDuration(seconds);
+  return formatTtlBase(seconds);
 }

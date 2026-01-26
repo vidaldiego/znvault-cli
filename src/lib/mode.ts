@@ -2,6 +2,7 @@ import { client } from './client.js';
 import { LocalDBClient } from './db.js';
 import { isLocalModeAvailable, getLocalModeStatus } from './local.js';
 import { hasApiKey, getCredentials, hasEnvCredentials } from './config.js';
+import { DEFAULT_VAULT_URL } from './constants.js';
 import type {
   HealthResponse,
   ClusterStatus,
@@ -496,7 +497,7 @@ export async function apiPut<T = unknown>(endpoint: string, body: unknown): Prom
 export function getWebSocketUrl(wsPath: string): string {
   if (getMode() === 'local') {
     // In local mode, use env var or default localhost
-    const localUrl = process.env.ZNVAULT_BASE_URL ?? 'https://localhost:8443';
+    const localUrl = process.env.ZNVAULT_BASE_URL ?? DEFAULT_VAULT_URL;
     return localUrl.replace(/^https?:/, 'wss:') + wsPath;
   }
 

@@ -38,6 +38,34 @@ export class UpdateInstaller {
   }
 
   /**
+   * Safely clean up a file, ignoring errors
+   */
+  private safeUnlink(filePath: string): void {
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      // Ignore cleanup errors - file may already be deleted or inaccessible
+    }
+  }
+
+  /**
+   * Safely close a write stream with callback
+   */
+  private safeCloseStream(
+    stream: fs.WriteStream,
+    callback: () => void
+  ): void {
+    try {
+      stream.close(callback);
+    } catch {
+      // Stream may already be closed - just call callback
+      callback();
+    }
+  }
+
+  /**
    * Download file with progress reporting
    */
   private async download(
@@ -47,14 +75,27 @@ export class UpdateInstaller {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(destPath);
+      let isCleanedUp = false;
+
+      const cleanup = (error?: Error): void => {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        this.safeCloseStream(file, () => {
+          this.safeUnlink(destPath);
+          if (error) {
+            reject(error);
+          }
+        });
+      };
 
       https.get(url, { rejectUnauthorized: true }, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) {
           // Handle redirect - properly close file before cleanup
           const redirectUrl = res.headers.location;
           if (redirectUrl) {
-            file.close(() => {
-              try { fs.unlinkSync(destPath); } catch { /* ignore */ }
+            this.safeCloseStream(file, () => {
+              this.safeUnlink(destPath);
               this.download(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
             });
             return;
@@ -62,9 +103,7 @@ export class UpdateInstaller {
         }
 
         if (res.statusCode !== 200) {
-          file.close();
-          fs.unlinkSync(destPath);
-          reject(new Error(`Download failed: HTTP ${String(res.statusCode)}`));
+          cleanup(new Error(`Download failed: HTTP ${String(res.statusCode)}`));
           return;
         }
 
@@ -82,21 +121,18 @@ export class UpdateInstaller {
         res.pipe(file);
 
         file.on('finish', () => {
-          file.close();
-          resolve();
+          // Don't cleanup on success - just close the stream
+          this.safeCloseStream(file, () => {
+            isCleanedUp = true; // Mark as handled
+            resolve();
+          });
         });
 
         file.on('error', (err) => {
-          file.close();
-          fs.unlinkSync(destPath);
-          reject(err);
+          cleanup(err);
         });
       }).on('error', (err) => {
-        file.close();
-        if (fs.existsSync(destPath)) {
-          fs.unlinkSync(destPath);
-        }
-        reject(err);
+        cleanup(err);
       });
     });
   }

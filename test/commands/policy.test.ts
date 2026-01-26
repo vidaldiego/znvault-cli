@@ -57,6 +57,8 @@ vi.mock('../../src/lib/output.js', () => ({
   section: vi.fn(),
   keyValue: vi.fn(),
   formatDate: vi.fn((date: string) => date),
+  getErrorMessage: (err: unknown) => err instanceof Error ? err.message : String(err),
+  fatal: vi.fn((message: string) => { throw new Error(`process.exit(1)`); }),
 }));
 
 import { client } from '../../src/lib/client.js';
@@ -210,7 +212,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.listPolicies).mockRejectedValue(new Error('API Error'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'list'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('API Error');
+      expect(output.fatal).toHaveBeenCalledWith('API Error');
     });
   });
 
@@ -253,7 +255,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.getPolicy).mockRejectedValue(new Error('Policy not found'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'get', 'invalid'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Policy not found');
+      expect(output.fatal).toHaveBeenCalledWith('Policy not found');
     });
   });
 
@@ -368,7 +370,7 @@ describe('Policy Commands', () => {
         '--effect', 'allow',
         '--actions', 'secret:read',
       ])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Invalid policy');
+      expect(output.fatal).toHaveBeenCalledWith('Invalid policy');
     });
   });
 
@@ -420,7 +422,7 @@ describe('Policy Commands', () => {
 
     it('should fail when no updates specified', async () => {
       await expect(program.parseAsync(['node', 'test', 'policy', 'update', 'policy-123'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('No updates specified');
+      expect(output.fatal).toHaveBeenCalledWith('No updates specified');
     });
 
     it('should output JSON when --json flag is set', async () => {
@@ -469,7 +471,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.deletePolicy).mockRejectedValue(new Error('Cannot delete'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'delete', 'policy-123'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Cannot delete');
+      expect(output.fatal).toHaveBeenCalledWith('Cannot delete');
     });
   });
 
@@ -489,7 +491,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.togglePolicy).mockRejectedValue(new Error('Policy not found'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'enable', 'invalid'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Policy not found');
+      expect(output.fatal).toHaveBeenCalledWith('Policy not found');
     });
   });
 
@@ -509,7 +511,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.togglePolicy).mockRejectedValue(new Error('Policy not found'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'disable', 'invalid'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Policy not found');
+      expect(output.fatal).toHaveBeenCalledWith('Policy not found');
     });
   });
 
@@ -626,7 +628,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.attachPolicyToUser).mockRejectedValue(new Error('User not found'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'attach-user', 'policy-123', 'invalid'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('User not found');
+      expect(output.fatal).toHaveBeenCalledWith('User not found');
     });
   });
 
@@ -644,7 +646,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.attachPolicyToRole).mockRejectedValue(new Error('Role not found'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'attach-role', 'policy-123', 'invalid'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Role not found');
+      expect(output.fatal).toHaveBeenCalledWith('Role not found');
     });
   });
 
@@ -662,7 +664,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.detachPolicyFromUser).mockRejectedValue(new Error('Not attached'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'detach-user', 'policy-123', 'user-456'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Not attached');
+      expect(output.fatal).toHaveBeenCalledWith('Not attached');
     });
   });
 
@@ -680,7 +682,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.detachPolicyFromRole).mockRejectedValue(new Error('Not attached'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'detach-role', 'policy-123', 'role-456'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Not attached');
+      expect(output.fatal).toHaveBeenCalledWith('Not attached');
     });
   });
 
@@ -891,7 +893,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.getPolicy).mockRejectedValue(new Error('Policy not found'));
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'export', 'invalid'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('Policy not found');
+      expect(output.fatal).toHaveBeenCalledWith('Policy not found');
     });
   });
 
@@ -956,7 +958,7 @@ describe('Policy Commands', () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       await expect(program.parseAsync(['node', 'test', 'policy', 'import', '/invalid/path.json'])).rejects.toThrow('process.exit(1)');
-      expect(output.error).toHaveBeenCalledWith('File not found: /invalid/path.json');
+      expect(output.fatal).toHaveBeenCalledWith('File not found: /invalid/path.json');
     });
   });
 });

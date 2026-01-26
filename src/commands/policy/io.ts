@@ -7,6 +7,7 @@
 import ora from 'ora';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
+import { formatActiveStatus } from '../../lib/format-helpers.js';
 import type { CreatePolicyInput } from '../../types/index.js';
 import type { PolicyExportOptions, PolicyImportOptions } from './types.js';
 import { safeReadFile, safeParseJson, safeWriteFile } from './helpers.js';
@@ -38,8 +39,7 @@ export async function exportPolicy(id: string, options: PolicyExportOptions): Pr
     }
   } catch (err) {
     spinner.fail('Failed to export policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -64,11 +64,10 @@ export async function importPolicy(path: string, options: PolicyImportOptions): 
         'ID': result.id,
         'Name': result.name,
         'Effect': result.effect.toUpperCase(),
-        'Status': result.isActive ? 'Enabled' : 'Disabled',
+        'Status': formatActiveStatus(result.isActive),
       });
     }
   } catch (err) {
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }

@@ -8,6 +8,7 @@ import type { Command } from 'commander';
 import ora from 'ora';
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
+import { DEFAULT_AGENT_PORT } from '../../../lib/constants.js';
 import type { UpdateAllOptions, AgentListResponse, RemoteAgent } from '../types.js';
 import {
   confirmAction,
@@ -59,8 +60,13 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
           return;
         }
 
-        // Filter to agents with IP addresses
-        const reachableAgents = response.agents.filter(a => a.lastIpAddress);
+        // Filter to agents with IP addresses and extract normalized IPs
+        const reachableAgents = response.agents
+          .filter((a): a is RemoteAgent & { lastIpAddress: string } => !!a.lastIpAddress)
+          .map(a => ({
+            agent: a,
+            ip: a.lastIpAddress.replace(/^::ffff:/i, ''),
+          }));
 
         if (reachableAgents.length === 0) {
           if (options.json) {
@@ -75,13 +81,12 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
         const checkSpinner = ora(`Checking ${reachableAgents.length} agent(s)...`).start();
         const agentInfo: AgentUpdateInfo[] = [];
 
-        for (const agent of reachableAgents) {
-          const ip = agent.lastIpAddress!.replace(/^::ffff:/i, '');
+        for (const { agent, ip } of reachableAgents) {
 
           try {
             if (options.plugins) {
               // Check plugin versions
-              const pluginInfo = await fetchPluginVersions(ip, 9100);
+              const pluginInfo = await fetchPluginVersions(ip, DEFAULT_AGENT_PORT);
               const updatesNeeded = pluginInfo.versions.filter(v => v.updateAvailable).length;
               agentInfo.push({
                 agent,
@@ -93,7 +98,7 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
               });
             } else {
               // Check agent version
-              const versionInfo = await fetchAgentVersion(ip, 9100);
+              const versionInfo = await fetchAgentVersion(ip, DEFAULT_AGENT_PORT);
               agentInfo.push({
                 agent,
                 ip,
@@ -204,7 +209,7 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
 
           try {
             if (options.plugins) {
-              const response = await triggerPluginUpdate(info.ip, 9100);
+              const response = await triggerPluginUpdate(info.ip, DEFAULT_AGENT_PORT);
               results.push({
                 hostname: info.agent.hostname,
                 success: response.updated > 0,
@@ -214,7 +219,7 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
                 console.log(`\x1b[32m✓\x1b[0m Updated ${response.updated} plugin(s)`);
               }
             } else {
-              const response = await triggerAgentUpdate(info.ip, 9100);
+              const response = await triggerAgentUpdate(info.ip, DEFAULT_AGENT_PORT);
               results.push({
                 hostname: info.agent.hostname,
                 success: response.success,

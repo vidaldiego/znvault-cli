@@ -47,6 +47,7 @@ src/
 │   ├── secret.ts         # Secret CRUD operations
 │   ├── apikey.ts         # API key management
 │   ├── kms.ts            # Key management service
+│   ├── ssh.ts            # SSH CA management and quick connect
 │   ├── backup/           # Modularized backup commands
 │   │   ├── index.ts      # Command registration
 │   │   ├── types.ts      # Type definitions

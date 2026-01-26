@@ -8,6 +8,9 @@ import type { HealthResponse, ClusterStatus, ClusterNode } from '../../types/ind
 import { REDIS_PING_TIMEOUT_MS, REDIS_SENTINEL_TIMEOUT_MS } from '../constants.js';
 import type { ManifestFile, HANodeRow } from './types.js';
 import { BaseDBClient } from './client.js';
+import { createDebugLogger } from '../debug.js';
+
+const log = createDebugLogger('db-health');
 
 export class HealthOperations extends BaseDBClient {
   async health(): Promise<HealthResponse> {
@@ -68,8 +71,9 @@ export class HealthOperations extends BaseDBClient {
         isHealthy: n.status === 'healthy',
         lastHeartbeat: n.last_heartbeat.toISOString(),
       }));
-    } catch {
+    } catch (err) {
       // Table might not exist in non-HA setups
+      log.silenced('clusterStatus:queryHaNodes', err);
     }
 
     const leader = nodes.find(n => n.isLeader);
@@ -96,8 +100,8 @@ export class HealthOperations extends BaseDBClient {
           return manifest.version ?? '1.2.9';
         }
       }
-    } catch {
-      // Ignore
+    } catch (err) {
+      log.silenced('getVaultVersion:readManifest', err);
     }
     return process.env.npm_package_version ?? '1.2.9';
   }
@@ -128,7 +132,8 @@ export class HealthOperations extends BaseDBClient {
         role: 'primary',
         replicationLag: replicas.length > 0 ? 0 : undefined,
       };
-    } catch {
+    } catch (err) {
+      log.silenced('getPostgresStatus', err);
       return { status: 'ok' };
     }
   }
@@ -145,7 +150,8 @@ export class HealthOperations extends BaseDBClient {
             REDIS_PING_TIMEOUT_MS
           );
           return { status: result.trim() === 'PONG' ? 'ok' : 'error' };
-        } catch {
+        } catch (err) {
+          log.silenced('getRedisStatus:pingRedis', err);
           return { status: 'error' };
         }
       }
@@ -184,7 +190,8 @@ export class HealthOperations extends BaseDBClient {
         sentinelNodes: healthyNodes,
         master: masterHost || undefined,
       };
-    } catch {
+    } catch (err) {
+      log.silenced('getRedisStatus:querySentinel', err);
       return { status: 'error' };
     }
   }
@@ -224,7 +231,8 @@ export class HealthOperations extends BaseDBClient {
       const leaderNodeId = leaderResult.trim() || null;
 
       return { nodeCount, leaderNodeId };
-    } catch {
+    } catch (err) {
+      log.silenced('getClusterInfoFromRedis', err);
       return { nodeCount: 3, leaderNodeId: null };
     }
   }

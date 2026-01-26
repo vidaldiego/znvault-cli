@@ -416,8 +416,8 @@ describe('agent commands', () => {
     });
   });
 
-  // ===== agent remote reprovision =====
-  describe('agent remote reprovision', () => {
+  // ===== agent remote reprovision create =====
+  describe('agent remote reprovision create', () => {
     it('should generate reprovision token', async () => {
       const { apiPost } = await import('../../src/lib/mode.js');
 
@@ -431,7 +431,7 @@ describe('agent commands', () => {
       };
       vi.mocked(apiPost).mockResolvedValue(response);
 
-      await program.parseAsync(['node', 'test', 'agent', 'remote', 'reprovision', 'agent-123']);
+      await program.parseAsync(['node', 'test', 'agent', 'remote', 'reprovision', 'create', 'agent-123']);
 
       expect(apiPost).toHaveBeenCalledWith('/v1/agents/agent-123/reprovision', {
         reason: undefined,
@@ -453,7 +453,7 @@ describe('agent commands', () => {
       });
 
       await program.parseAsync([
-        'node', 'test', 'agent', 'remote', 'reprovision', 'agent-123',
+        'node', 'test', 'agent', 'remote', 'reprovision', 'create', 'agent-123',
         '--reason', 'Key compromised',
         '--expires-in', '1h'
       ]);
@@ -672,13 +672,4 @@ describe('agent commands', () => {
     });
   });
 
-  // ===== agent help-local =====
-  describe('agent help-local', () => {
-    it('should display help for local agent operations', async () => {
-      await program.parseAsync(['node', 'test', 'agent', 'help-local']);
-
-      expect(consoleSpy).toHaveBeenCalledWith('Local Agent Operations');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('zn-vault-agent'));
-    });
-  });
 });

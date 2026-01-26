@@ -12,6 +12,10 @@ import { execSync, spawn } from 'child_process';
 import React from 'react';
 import { render } from 'ink';
 import { UpdateBanner } from '../tui/components/UpdateBanner.js';
+import { createDebugLogger } from './debug.js';
+import { UPDATE_CHECK_INTERVAL_MS, CLI_UPDATE_TIMEOUT_MS } from './constants.js';
+
+const log = createDebugLogger('cli-update');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,8 +26,8 @@ const PACKAGE_NAME = '@zincapp/znvault-cli';
 // Cache file for update check results
 const UPDATE_CACHE_FILE = '.znvault-update-cache.json';
 
-// How often to check for updates (24 hours)
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// How often to check for updates (use centralized constant)
+const CHECK_INTERVAL_MS = UPDATE_CHECK_INTERVAL_MS;
 
 interface UpdateCache {
   lastCheck: number;
@@ -57,8 +61,8 @@ function readCache(): UpdateCache | null {
       const data = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as UpdateCache;
       return data;
     }
-  } catch {
-    // Ignore cache read errors
+  } catch (err) {
+    log.silenced('readCache', err);
   }
   return null;
 }
@@ -70,8 +74,8 @@ function writeCache(cache: UpdateCache): void {
   try {
     const cachePath = getCacheFilePath();
     fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
-  } catch {
-    // Ignore cache write errors
+  } catch (err) {
+    log.silenced('writeCache', err);
   }
 }
 
@@ -98,8 +102,8 @@ export function getCurrentVersion(): string {
           return pkg.version;
         }
       }
-    } catch {
-      // Continue to next path
+    } catch (err) {
+      log.silenced('getCurrentVersion:readPackageJson', err);
     }
   }
 
@@ -120,7 +124,8 @@ async function fetchLatestVersion(): Promise<string | null> {
     const data = await response.json() as NpmPackageInfo;
     const distTags = data['dist-tags'];
     return distTags.latest;
-  } catch {
+  } catch (err) {
+    log.silenced('fetchLatestVersion', err);
     return null;
   }
 }
@@ -216,7 +221,7 @@ export async function performUpdate(options: {
       // Run synchronously and silently
       execSync(`${npmCommand} ${args.join(' ')}`, {
         stdio: 'ignore',
-        timeout: 120000, // 2 minute timeout
+        timeout: CLI_UPDATE_TIMEOUT_MS,
       });
       return { success: true };
     }
@@ -286,8 +291,8 @@ export function runBackgroundUpdateCheck(): void {
           showUpdateNotification(latestVersion, currentVersion);
         }, 100);
       }
-    } catch {
-      // Silently ignore update check errors
+    } catch (err) {
+      log.silenced('runBackgroundUpdateCheck', err);
     }
   })();
 }
@@ -301,7 +306,7 @@ export function clearUpdateCache(): void {
     if (fs.existsSync(cachePath)) {
       fs.unlinkSync(cachePath);
     }
-  } catch {
-    // Ignore errors
+  } catch (err) {
+    log.silenced('clearUpdateCache', err);
   }
 }

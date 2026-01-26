@@ -6,26 +6,8 @@
 
 import chalk from 'chalk';
 
-/**
- * Format TTL in human-readable form
- */
-export function formatTtl(seconds: number | undefined | null): string {
-  if (seconds === undefined || seconds === null) return '-';
-
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
-}
-
-/**
- * Format date in a readable format
- */
-export function formatDate(date: string | null | undefined): string {
-  if (!date) return '-';
-  const d = new Date(date);
-  return d.toLocaleString();
-}
+// Re-export common formatters from centralized location
+export { formatTtl, formatDate } from '../../lib/format-helpers.js';
 
 /**
  * Format certificate validity status

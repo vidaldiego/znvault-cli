@@ -10,7 +10,7 @@ import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { ListOptions, SecretsListResponse } from './types.js';
-import { formatDate, formatType, formatTags, truncateAlias, formatExpiry } from './helpers.js';
+import { formatDate, formatType, formatTags, truncateAlias, formatExpiry, formatPaginationInfo } from './helpers.js';
 
 export function registerListCommand(secretCmd: Command): void {
   secretCmd
@@ -71,11 +71,10 @@ export function registerListCommand(secretCmd: Command): void {
         }
 
         console.log(table.toString());
-        output.info(`Total: ${response.pagination.total} secret(s)${response.pagination.hasMore ? ' (more available)' : ''}`);
+        output.info(formatPaginationInfo(response.pagination, 'secret'));
       } catch (error) {
         spinner.fail('Failed to list secrets');
-        output.error((error as Error).message);
-        process.exit(1);
+        output.fatal(output.getErrorMessage(error));
       }
     });
 }

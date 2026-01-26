@@ -36,6 +36,20 @@ function isApiErrorLike(value: unknown): value is { message?: string; error?: st
 }
 
 /**
+ * Validate that a parsed response is a valid object (not null/undefined).
+ * This provides basic protection against malformed API responses.
+ */
+function validateResponseShape(parsed: unknown, statusCode: number): void {
+  // For 204 No Content, empty response is valid
+  if (statusCode === 204) return;
+
+  // Null or undefined responses are unexpected for success codes
+  if (parsed === null || parsed === undefined) {
+    throw new Error(`Unexpected empty response from API (status ${statusCode})`);
+  }
+}
+
+/**
  * Base HTTP client class with authentication support
  */
 export class HttpClient {
@@ -74,16 +88,28 @@ export class HttpClient {
   }
 
   /**
-   * Ensure token is valid, refreshing if needed with mutex to prevent race conditions
+   * Ensure token is valid, refreshing if needed with mutex to prevent race conditions.
+   * The synchronization ensures that only one refresh happens even if multiple
+   * concurrent requests detect an expired token simultaneously.
    */
   private async ensureValidToken(): Promise<void> {
-    if (!isTokenExpired()) return;
-
+    // If a refresh is already in progress, wait for it
     if (this.refreshPromise) {
       await this.refreshPromise;
       return;
     }
 
+    // Check token validity - if not expired, we're done
+    if (!isTokenExpired()) return;
+
+    // Double-check pattern: After confirming token is expired, check again
+    // if another caller started a refresh while we were checking
+    if (this.refreshPromise) {
+      await this.refreshPromise;
+      return;
+    }
+
+    // We're the first to detect expiry - start the refresh
     this.refreshPromise = this.refreshToken().finally(() => {
       this.refreshPromise = null;
     });
@@ -206,22 +232,31 @@ export class HttpClient {
         let data = '';
         res.on('data', (chunk: Buffer | string) => (data += String(chunk)));
         res.on('end', () => {
+          const statusCode = res.statusCode ?? 0;
           try {
-            const parsed: unknown = data ? JSON.parse(data) : {};
-            if (res.statusCode && res.statusCode >= 400) {
+            // Parse response - empty string becomes empty object for successful responses
+            const parsed: unknown = data ? JSON.parse(data) : (statusCode === 204 ? undefined : {});
+
+            if (statusCode >= 400) {
               if (isApiErrorLike(parsed)) {
-                const errorMessage = parsed.message ?? parsed.error ?? `Request failed with status ${res.statusCode}`;
+                const errorMessage = parsed.message ?? parsed.error ?? `Request failed with status ${statusCode}`;
                 reject(new Error(errorMessage));
               } else {
-                reject(new Error(`HTTP ${res.statusCode}: ${JSON.stringify(parsed).slice(0, 200)}`));
+                reject(new Error(`HTTP ${statusCode}: ${JSON.stringify(parsed).slice(0, 200)}`));
               }
             } else {
+              // Validate response shape before returning
+              validateResponseShape(parsed, statusCode);
               resolve(parsed as T);
             }
-          } catch {
-            if (res.statusCode && res.statusCode >= 400) {
-              reject(new Error(`Request failed with status ${res.statusCode}`));
+          } catch (parseError) {
+            if (statusCode >= 400) {
+              reject(new Error(`Request failed with status ${statusCode}`));
+            } else if (parseError instanceof Error && parseError.message.includes('Unexpected')) {
+              // Re-throw validation errors
+              reject(parseError);
             } else {
+              // Non-JSON response for success - pass through raw data
               resolve(data as unknown as T);
             }
           }

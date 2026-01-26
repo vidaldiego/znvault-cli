@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
-import { registerPluginCommands } from '../../src/commands/plugin.js';
+import { registerPluginCommands } from '../../src/commands/plugin/index.js';
 
 // Mock ora
 vi.mock('ora', () => ({

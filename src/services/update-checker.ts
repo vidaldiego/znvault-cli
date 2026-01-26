@@ -17,6 +17,7 @@ import type {
 } from '../types/update.js';
 import { getManifestUrl } from '../types/update.js';
 import { getPlatform, getConfigDir } from '../utils/platform.js';
+import { UPDATE_CACHE_TIMEOUT_MS } from '../lib/constants.js';
 
 /**
  * Parse a semantic version string into components
@@ -64,7 +65,7 @@ export class UpdateChecker {
   private channel: UpdateChannel;
   private cachedManifest: AgentManifest | null = null;
   private lastCheck: Date | null = null;
-  private cacheTimeout = 60000; // 1 minute cache
+  private cacheTimeout = UPDATE_CACHE_TIMEOUT_MS;
 
   constructor(channel: UpdateChannel = 'stable') {
     this.channel = channel;

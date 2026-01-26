@@ -6,6 +6,7 @@
 
 import type { StoredCredentials } from '../../types/index.js';
 import { getActiveProfileName, getCurrentProfile, saveProfile } from './profile.js';
+import { TOKEN_REFRESH_BUFFER_MS } from '../constants.js';
 
 /**
  * Store credentials after login
@@ -40,8 +41,8 @@ export function getCredentials(): StoredCredentials | undefined {
 export function isTokenExpired(): boolean {
   const credentials = getCredentials();
   if (!credentials) return true;
-  // Add 60 second buffer
-  return Date.now() >= (credentials.expiresAt - 60000);
+  // Add buffer before expiry to refresh proactively
+  return Date.now() >= (credentials.expiresAt - TOKEN_REFRESH_BUFFER_MS);
 }
 
 /**

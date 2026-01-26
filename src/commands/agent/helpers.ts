@@ -8,6 +8,14 @@ import ora from 'ora';
 import inquirer from 'inquirer';
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
+import { formatSecondsToHuman } from '../../lib/format-helpers.js';
+import {
+  DEFAULT_AGENT_PORT,
+  AGENT_HEALTH_TIMEOUT_MS,
+  AGENT_PLUGIN_UPDATE_TIMEOUT_MS,
+  AGENT_UPDATE_TIMEOUT_MS,
+  AGENT_RESTART_WAIT_MS,
+} from '../../lib/constants.js';
 import type {
   RemoteAgent,
   AgentHealthResponse,
@@ -18,12 +26,15 @@ import type {
   AgentListResponse,
 } from './types.js';
 
+// Re-export common formatters from centralized location
+export { formatSecondsToHuman } from '../../lib/format-helpers.js';
+
 // ============================================================================
 // Formatting Functions
 // ============================================================================
 
 /**
- * Format relative time for display
+ * Format relative time for display (with "just now" for recent events)
  */
 export function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -65,16 +76,6 @@ export function formatConnectionState(state: string): string {
 }
 
 /**
- * Format seconds to human-readable duration
- */
-export function formatSecondsToHuman(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
-}
-
-/**
  * Format key type for display
  */
 export function formatKeyType(apiKey: RemoteAgent['apiKey']): string {
@@ -106,7 +107,7 @@ export function formatUptime(seconds: number): string {
 // ============================================================================
 
 /**
- * Parse host:port string (defaults to port 9100)
+ * Parse host:port string (defaults to DEFAULT_AGENT_PORT)
  */
 export function parseHostPort(hostPort: string): { host: string; port: number } {
   if (hostPort.includes(':')) {
@@ -117,7 +118,7 @@ export function parseHostPort(hostPort: string): { host: string; port: number } 
     }
     return { host: host!, port };
   }
-  return { host: hostPort, port: 9100 };
+  return { host: hostPort, port: DEFAULT_AGENT_PORT };
 }
 
 // ============================================================================
@@ -130,7 +131,7 @@ export function parseHostPort(hostPort: string): { host: string; port: number } 
 export async function fetchAgentHealth(host: string, port: number): Promise<AgentHealthResponse> {
   const url = `http://${host}:${port}/health`;
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(AGENT_HEALTH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -146,7 +147,7 @@ export async function fetchAgentHealth(host: string, port: number): Promise<Agen
 export async function fetchPluginVersions(host: string, port: number): Promise<PluginVersionsResponse> {
   const url = `http://${host}:${port}/plugins/versions`;
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(AGENT_HEALTH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -165,7 +166,7 @@ export async function triggerPluginUpdate(host: string, port: number): Promise<P
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(60000), // 1 minute for update
+    signal: AbortSignal.timeout(AGENT_PLUGIN_UPDATE_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -182,7 +183,7 @@ export async function triggerPluginUpdate(host: string, port: number): Promise<P
 export async function fetchAgentVersion(host: string, port: number): Promise<AgentVersionResponse> {
   const url = `http://${host}:${port}/agent/version`;
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(AGENT_HEALTH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -201,7 +202,7 @@ export async function triggerAgentUpdate(host: string, port: number): Promise<Ag
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(120000), // 2 minutes for agent update
+    signal: AbortSignal.timeout(AGENT_UPDATE_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -314,7 +315,7 @@ export async function selectAgentInteractively(): Promise<{ host: string; port: 
     }
 
     const selected = agentList[selectedNum - 1]!;
-    return { host: selected.ip, port: 9100 };
+    return { host: selected.ip, port: DEFAULT_AGENT_PORT };
   } catch (err) {
     spinner.stop();
     // If not authenticated or can't reach vault, return null

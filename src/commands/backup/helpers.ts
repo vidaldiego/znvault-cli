@@ -1,24 +1,8 @@
 // Path: znvault-cli/src/commands/backup/helpers.ts
 // Helper functions for backup CLI commands
 
-export function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-export function formatDuration(ms?: number): string {
-  if (!ms) return '-';
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
-}
+// Re-export common formatters from centralized location
+export { formatDate, formatBytes, formatDurationMs as formatDuration } from '../../lib/format-helpers.js';
 
 export function formatStatus(status: string): string {
   const statusMap: Record<string, string> = {

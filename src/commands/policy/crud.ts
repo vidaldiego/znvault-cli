@@ -8,6 +8,7 @@ import ora from 'ora';
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
+import { formatActiveStatus } from '../../lib/format-helpers.js';
 import type { CreatePolicyInput, UpdatePolicyInput, PolicyEffect } from '../../types/index.js';
 import type {
   PolicyCreateOptions,
@@ -28,8 +29,7 @@ export async function createPolicy(options: PolicyCreateOptions): Promise<void> 
     } else {
       const priority = parseInt(options.priority, 10);
       if (isNaN(priority) || priority < 0) {
-        output.error('Priority must be a non-negative number');
-        process.exit(1);
+        output.fatal('Priority must be a non-negative number');
       }
 
       policyData = {
@@ -52,8 +52,7 @@ export async function createPolicy(options: PolicyCreateOptions): Promise<void> 
     if (policyData.priority === undefined) {
       policyData.priority = 0;
     } else if (typeof policyData.priority !== 'number' || isNaN(policyData.priority) || policyData.priority < 0) {
-      output.error('Priority must be a non-negative number');
-      process.exit(1);
+      output.fatal('Priority must be a non-negative number');
     }
 
     const spinner = ora('Creating policy...').start();
@@ -69,12 +68,11 @@ export async function createPolicy(options: PolicyCreateOptions): Promise<void> 
         'Name': result.name,
         'Effect': result.effect.toUpperCase(),
         'Priority': result.priority.toString(),
-        'Status': result.isActive ? 'Enabled' : 'Disabled',
+        'Status': formatActiveStatus(result.isActive),
       });
     }
   } catch (err) {
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -94,8 +92,7 @@ export async function updatePolicy(id: string, options: PolicyUpdateOptions): Pr
       if (options.priority) {
         const priority = parseInt(options.priority, 10);
         if (isNaN(priority) || priority < 0) {
-          output.error('Priority must be a non-negative number');
-          process.exit(1);
+          output.fatal('Priority must be a non-negative number');
         }
         updates.priority = priority;
       }
@@ -104,8 +101,7 @@ export async function updatePolicy(id: string, options: PolicyUpdateOptions): Pr
     }
 
     if (Object.keys(updates).length === 0) {
-      output.error('No updates specified');
-      process.exit(1);
+      output.fatal('No updates specified');
     }
 
     const spinner = ora('Updating policy...').start();
@@ -124,8 +120,7 @@ export async function updatePolicy(id: string, options: PolicyUpdateOptions): Pr
       });
     }
   } catch (err) {
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -149,8 +144,7 @@ export async function deletePolicy(id: string, options: PolicyDeleteOptions): Pr
       output.json({ success: true, id, message: 'Policy deleted successfully' });
     }
   } catch (err) {
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -172,8 +166,7 @@ export async function enablePolicy(id: string, options: PolicyToggleOptions): Pr
     }
   } catch (err) {
     spinner.fail('Failed to enable policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -195,8 +188,7 @@ export async function disablePolicy(id: string, options: PolicyToggleOptions): P
     }
   } catch (err) {
     spinner.fail('Failed to disable policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -210,8 +202,7 @@ export async function validatePolicy(options: PolicyValidateOptions): Promise<vo
     } else {
       const priority = parseInt(options.priority, 10);
       if (isNaN(priority) || priority < 0) {
-        output.error('Priority must be a non-negative number');
-        process.exit(1);
+        output.fatal('Priority must be a non-negative number');
       }
 
       policyData = {
@@ -246,7 +237,6 @@ export async function validatePolicy(options: PolicyValidateOptions): Promise<vo
       process.exit(1);
     }
   } catch (err) {
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }

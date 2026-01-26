@@ -94,4 +94,13 @@ export {
   clearAutoUnsealSecret,
   generateTOTPCode,
   parseOTPAuthURI,
+  isSecureStorageAvailable,
 } from './autounseal.js';
+
+// Keychain (low-level, for advanced use)
+export {
+  isKeychainAvailable,
+  keychainStore,
+  keychainGet,
+  keychainDelete,
+} from './keychain.js';

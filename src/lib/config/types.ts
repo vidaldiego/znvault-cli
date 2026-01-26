@@ -6,11 +6,12 @@
 
 import type { StoredCredentials } from '../../types/index.js';
 import type { CLIPluginConfig } from '../../plugins/types.js';
+import { DEFAULT_VAULT_URL, DEFAULT_TIMEOUT_MS } from '../constants.js';
 
 export const CONFIG_DEFAULTS = {
-  url: 'https://localhost:8443',
+  url: DEFAULT_VAULT_URL,
   insecure: false,
-  timeout: 30000,
+  timeout: DEFAULT_TIMEOUT_MS,
 } as const;
 
 export const DEFAULT_PROFILE = 'default';
@@ -25,6 +26,20 @@ export interface Profile {
   apiKeyId?: string;  // API key ID (for revocation on logout)
   apiKeyName?: string;  // API key name (for display)
   autoUnsealSecret?: string;  // TOTP secret for auto-unseal (dev convenience)
+  // SSH configuration
+  sshUser?: string;  // Default SSH username for `znvault ssh connect`
+  sshIdentity?: string;  // Default SSH identity file path
+  sshBookmarks?: Record<string, SSHBookmark>;  // Named host bookmarks
+}
+
+export interface SSHBookmark {
+  host: string;
+  port?: number;
+  user?: string;
+  identity?: string;
+  principals?: string[];
+  description?: string;
+  createdAt: string;
 }
 
 export interface ConfigStore {

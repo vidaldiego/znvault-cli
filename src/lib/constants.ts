@@ -6,7 +6,7 @@
  */
 
 // ============================================================================
-// Timeouts and Intervals
+// Timeouts and Intervals (milliseconds)
 // ============================================================================
 
 /** Default HTTP request timeout in milliseconds */
@@ -29,6 +29,54 @@ export const REDIS_SENTINEL_TIMEOUT_MS = 3000;
 
 /** Config cache TTL in milliseconds */
 export const CONFIG_CACHE_TTL_MS = 5000;
+
+/** TUI dashboard refresh interval in milliseconds */
+export const TUI_REFRESH_INTERVAL_MS = 5000;
+
+/** Update checker cache timeout in milliseconds */
+export const UPDATE_CACHE_TIMEOUT_MS = 60000;
+
+/** CLI update download timeout in milliseconds */
+export const CLI_UPDATE_TIMEOUT_MS = 120000;
+
+/** Systemd service check timeout in milliseconds */
+export const SYSTEMD_CHECK_TIMEOUT_MS = 5000;
+
+// ============================================================================
+// Agent Communication Timeouts (milliseconds)
+// ============================================================================
+
+/** Agent health check timeout */
+export const AGENT_HEALTH_TIMEOUT_MS = 10000;
+
+/** Agent plugin update timeout */
+export const AGENT_PLUGIN_UPDATE_TIMEOUT_MS = 60000;
+
+/** Agent self-update timeout */
+export const AGENT_UPDATE_TIMEOUT_MS = 120000;
+
+/** Wait time between agent restart checks */
+export const AGENT_RESTART_WAIT_MS = 1000;
+
+/** Default wait time for agent restart (seconds) */
+export const AGENT_RESTART_WAIT_SECONDS = 25;
+
+// ============================================================================
+// Network Ports
+// ============================================================================
+
+/** Default vault server port */
+export const DEFAULT_VAULT_PORT = 8443;
+
+/** Default agent HTTP port */
+export const DEFAULT_AGENT_PORT = 9100;
+
+// ============================================================================
+// Default URLs
+// ============================================================================
+
+/** Default vault URL for local development */
+export const DEFAULT_VAULT_URL = 'https://localhost:8443';
 
 // ============================================================================
 // Pagination

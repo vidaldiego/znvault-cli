@@ -213,3 +213,92 @@ export function formatPercent(value: number | undefined | null, decimals = 1): s
   if (value === undefined || value === null) return '-';
   return `${value.toFixed(decimals)}%`;
 }
+
+/**
+ * Format TTL in seconds as compact human-readable string
+ * Examples: 3600 -> "1h", 86400 -> "1d", 1800 -> "30m"
+ * Used for SSH certificates, KMS keys, tokens, etc.
+ */
+export function formatTtl(seconds: number | undefined | null): string {
+  if (seconds === undefined || seconds === null) return '-';
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
+}
+
+/**
+ * Parse TTL string to seconds
+ * Examples: "8h" -> 28800, "1d" -> 86400, "30m" -> 1800
+ */
+export function parseTtl(ttl: string): number {
+  const match = ttl.match(/^(\d+)([smhd])?$/i);
+  if (!match) {
+    throw new Error(`Invalid TTL format: ${ttl}. Use format like 8h, 30m, 1d, or 3600`);
+  }
+  const value = parseInt(match[1]);
+  const unit = match[2]?.toLowerCase() ?? 's';
+  switch (unit) {
+    case 's': return value;
+    case 'm': return value * 60;
+    case 'h': return value * 3600;
+    case 'd': return value * 86400;
+    default: return value;
+  }
+}
+
+/**
+ * Truncate an ID or alias for display
+ */
+export function truncateId(id: string | undefined | null, maxLen = 12): string {
+  if (!id) return '-';
+  if (id.length <= maxLen) return id;
+  return id.slice(0, maxLen - 2) + '..';
+}
+
+/**
+ * Truncate an ID to 8 characters (common table display pattern)
+ * Example: "abc123def456" -> "abc123de"
+ */
+export function shortId(id: string | undefined | null): string {
+  if (!id) return '-';
+  if (id.length <= 8) return id;
+  return id.substring(0, 8);
+}
+
+/**
+ * Format active/enabled status for display
+ * Example: true -> "Enabled", false -> "Disabled"
+ */
+export function formatActiveStatus(isActive: boolean | undefined | null): string {
+  if (isActive === undefined || isActive === null) return '-';
+  return isActive ? 'Enabled' : 'Disabled';
+}
+
+/**
+ * Format pagination info for list commands
+ * Examples:
+ *   - "Total: 50 item(s)" (when no more items)
+ *   - "Total: 50 item(s) (more available)" (when hasMore)
+ *   - "Showing 20 of 50" (alternative format)
+ */
+export function formatPaginationInfo(
+  pagination: { total: number; hasMore: boolean },
+  itemName = 'item'
+): string {
+  const suffix = pagination.hasMore ? ' (more available)' : '';
+  return `Total: ${pagination.total} ${itemName}(s)${suffix}`;
+}
+
+/**
+ * Format pagination info in "Showing X of Y" style
+ */
+export function formatPaginationShowing(
+  shown: number,
+  pagination: { total: number; hasMore: boolean }
+): string {
+  if (pagination.hasMore) {
+    return `Showing ${shown} of ${pagination.total}`;
+  }
+  return `Total: ${pagination.total}`;
+}

@@ -7,6 +7,7 @@ import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
+import { formatDate, formatPaginationInfo } from '../lib/format-helpers.js';
 
 // ============================================================================
 // Type Definitions
@@ -80,11 +81,6 @@ interface AssignOptions {
 // Helper Functions
 // ============================================================================
 
-function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
-}
-
 function formatPermissions(permissions: string[]): string {
   if (permissions.length === 0) return 'None';
   if (permissions.length <= 3) return permissions.join(', ');
@@ -139,11 +135,10 @@ async function listRoles(options: ListOptions): Promise<void> {
     }
 
     console.log(table.toString());
-    output.info(`Total: ${response.pagination.total} role(s)${response.pagination.hasMore ? ' (more available)' : ''}`);
+    output.info(formatPaginationInfo(response.pagination, 'role'));
   } catch (error) {
     spinner.fail('Failed to list roles');
-    output.error((error as Error).message);
-    process.exit(1);
+    output.fatal(output.getErrorMessage(error));
   }
 }
 
@@ -183,8 +178,7 @@ async function getRole(roleId: string, options: GetOptions): Promise<void> {
     }
   } catch (error) {
     spinner.fail('Failed to get role');
-    output.error((error as Error).message);
-    process.exit(1);
+    output.fatal(output.getErrorMessage(error));
   }
 }
 

@@ -7,6 +7,7 @@
 import ora from 'ora';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
+import { shortId, formatActiveStatus, formatPaginationInfo } from '../../lib/format-helpers.js';
 import type { PolicyListOptions, PolicyGetOptions } from './types.js';
 
 export async function listPolicies(options: PolicyListOptions): Promise<void> {
@@ -34,21 +35,20 @@ export async function listPolicies(options: PolicyListOptions): Promise<void> {
     output.table(
       ['ID', 'Name', 'Effect', 'Priority', 'Actions', 'Status', 'Tenant'],
       result.items.map(p => [
-        p.id.substring(0, 8),
+        shortId(p.id),
         p.name.length > 25 ? p.name.substring(0, 22) + '...' : p.name,
         p.effect.toUpperCase(),
         p.priority.toString(),
         p.actions.length > 2 ? `${p.actions.slice(0, 2).join(', ')}...` : p.actions.join(', '),
-        p.isActive ? 'Enabled' : 'Disabled',
+        formatActiveStatus(p.isActive),
         p.tenantId ?? '-',
       ])
     );
 
-    output.info(`Total: ${result.pagination.total} policy(s)${result.pagination.hasMore ? ' (more available)' : ''}`);
+    output.info(formatPaginationInfo(result.pagination, 'policy'));
   } catch (err) {
     spinner.fail('Failed to list policies');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -71,7 +71,7 @@ export async function getPolicy(id: string, options: PolicyGetOptions): Promise<
       'Description': result.description ?? '-',
       'Effect': result.effect.toUpperCase(),
       'Priority': result.priority.toString(),
-      'Status': result.isActive ? 'Enabled' : 'Disabled',
+      'Status': formatActiveStatus(result.isActive),
       'Tenant': result.tenantId ?? 'Global',
       'Created': output.formatDate(result.createdAt),
       'Updated': output.formatDate(result.updatedAt),
@@ -107,7 +107,6 @@ export async function getPolicy(id: string, options: PolicyGetOptions): Promise<
     console.log();
   } catch (err) {
     spinner.fail('Failed to get policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }

@@ -3,7 +3,7 @@
 import { type Command } from 'commander';
 import ora from 'ora';
 import os from 'node:os';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ import { client } from '../lib/client.js';
 import { promptInput } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import * as visual from '../lib/visual.js';
+import { formatDuration } from '../lib/format-helpers.js';
 import {
   hasAutoUnsealSecret,
   generateTOTPCode,
@@ -101,7 +102,7 @@ function detectKeyType(): 'software' | 'secure_enclave' | 'none' {
   // Try software key first (more likely if Secure Enclave isn't properly signed)
   try {
     const env = { ...process.env, ZNVAULT_USE_SOFTWARE_KEYS: '1' };
-    const result = execSync(`"${helperPath}" check`, {
+    const result = execFileSync(helperPath, ['check'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
@@ -109,19 +110,19 @@ function detectKeyType(): 'software' | 'secure_enclave' | 'none' {
     const parsed = JSON.parse(result.trim()) as SecureEnclaveCheckOutput;
     if (parsed.exists) return 'software';
   } catch {
-    // Ignore
+    // Ignore - key detection failure is expected when no key exists
   }
 
   // Try Secure Enclave
   try {
-    const result = execSync(`"${helperPath}" check`, {
+    const result = execFileSync(helperPath, ['check'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const parsed = JSON.parse(result.trim()) as SecureEnclaveCheckOutput;
     if (parsed.exists) return 'secure_enclave';
   } catch {
-    // Ignore
+    // Ignore - key detection failure is expected when no key exists
   }
 
   return 'none';
@@ -129,6 +130,7 @@ function detectKeyType(): 'software' | 'secure_enclave' | 'none' {
 
 /**
  * Execute Secure Enclave helper command
+ * Uses execFileSync to prevent shell injection vulnerabilities
  */
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 function execSecureEnclaveHelper<T>(args: string[]): T {
@@ -142,7 +144,8 @@ function execSecureEnclaveHelper<T>(args: string[]): T {
 
   try {
     const env = useSoftwareKey ? { ...process.env, ZNVAULT_USE_SOFTWARE_KEYS: '1' } : process.env;
-    const result = execSync(`"${helperPath}" ${args.map(a => `"${a}"`).join(' ')}`, {
+    // Use execFileSync with array args to prevent shell injection
+    const result = execFileSync(helperPath, args, {
       encoding: 'utf-8',
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -154,7 +157,7 @@ function execSecureEnclaveHelper<T>(args: string[]): T {
       try {
         return JSON.parse(error.stdout.trim()) as T;
       } catch {
-        // Fall through
+        // Fall through - stdout wasn't valid JSON
       }
     }
     throw new Error(error.stderr ?? error.message ?? 'Unknown error');
@@ -556,16 +559,3 @@ async function unsealWithDevice(options: UnsealOptions): Promise<void> {
   }
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes < 60) {
-    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-}

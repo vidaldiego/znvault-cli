@@ -6,21 +6,13 @@
 
 import type { ApiKeyConditions } from './types.js';
 
-export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString();
-}
+// Re-export common formatters from centralized location
+export { formatDate, formatSecondsToHuman } from '../../lib/format-helpers.js';
 
 export function getDaysUntilExpiry(expiresAt: string): number {
   const expires = new Date(expiresAt);
   const now = new Date();
   return Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-export function formatSecondsToHuman(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
 }
 
 export function formatExpiry(expiresAt: string): string {

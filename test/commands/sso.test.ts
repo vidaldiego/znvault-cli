@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
-import { registerSSOCommands } from '../../src/commands/sso.js';
+import { registerSSOCommands } from '../../src/commands/sso/index.js';
 
 // Mock ora
 vi.mock('ora', () => ({

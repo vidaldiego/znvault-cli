@@ -4,10 +4,8 @@
  * Helper functions for secret commands
  */
 
-export function formatDate(dateStr: string | undefined): string {
-  if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString();
-}
+// Re-export common formatters from centralized location
+export { formatDate, formatBytes, formatPaginationInfo } from '../../lib/format-helpers.js';
 
 export function formatType(type: string, subType?: string): string {
   if (subType) return `${type}/${subType}`;
@@ -23,13 +21,6 @@ export function formatTags(tags?: string[]): string {
 export function truncateAlias(alias: string, maxLen = 40): string {
   if (alias.length <= maxLen) return alias;
   return '...' + alias.slice(-(maxLen - 3));
-}
-
-export function formatBytes(bytes?: number): string {
-  if (!bytes) return '-';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function getDaysUntilExpiry(expiresAt?: string): number | null {

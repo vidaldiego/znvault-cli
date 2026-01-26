@@ -39,6 +39,23 @@ vi.mock('../../src/lib/visual.js', () => ({
   sectionHeader: vi.fn().mockReturnValue('mocked section header'),
 }));
 
+vi.mock('../../src/lib/format-helpers.js', () => ({
+  formatDuration: vi.fn((seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+    return `${Math.floor(seconds / 86400)}d`;
+  }),
+}));
+
+// Mock os.platform to return 'linux' so device unseal isn't triggered
+vi.mock('node:os', () => ({
+  default: {
+    platform: vi.fn().mockReturnValue('linux'),
+    hostname: vi.fn().mockReturnValue('test-host'),
+  },
+}));
+
 describe('unseal commands', () => {
   let program: Command;
   let mockExit: ReturnType<typeof vi.spyOn>;

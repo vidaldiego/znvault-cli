@@ -114,7 +114,7 @@ describe('kms commands', () => {
     program = new Command();
     program.exitOverride();
 
-    const { registerKmsCommands } = await import('../../src/commands/kms.js');
+    const { registerKmsCommands } = await import('../../src/commands/kms/index.js');
     registerKmsCommands(program);
 
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});

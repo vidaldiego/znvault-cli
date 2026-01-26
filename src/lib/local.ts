@@ -1,6 +1,9 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createDebugLogger } from './debug.js';
+
+const log = createDebugLogger('local');
 
 /**
  * Local mode detection and configuration.
@@ -38,7 +41,8 @@ interface LocalConfig {
 export function isVaultNode(): boolean {
   try {
     return fs.existsSync(VAULT_INSTALL_PATH);
-  } catch {
+  } catch (err) {
+    log.silenced('isVaultNode', err);
     return false;
   }
 }
@@ -108,8 +112,8 @@ function readServiceEnv(): Record<string, string | undefined> {
         const content = fs.readFileSync(envPath, 'utf-8');
         Object.assign(combined, parseEnvFile(content));
       }
-    } catch {
-      // Skip files we can't read
+    } catch (err) {
+      log.silenced('readServiceEnv:readEnvFile', err);
     }
   }
 
@@ -119,8 +123,8 @@ function readServiceEnv(): Record<string, string | undefined> {
       const content = fs.readFileSync(SYSTEMD_ENV_PATH, 'utf-8');
       Object.assign(combined, parseEnvFile(content));
     }
-  } catch {
-    // Skip if can't read
+  } catch (err) {
+    log.silenced('readServiceEnv:readSystemdEnv', err);
   }
 
   return combined;
@@ -197,8 +201,8 @@ export function getLocalVaultVersion(): string | null {
     if (fs.existsSync(versionPath)) {
       return fs.readFileSync(versionPath, 'utf-8').trim();
     }
-  } catch {
-    // Ignore errors
+  } catch (err) {
+    log.silenced('getLocalVaultVersion', err);
   }
   return null;
 }
@@ -214,7 +218,8 @@ export function isVaultServiceRunning(): boolean {
       timeout: 5000,
     });
     return result.trim() === 'active';
-  } catch {
+  } catch (err) {
+    log.silenced('isVaultServiceRunning', err);
     return false;
   }
 }

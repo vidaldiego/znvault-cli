@@ -16,6 +16,9 @@ import { createUpdateChecker } from './update-checker.js';
 import { createUpdateInstaller } from './update-installer.js';
 import type { UpdateConfig, UpdateProgress, MaintenanceWindow, ArtifactInfo } from '../types/update.js';
 import * as mode from '../lib/mode.js';
+import { createDebugLogger } from '../lib/debug.js';
+
+const log = createDebugLogger('auto-update-daemon');
 
 interface PackageJson {
   version?: string;
@@ -40,7 +43,8 @@ function getCurrentVersion(): string {
     const pkgPath = path.join(__dirname, '../../package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as PackageJson;
     return pkg.version ?? 'unknown';
-  } catch {
+  } catch (err) {
+    log.silenced('getCurrentVersion', err);
     return 'unknown';
   }
 }
@@ -69,7 +73,8 @@ function isWithinMaintenanceWindow(window: MaintenanceWindow): boolean {
     const parts = formatter.formatToParts(now);
     currentHour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
     currentMin = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
-  } catch {
+  } catch (err) {
+    log.silenced('isWithinMaintenanceWindow:parseTimezone', err);
     // Fallback to local time
     currentHour = now.getHours();
     currentMin = now.getMinutes();
@@ -262,8 +267,8 @@ export class AutoUpdateDaemon {
       let headers: Record<string, string> = {};
       try {
         headers = await mode.getAuthHeaders();
-      } catch {
-        // No auth available
+      } catch (err) {
+        log.silenced('connectWebSocket:getAuthHeaders', err);
       }
 
       this.ws = new WebSocket(wsUrl, {
@@ -361,8 +366,8 @@ export class AutoUpdateDaemon {
     if (this.ws) {
       try {
         this.ws.close(1000, 'Daemon shutdown');
-      } catch {
-        // Ignore
+      } catch (err) {
+        log.silenced('shutdown:closeWebSocket', err);
       }
       this.ws = null;
     }

@@ -7,6 +7,7 @@
 import ora from 'ora';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
+import { shortId, formatActiveStatus } from '../../lib/format-helpers.js';
 import type {
   PolicyAttachmentsOptions,
   PolicyAttachOptions,
@@ -36,7 +37,7 @@ export async function showAttachments(id: string, options: PolicyAttachmentsOpti
       output.table(
         ['User ID', 'Username', 'Attached At'],
         result.users.map(a => [
-          a.userId?.substring(0, 8) ?? '-',
+          shortId(a.userId),
           a.username ?? '-',
           output.formatDate(a.attachedAt),
         ])
@@ -49,7 +50,7 @@ export async function showAttachments(id: string, options: PolicyAttachmentsOpti
       output.table(
         ['Role ID', 'Role Name', 'Attached At'],
         result.roles.map(a => [
-          a.roleId?.substring(0, 8) ?? '-',
+          shortId(a.roleId),
           a.roleName ?? '-',
           output.formatDate(a.attachedAt),
         ])
@@ -57,8 +58,7 @@ export async function showAttachments(id: string, options: PolicyAttachmentsOpti
     }
   } catch (err) {
     spinner.fail('Failed to get attachments');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -74,8 +74,7 @@ export async function attachPolicyToUser(policyId: string, userId: string, optio
     }
   } catch (err) {
     spinner.fail('Failed to attach policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -91,8 +90,7 @@ export async function attachPolicyToRole(policyId: string, roleId: string, optio
     }
   } catch (err) {
     spinner.fail('Failed to attach policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -108,8 +106,7 @@ export async function detachPolicyFromUser(policyId: string, userId: string, opt
     }
   } catch (err) {
     spinner.fail('Failed to detach policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -125,8 +122,7 @@ export async function detachPolicyFromRole(policyId: string, roleId: string, opt
     }
   } catch (err) {
     spinner.fail('Failed to detach policy');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -150,19 +146,18 @@ export async function listUserPolicies(userId: string, options: PolicyUserPolici
     output.table(
       ['ID', 'Name', 'Effect', 'Priority', 'Status'],
       policies.map(p => [
-        p.id.substring(0, 8),
+        shortId(p.id),
         p.name,
         p.effect.toUpperCase(),
         p.priority.toString(),
-        p.isActive ? 'Enabled' : 'Disabled',
+        formatActiveStatus(p.isActive),
       ])
     );
 
     output.info(`Total: ${policies.length} policy(s)`);
   } catch (err) {
     spinner.fail('Failed to get user policies');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
 
@@ -186,18 +181,17 @@ export async function listRolePolicies(roleId: string, options: PolicyRolePolici
     output.table(
       ['ID', 'Name', 'Effect', 'Priority', 'Status'],
       policies.map(p => [
-        p.id.substring(0, 8),
+        shortId(p.id),
         p.name,
         p.effect.toUpperCase(),
         p.priority.toString(),
-        p.isActive ? 'Enabled' : 'Disabled',
+        formatActiveStatus(p.isActive),
       ])
     );
 
     output.info(`Total: ${policies.length} policy(s)`);
   } catch (err) {
     spinner.fail('Failed to get role policies');
-    output.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    output.fatal(output.getErrorMessage(err));
   }
 }
