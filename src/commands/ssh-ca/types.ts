@@ -115,7 +115,7 @@ export interface SignOptions {
   ttl?: string;
   /**
    * Direct principal specification (admin override).
-   * Requires ssh:ca:admin permission.
+   * Requires ssh:ca:admin permission OR admin crypto access.
    * Bypasses SSO group → principal mapping resolution.
    */
   principals?: string;
