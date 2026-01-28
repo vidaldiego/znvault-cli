@@ -36,10 +36,20 @@ export interface HealthResponse {
   };
 }
 
+/**
+ * Node operational role
+ * - 'api': Handles API requests only (DISABLE_JOBS=true)
+ * - 'worker': Runs background jobs only (WORKER_MODE=true)
+ * - 'full': Handles both API requests and background jobs
+ */
+export type NodeOperationalRole = 'api' | 'worker' | 'full';
+
 export interface ClusterNode {
   nodeId: string;
   host: string;
   port: number;
+  /** Operational role of this node */
+  role?: NodeOperationalRole;
   isLeader: boolean;
   isHealthy: boolean;
   lastHeartbeat: string;
@@ -50,6 +60,8 @@ export interface ClusterNode {
 export interface ClusterStatus {
   enabled: boolean;
   nodeId: string;
+  /** Operational role of this node (api, worker, or full) */
+  role?: NodeOperationalRole;
   isLeader: boolean;
   leaderNodeId: string | null;
   nodes: ClusterNode[];

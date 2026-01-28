@@ -42,6 +42,7 @@ export function registerClusterCommands(program: Command): void {
           'Mode': mode.getModeDescription(),
           'Enabled': status.enabled,
           'Node ID': status.nodeId,
+          'Node Role': status.role ?? 'full',
           'Is Leader': status.isLeader,
           'Leader Node': status.leaderNodeId ?? 'None',
         });
@@ -49,11 +50,12 @@ export function registerClusterCommands(program: Command): void {
         if (status.nodes.length > 0) {
           output.section('Nodes');
           output.table(
-            ['Node ID', 'Host', 'Port', 'Leader', 'Status', 'Last Heartbeat'],
+            ['Node ID', 'Host', 'Port', 'Role', 'Leader', 'Status', 'Last Heartbeat'],
             status.nodes.map(node => [
               node.nodeId,
               node.host,
               node.port,
+              node.role ?? 'full',
               node.isLeader,
               node.isHealthy ? 'healthy' : 'unhealthy',
               node.lastHeartbeat ? output.formatRelativeTime(node.lastHeartbeat) : '-',

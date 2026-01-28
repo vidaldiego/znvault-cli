@@ -227,7 +227,7 @@ export function registerBookmarkCommands(parent: Command): void {
       });
 
       console.log();
-      output.info(`Connect: znvault ssh connect ${name}`);
+      output.info(`Connect: znvault ssh ${name}`);
     });
 
   // Rename bookmark
