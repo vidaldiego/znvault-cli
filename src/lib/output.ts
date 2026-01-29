@@ -48,17 +48,82 @@ export function error(message: string): void {
 }
 
 /**
+ * Type guard for errors with a code property (network errors like ETIMEDOUT, ECONNREFUSED)
+ */
+function hasErrorCode(err: unknown): err is Error & { code: string } {
+  return err instanceof Error && typeof (err as { code?: unknown }).code === 'string';
+}
+
+/**
+ * Type guard for AggregateError (Node.js network errors with multiple causes)
+ */
+function isAggregateError(err: unknown): err is Error & { errors: Error[] } {
+  return err instanceof Error && Array.isArray((err as { errors?: unknown }).errors);
+}
+
+/**
  * Extract error message from unknown error type
  * Use this instead of: err instanceof Error ? err.message : String(err)
+ *
+ * Handles special cases:
+ * - AggregateError (network errors with multiple causes) - extracts first cause
+ * - Errors with code property but empty message (ETIMEDOUT, ECONNREFUSED, etc.)
+ * - API errors with message or error property
  */
 export function getErrorMessage(err: unknown): string {
   if (err instanceof Error) {
-    return err.message;
+    // Handle AggregateError (Node.js network errors with multiple causes)
+    // These often have empty message but errors array with details
+    if (isAggregateError(err) && err.errors.length > 0) {
+      const code = hasErrorCode(err) ? err.code : '';
+      // Use the top-level code for a clean user-friendly message
+      if (code) {
+        return formatNetworkErrorCode(code);
+      }
+      // Fall back to first error's message
+      const firstError = err.errors[0];
+      return getErrorMessage(firstError);
+    }
+
+    // If message is empty but we have a code, use that
+    if (!err.message && hasErrorCode(err)) {
+      return formatNetworkErrorCode(err.code);
+    }
+
+    // Regular error with message
+    if (err.message) {
+      return err.message;
+    }
+
+    // Fallback for Error with no message and no code
+    return String(err);
   }
+
   if (typeof err === 'string') {
     return err;
   }
+
   return String(err);
+}
+
+/**
+ * Format network error codes into human-readable messages
+ */
+function formatNetworkErrorCode(code: string): string {
+  const messages: Record<string, string> = {
+    ETIMEDOUT: 'Connection timed out - server may be unreachable',
+    ECONNREFUSED: 'Connection refused - server may be down',
+    ECONNRESET: 'Connection reset by server',
+    ENOTFOUND: 'Server not found - check the URL',
+    EHOSTUNREACH: 'Host unreachable - check network connection',
+    ENETUNREACH: 'Network unreachable - check network connection',
+    EPROTO: 'Protocol error - check TLS/SSL configuration',
+    CERT_HAS_EXPIRED: 'Server certificate has expired',
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'Unable to verify server certificate',
+    DEPTH_ZERO_SELF_SIGNED_CERT: 'Self-signed certificate - use --insecure or -k flag',
+  };
+
+  return messages[code] || `Network error: ${code}`;
 }
 
 /**
