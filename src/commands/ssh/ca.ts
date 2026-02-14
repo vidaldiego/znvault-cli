@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
@@ -24,7 +24,7 @@ export function registerCACommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching CA status...').start();
+      const spinner = output.spinner('Fetching CA status...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -77,7 +77,7 @@ export function registerCACommands(parent: Command): void {
     .option('--extension <ext...>', 'Allowed extensions', ['permit-pty', 'permit-port-forwarding'])
     .option('--json', 'Output as JSON')
     .action(async (options: InitOptions) => {
-      const spinner = ora('Initializing SSH CA...').start();
+      const spinner = output.spinner('Initializing SSH CA...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -140,7 +140,7 @@ export function registerCACommands(parent: Command): void {
           }
         }
 
-        const spinner = ora('Deleting SSH CA...').start();
+        const spinner = output.spinner('Deleting SSH CA...').start();
 
         try {
           await client.delete(`/v1/ssh/ca${query}`);

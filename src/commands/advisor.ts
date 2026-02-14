@@ -1,7 +1,7 @@
 // Path: znvault-cli/src/commands/advisor.ts
 
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
 import {
@@ -117,7 +117,7 @@ export function registerAdvisorCommands(program: Command): void {
 
   auditCmd
     .action(async (options: AuditOptions) => {
-      const spinner = ora('Running security audit...').start();
+      const spinner = output.spinner('Running security audit...').start();
 
       try {
         // Use 'me' if no tenant specified (server will use auth context)
@@ -213,7 +213,7 @@ export function registerAdvisorCommands(program: Command): void {
     .option('--severity <severity>', 'Filter by severity')
     .option('--json', 'Output as JSON')
     .action(async (options: RulesListOptions) => {
-      const spinner = ora('Fetching rules...').start();
+      const spinner = output.spinner('Fetching rules...').start();
 
       try {
         const query: string[] = [];
@@ -263,7 +263,7 @@ export function registerAdvisorCommands(program: Command): void {
   addTenantOption(suggestCmd);
 
   suggestCmd.action(async (description: string, options: SuggestOptions) => {
-      const spinner = ora('Getting AI suggestions...').start();
+      const spinner = output.spinner('Getting AI suggestions...').start();
 
       try {
         const tenant = options.tenant ?? 'me';
@@ -342,7 +342,7 @@ export function registerAdvisorCommands(program: Command): void {
     .description('Check LLM configuration status')
     .option('--json', 'Output as JSON')
     .action(async (options: { json?: boolean }) => {
-      const spinner = ora('Checking LLM status...').start();
+      const spinner = output.spinner('Checking LLM status...').start();
 
       try {
         const response = await client.get<{ success: boolean; data: LLMStatus }>('/v1/advisor/llm/status');
@@ -378,7 +378,7 @@ export function registerAdvisorCommands(program: Command): void {
     .description(superadminDesc('Get LLM configuration'))
     .option('--json', 'Output as JSON')
     .action(async (options: { json?: boolean }) => {
-      const spinner = ora('Fetching LLM configuration...').start();
+      const spinner = output.spinner('Fetching LLM configuration...').start();
 
       try {
         const response = await client.get<{ success: boolean; data: LLMConfig | null }>('/v1/admin/advisor/llm/config');
@@ -419,7 +419,7 @@ export function registerAdvisorCommands(program: Command): void {
     .option('--max-tokens <tokens>', 'Maximum tokens for responses')
     .option('--enabled <bool>', 'Enable or disable LLM features (true/false)')
     .action(async (options: LLMConfigUpdateOptions) => {
-      const spinner = ora('Updating LLM configuration...').start();
+      const spinner = output.spinner('Updating LLM configuration...').start();
 
       try {
         const body: Record<string, unknown> = {};
@@ -459,7 +459,7 @@ export function registerAdvisorCommands(program: Command): void {
     .command('test')
     .description(superadminDesc('Test LLM connection'))
     .action(async () => {
-      const spinner = ora('Testing LLM connection...').start();
+      const spinner = output.spinner('Testing LLM connection...').start();
 
       try {
         const response = await client.post<{ success: boolean; data: { success: boolean; message: string; model?: string } }>(
@@ -490,7 +490,7 @@ export function registerAdvisorCommands(program: Command): void {
     .command('delete')
     .description(superadminDesc('Delete LLM configuration'))
     .action(async () => {
-      const spinner = ora('Deleting LLM configuration...').start();
+      const spinner = output.spinner('Deleting LLM configuration...').start();
 
       try {
         await client.delete('/v1/admin/advisor/llm/config');

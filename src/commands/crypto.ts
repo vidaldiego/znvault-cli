@@ -2,7 +2,7 @@
 
 import { type Command } from 'commander';
 import chalk from 'chalk';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
@@ -67,7 +67,7 @@ export function registerCryptoCommands(program: Command): void {
     .description('Show crypto mode status')
     .option('--json', 'Output as JSON')
     .action(async (options: CryptoStatusOptions) => {
-      const spinner = ora('Loading crypto status...').start();
+      const spinner = output.spinner('Loading crypto status...').start();
 
       try {
         const status = await client.get<CryptoStatusResponse>('/v1/admin-crypto/status');
@@ -126,7 +126,7 @@ export function registerCryptoCommands(program: Command): void {
     .description('List crypto access grants')
     .option('--json', 'Output as JSON')
     .action(async (options: CryptoListOptions) => {
-      const spinner = ora('Loading grants...').start();
+      const spinner = output.spinner('Loading grants...').start();
 
       try {
         const result = await client.get<CryptoGrantsListResponse>('/v1/admin-crypto/grants');
@@ -170,7 +170,7 @@ export function registerCryptoCommands(program: Command): void {
     .description('Grant crypto access to an admin user (tenant root only)')
     .option('--json', 'Output as JSON')
     .action(async (username: string, options: CryptoGrantOptions) => {
-      const spinner = ora(`Granting crypto access to ${username}...`).start();
+      const spinner = output.spinner(`Granting crypto access to ${username}...`).start();
 
       try {
         const result = await client.post<{ granted: boolean; grant: CryptoGrantResponse }>(
@@ -208,7 +208,7 @@ export function registerCryptoCommands(program: Command): void {
         }
       }
 
-      const spinner = ora(`Revoking crypto access from ${username}...`).start();
+      const spinner = output.spinner(`Revoking crypto access from ${username}...`).start();
 
       try {
         const result = await client.post<{ revoked: boolean }>('/v1/admin-crypto/revoke', {
@@ -250,7 +250,7 @@ export function registerCryptoCommands(program: Command): void {
         }
       }
 
-      const spinner = ora(`Transferring tenant root to ${username}...`).start();
+      const spinner = output.spinner(`Transferring tenant root to ${username}...`).start();
 
       try {
         const result = await client.post<{

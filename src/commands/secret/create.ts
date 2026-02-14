@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -46,7 +46,7 @@ export function registerCreateCommand(secretCmd: Command): void {
         // Analyze file if --file is provided
         let fileInfo: FileAnalysisInfo | null = null;
         if (options.file) {
-          const analyzeSpinner = ora('Analyzing file...').start();
+          const analyzeSpinner = output.spinner('Analyzing file...').start();
           fileInfo = await analyzeFileForSuggestion(options.file);
           analyzeSpinner.stop();
 
@@ -80,7 +80,7 @@ export function registerCreateCommand(secretCmd: Command): void {
           }
         }
 
-        const spinner = ora('Getting AI suggestions...').start();
+        const spinner = output.spinner('Getting AI suggestions...').start();
 
         try {
           const body: Record<string, unknown> = { description: aliasOrDescription };
@@ -296,7 +296,7 @@ export function registerCreateCommand(secretCmd: Command): void {
         }
       }
 
-      const spinner = ora('Creating secret...').start();
+      const spinner = output.spinner('Creating secret...').start();
 
       try {
         const body: Record<string, unknown> = {

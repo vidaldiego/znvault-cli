@@ -4,7 +4,7 @@
  * Policy import/export commands
  */
 
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { formatActiveStatus } from '../../lib/format-helpers.js';
@@ -13,7 +13,7 @@ import type { PolicyExportOptions, PolicyImportOptions } from './types.js';
 import { safeReadFile, safeParseJson, safeWriteFile } from './helpers.js';
 
 export async function exportPolicy(id: string, options: PolicyExportOptions): Promise<void> {
-  const spinner = ora('Exporting policy...').start();
+  const spinner = output.spinner('Exporting policy...').start();
 
   try {
     const result = await client.getPolicy(id);
@@ -52,7 +52,7 @@ export async function importPolicy(path: string, options: PolicyImportOptions): 
       policyData.tenantId = options.tenant;
     }
 
-    const spinner = ora('Importing policy...').start();
+    const spinner = output.spinner('Importing policy...').start();
 
     const result = await client.createPolicy(policyData);
     spinner.succeed('Policy imported successfully');

@@ -4,7 +4,7 @@
  * Certificate signing command for SSH CA
  */
 
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { SignedCertificate, SignOptions } from './types.js';
@@ -33,7 +33,7 @@ export async function signCertificate(options: SignOptions): Promise<void> {
     process.exit(1);
   }
 
-  const spinner = ora('Signing certificate...').start();
+  const spinner = output.spinner('Signing certificate...').start();
 
   try {
     const body: { publicKey: string; ttlSeconds?: number; principals?: string[] } = { publicKey };

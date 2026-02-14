@@ -2,7 +2,7 @@
 // CLI commands for RBAC role management
 
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../lib/client.js';
@@ -97,7 +97,7 @@ function truncate(str: string, maxLen = 30): string {
 // ============================================================================
 
 async function listRoles(options: ListOptions): Promise<void> {
-  const spinner = ora('Fetching roles...').start();
+  const spinner = output.spinner('Fetching roles...').start();
 
   try {
     const query: Record<string, string | undefined> = {};
@@ -143,7 +143,7 @@ async function listRoles(options: ListOptions): Promise<void> {
 }
 
 async function getRole(roleId: string, options: GetOptions): Promise<void> {
-  const spinner = ora('Fetching role...').start();
+  const spinner = output.spinner('Fetching role...').start();
 
   try {
     const role = await client.get<Role>(`/v1/roles/${roleId}`);
@@ -188,7 +188,7 @@ async function createRole(name: string, options: CreateOptions): Promise<void> {
     process.exit(1);
   }
 
-  const spinner = ora('Creating role...').start();
+  const spinner = output.spinner('Creating role...').start();
 
   try {
     const body: Record<string, unknown> = {
@@ -220,7 +220,7 @@ async function createRole(name: string, options: CreateOptions): Promise<void> {
 
 async function updateRole(roleId: string, options: UpdateOptions): Promise<void> {
   // Get current role first
-  const spinner = ora('Fetching role...').start();
+  const spinner = output.spinner('Fetching role...').start();
 
   try {
     const current = await client.get<Role>(`/v1/roles/${roleId}`);
@@ -244,7 +244,7 @@ async function updateRole(roleId: string, options: UpdateOptions): Promise<void>
       return;
     }
 
-    const updateSpinner = ora('Updating role...').start();
+    const updateSpinner = output.spinner('Updating role...').start();
     const result = await client.patch<Role>(`/v1/roles/${roleId}`, body);
     updateSpinner.stop();
 
@@ -263,7 +263,7 @@ async function updateRole(roleId: string, options: UpdateOptions): Promise<void>
 
 async function deleteRole(roleId: string, options: DeleteOptions): Promise<void> {
   if (!options.force) {
-    const spinner = ora('Fetching role...').start();
+    const spinner = output.spinner('Fetching role...').start();
     try {
       const role = await client.get<Role>(`/v1/roles/${roleId}`);
       spinner.stop();
@@ -298,7 +298,7 @@ async function deleteRole(roleId: string, options: DeleteOptions): Promise<void>
     }
   }
 
-  const deleteSpinner = ora('Deleting role...').start();
+  const deleteSpinner = output.spinner('Deleting role...').start();
 
   try {
     await client.delete(`/v1/roles/${roleId}`);
@@ -318,7 +318,7 @@ async function deleteRole(roleId: string, options: DeleteOptions): Promise<void>
 }
 
 async function assignRole(roleId: string, userId: string, options: AssignOptions): Promise<void> {
-  const spinner = ora('Assigning role...').start();
+  const spinner = output.spinner('Assigning role...').start();
 
   try {
     await client.post(`/v1/users/${userId}/roles`, { roleId });
@@ -338,7 +338,7 @@ async function assignRole(roleId: string, userId: string, options: AssignOptions
 }
 
 async function removeRole(roleId: string, userId: string, options: RemoveRoleOptions): Promise<void> {
-  const spinner = ora('Removing role...').start();
+  const spinner = output.spinner('Removing role...').start();
 
   try {
     await client.delete(`/v1/users/${userId}/roles/${roleId}`);
@@ -358,7 +358,7 @@ async function removeRole(roleId: string, userId: string, options: RemoveRoleOpt
 }
 
 async function getUserRoles(userId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching user roles...').start();
+  const spinner = output.spinner('Fetching user roles...').start();
 
   try {
     const response = await client.get<UserRolesResponse>(`/v1/users/${userId}/roles`);
@@ -415,7 +415,7 @@ async function getUserRoles(userId: string, options: { json?: boolean }): Promis
 }
 
 async function getUserPermissions(userId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching user permissions...').start();
+  const spinner = output.spinner('Fetching user permissions...').start();
 
   try {
     const response = await client.get<{ permissions: string[] }>(`/v1/users/${userId}/permissions`);

@@ -1,7 +1,7 @@
 // Path: src/commands/quarantine.ts
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
@@ -62,7 +62,7 @@ export function registerQuarantineCommands(program: Command): void {
     .option('--limit <number>', 'Number of entries to show', '50')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching quarantined IPs...').start();
+      const spinner = output.spinner('Fetching quarantined IPs...').start();
 
       try {
         const result = await client.listQuarantines({
@@ -110,7 +110,7 @@ export function registerQuarantineCommands(program: Command): void {
     .description('Get quarantine details by ID')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: { json?: boolean }) => {
-      const spinner = ora('Fetching quarantine details...').start();
+      const spinner = output.spinner('Fetching quarantine details...').start();
 
       try {
         const q = await client.getQuarantine(id);
@@ -184,7 +184,7 @@ export function registerQuarantineCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Releasing quarantine...').start();
+        const spinner = output.spinner('Releasing quarantine...').start();
 
         try {
           const result = await client.releaseQuarantine(id, reason);
@@ -225,7 +225,7 @@ export function registerQuarantineCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Releasing IP quarantines...').start();
+        const spinner = output.spinner('Releasing IP quarantines...').start();
 
         try {
           const result = await client.releaseQuarantineIp(ip, reason, options.tenant);
@@ -258,7 +258,7 @@ export function registerQuarantineCommands(program: Command): void {
     .option('--limit <number>', 'Number of entries to show', '100')
     .option('--json', 'Output as JSON')
     .action(async (ip: string, options: HistoryOptions) => {
-      const spinner = ora('Fetching failure history...').start();
+      const spinner = output.spinner('Fetching failure history...').start();
 
       try {
         const result = await client.getQuarantineHistory(ip, {
@@ -307,7 +307,7 @@ export function registerQuarantineCommands(program: Command): void {
     .option('-t, --tenant <tenant>', 'Filter by tenant ID')
     .option('--json', 'Output as JSON')
     .action(async (options: StatsOptions) => {
-      const spinner = ora('Fetching statistics...').start();
+      const spinner = output.spinner('Fetching statistics...').start();
 
       try {
         const stats = await client.getQuarantineStats(options.tenant);
@@ -350,7 +350,7 @@ export function registerQuarantineCommands(program: Command): void {
     .option('-t, --tenant <tenant>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: ConfigOptions) => {
-      const spinner = ora('Fetching configuration...').start();
+      const spinner = output.spinner('Fetching configuration...').start();
 
       try {
         const config = await client.getQuarantineConfig(options.tenant);
@@ -461,7 +461,7 @@ export function registerQuarantineCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Updating configuration...').start();
+        const spinner = output.spinner('Updating configuration...').start();
 
         try {
           const result = await client.updateQuarantineConfig(updates, options.tenant);

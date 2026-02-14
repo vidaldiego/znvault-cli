@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm } from '../lib/prompts.js';
@@ -42,7 +42,7 @@ export function registerLockdownCommands(program: Command): void {
     .description('Show current lockdown status')
     .option('--json', 'Output as JSON')
     .action(async (options: LockdownStatusOptions) => {
-      const spinner = ora('Getting lockdown status...').start();
+      const spinner = output.spinner('Getting lockdown status...').start();
 
       try {
         const status = await mode.getLockdownStatus();
@@ -121,7 +121,7 @@ export function registerLockdownCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Triggering lockdown...').start();
+        const spinner = output.spinner('Triggering lockdown...').start();
 
         try {
           const result = await client.triggerLockdown(levelNum as 1 | 2 | 3 | 4, reason);
@@ -170,7 +170,7 @@ export function registerLockdownCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Clearing lockdown...').start();
+        const spinner = output.spinner('Clearing lockdown...').start();
 
         try {
           const result = await client.clearLockdown(reason);
@@ -202,7 +202,7 @@ export function registerLockdownCommands(program: Command): void {
     .option('--limit <number>', 'Number of entries to show', '50')
     .option('--json', 'Output as JSON')
     .action(async (options: LockdownHistoryOptions) => {
-      const spinner = ora('Fetching lockdown history...').start();
+      const spinner = output.spinner('Fetching lockdown history...').start();
 
       try {
         const history = await mode.getLockdownHistory(parseInt(options.limit, 10));
@@ -248,7 +248,7 @@ export function registerLockdownCommands(program: Command): void {
     .option('--limit <number>', 'Number of entries to show', '100')
     .option('--json', 'Output as JSON')
     .action(async (options: LockdownThreatsOptions) => {
-      const spinner = ora('Fetching threats...').start();
+      const spinner = output.spinner('Fetching threats...').start();
 
       try {
         const threats = await mode.getThreats({

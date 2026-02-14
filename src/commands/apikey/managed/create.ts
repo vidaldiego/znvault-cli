@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { RotationMode } from '../../../types/index.js';
@@ -52,7 +52,7 @@ export function registerManagedCreateCommand(managedCmd: Command): void {
       }
 
       const permissions = options.permissions.split(',').map((p) => p.trim());
-      const spinner = ora('Creating managed API key...').start();
+      const spinner = output.spinner('Creating managed API key...').start();
 
       try {
         const expiresInDays = parseInt(options.expires, 10);

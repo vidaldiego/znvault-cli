@@ -2,7 +2,7 @@
 // Push configuration updates to connected agents
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { SyncOptions, SyncResponse } from './types.js';
@@ -18,7 +18,7 @@ export function registerSyncCommand(parentCmd: Command): void {
     .option('-f, --force', 'Force sync even if no config changes detected')
     .option('--json', 'Output as JSON')
     .action(async (hostname: string, options: SyncOptions) => {
-      const spinner = ora('Pushing configuration to agents...').start();
+      const spinner = output.spinner('Pushing configuration to agents...').start();
 
       try {
         const response = await mode.apiPost<SyncResponse>(

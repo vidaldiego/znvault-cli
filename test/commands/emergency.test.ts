@@ -31,12 +31,6 @@ const { mockDbInstance, mockPrompts } = vi.hoisted(() => ({
 }));
 
 // Mock dependencies
-vi.mock('ora', () => ({
-  default: () => ({
-    start: () => ({ stop: vi.fn(), succeed: vi.fn(), fail: vi.fn() }),
-  }),
-}));
-
 vi.mock('../../src/lib/prompts.js', () => mockPrompts);
 
 // Vitest 4.x requires mocks used as constructors to look like classes/functions
@@ -62,6 +56,7 @@ vi.mock('../../src/lib/db.js', () => ({
 }));
 
 vi.mock('../../src/lib/output.js', () => ({
+  spinner: vi.fn(() => ({ start: vi.fn().mockReturnThis(), stop: vi.fn().mockReturnThis(), succeed: vi.fn().mockReturnThis(), fail: vi.fn().mockReturnThis(), warn: vi.fn().mockReturnThis(), info: vi.fn().mockReturnThis(), text: '', isSpinning: false })),
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),

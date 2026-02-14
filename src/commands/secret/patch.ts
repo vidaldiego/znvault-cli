@@ -8,7 +8,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { DecryptedSecret, SecretMetadata } from './types.js';
@@ -134,7 +134,7 @@ Value Types:
         process.exit(1);
       }
 
-      const spinner = ora('Resolving secret...').start();
+      const spinner = output.spinner('Resolving secret...').start();
       let id: string;
       let secret: DecryptedSecret;
 
@@ -254,7 +254,7 @@ Value Types:
       }
 
       // Apply changes
-      const updateSpinner = ora('Applying changes...').start();
+      const updateSpinner = output.spinner('Applying changes...').start();
 
       try {
         // Wrap content back into the appropriate data structure

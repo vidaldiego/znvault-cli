@@ -4,7 +4,7 @@
  * SSH CA management commands
  */
 
-import ora from 'ora';
+
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -12,7 +12,7 @@ import type { SSHCAStatus, SSHCA, InitCAOptions } from './types.js';
 import { formatTtl, formatKeyType, parseExtensions } from './helpers.js';
 
 export async function getStatus(options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching CA status...').start();
+  const spinner = output.spinner('Fetching CA status...').start();
 
   try {
     const response = await client.get<SSHCAStatus>('/v1/ssh/ca');
@@ -82,7 +82,7 @@ export async function initCA(options: InitCAOptions): Promise<void> {
 
   const extensions = parseExtensions(extensionsInput);
 
-  const spinner = ora('Initializing SSH CA...').start();
+  const spinner = output.spinner('Initializing SSH CA...').start();
 
   try {
     const response = await client.post<SSHCA>('/v1/ssh/ca', {
@@ -134,7 +134,7 @@ export async function deleteCA(options: { force?: boolean; json?: boolean }): Pr
     }
   }
 
-  const spinner = ora('Deleting SSH CA...').start();
+  const spinner = output.spinner('Deleting SSH CA...').start();
 
   try {
     await client.delete('/v1/ssh/ca');
@@ -151,7 +151,7 @@ export async function deleteCA(options: { force?: boolean; json?: boolean }): Pr
 }
 
 export async function getPublicKey(options: { raw?: boolean; json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching CA public key...').start();
+  const spinner = output.spinner('Fetching CA public key...').start();
 
   try {
     const response = await client.get<SSHCAStatus>('/v1/ssh/ca');

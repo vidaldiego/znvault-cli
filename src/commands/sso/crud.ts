@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
@@ -28,7 +28,7 @@ import { formatTtl, buildTenantQuery } from './helpers.js';
 // ============================================================================
 
 async function listApps(options: ListOptions): Promise<void> {
-  const spinner = ora('Fetching SSO apps...').start();
+  const spinner = output.spinner('Fetching SSO apps...').start();
 
   try {
     const query: Record<string, string> = {};
@@ -73,7 +73,7 @@ async function listApps(options: ListOptions): Promise<void> {
 }
 
 async function getApp(id: string, options: GetOptions): Promise<void> {
-  const spinner = ora('Fetching SSO app...').start();
+  const spinner = output.spinner('Fetching SSO app...').start();
 
   try {
     const query = buildTenantQuery(options.tenant);
@@ -130,7 +130,7 @@ async function getApp(id: string, options: GetOptions): Promise<void> {
 }
 
 async function createApp(name: string, slug: string, options: CreateOptions): Promise<void> {
-  const spinner = ora('Creating SSO app...').start();
+  const spinner = output.spinner('Creating SSO app...').start();
 
   try {
     const body = {
@@ -192,7 +192,7 @@ async function createApp(name: string, slug: string, options: CreateOptions): Pr
 }
 
 async function updateApp(id: string, options: UpdateOptions): Promise<void> {
-  const spinner = ora('Updating SSO app...').start();
+  const spinner = output.spinner('Updating SSO app...').start();
 
   try {
     const query = buildTenantQuery(options.tenant);
@@ -294,7 +294,7 @@ async function deleteApp(id: string, options: DeleteOptions): Promise<void> {
       }
     }
 
-    const spinner = ora('Deleting SSO app...').start();
+    const spinner = output.spinner('Deleting SSO app...').start();
 
     try {
       await client.delete(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
@@ -311,7 +311,7 @@ async function deleteApp(id: string, options: DeleteOptions): Promise<void> {
 }
 
 async function rotateSecret(id: string, options: RotateSecretOptions): Promise<void> {
-  const spinner = ora('Rotating client secret...').start();
+  const spinner = output.spinner('Rotating client secret...').start();
 
   try {
     const query = buildTenantQuery(options.tenant);

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
@@ -129,7 +129,7 @@ export function registerCertCommands(parent: Command): void {
     .option('-o, --output <file>', 'Output certificate to file')
     .option('--json', 'Output as JSON')
     .action(async (publicKeyFile: string, options: SignOptions) => {
-      const spinner = ora('Signing certificate...').start();
+      const spinner = output.spinner('Signing certificate...').start();
 
       try {
         const fs = await import('fs');
@@ -200,7 +200,7 @@ export function registerCertCommands(parent: Command): void {
     .option('--user-id <id>', 'Filter by user ID')
     .option('--json', 'Output as JSON')
     .action(async (options: CertListOptions) => {
-      const spinner = ora('Fetching certificates...').start();
+      const spinner = output.spinner('Fetching certificates...').start();
 
       try {
         const params = new URLSearchParams();
@@ -260,7 +260,7 @@ export function registerCertCommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: GetOptions) => {
-      const spinner = ora('Fetching certificate...').start();
+      const spinner = output.spinner('Fetching certificate...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -325,7 +325,7 @@ export function registerCertCommands(parent: Command): void {
           }
         }
 
-        const spinner = ora('Revoking certificate...').start();
+        const spinner = output.spinner('Revoking certificate...').start();
 
         try {
           await client.post(`/v1/ssh/certificates/${encodeURIComponent(id)}/revoke${query}`, {

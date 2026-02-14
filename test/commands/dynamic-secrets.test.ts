@@ -4,16 +4,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
 import { registerDynamicSecretsCommands } from '../../src/commands/dynamic-secrets.js';
 
-// Mock ora
-vi.mock('ora', () => ({
-  default: vi.fn(() => ({
-    start: vi.fn().mockReturnThis(),
-    stop: vi.fn().mockReturnThis(),
-    succeed: vi.fn().mockReturnThis(),
-    fail: vi.fn().mockReturnThis(),
-  })),
-}));
-
 // Mock cli-table3
 vi.mock('cli-table3', () => {
   return {
@@ -43,6 +33,7 @@ vi.mock('../../src/lib/client.js', () => ({
 
 // Mock output
 vi.mock('../../src/lib/output.js', () => ({
+  spinner: vi.fn(() => ({ start: vi.fn().mockReturnThis(), stop: vi.fn().mockReturnThis(), succeed: vi.fn().mockReturnThis(), fail: vi.fn().mockReturnThis(), warn: vi.fn().mockReturnThis(), info: vi.fn().mockReturnThis(), text: '', isSpinning: false })),
   json: vi.fn(),
   info: vi.fn(),
   error: vi.fn(),

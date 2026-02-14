@@ -2,7 +2,7 @@
 // List host configurations
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { ListOptions, HostListResponse, HostStatsResponse, HostListItem } from './types.js';
@@ -22,7 +22,7 @@ export function registerListCommand(parentCmd: Command): void {
     .option('--page <number>', 'Page number', '1')
     .option('--page-size <number>', 'Items per page', '50')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching host configurations...').start();
+      const spinner = output.spinner('Fetching host configurations...').start();
 
       try {
         const params = new URLSearchParams();
@@ -91,7 +91,7 @@ export function registerStatsCommand(parentCmd: Command): void {
     .description('Show host configuration statistics')
     .option('--json', 'Output as JSON')
     .action(async (options: { json?: boolean }) => {
-      const spinner = ora('Fetching statistics...').start();
+      const spinner = output.spinner('Fetching statistics...').start();
 
       try {
         const response = await mode.apiGet<HostStatsResponse>('/v1/hosts/stats');

@@ -7,7 +7,7 @@
 import type { Command } from 'commander';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import ora from 'ora';
+
 import chalk from 'chalk';
 import * as output from '../../lib/output.js';
 import { getPlugins, removePlugin } from '../../lib/config.js';
@@ -21,7 +21,7 @@ export function registerUninstallCommand(parent: Command): void {
     .description('Uninstall a CLI plugin')
     .option('--json', 'Output as JSON')
     .action(async (name: string, options: PluginUninstallOptions) => {
-      const spinner = ora('Uninstalling plugin...').start();
+      const spinner = output.spinner('Uninstalling plugin...').start();
 
       try {
         // Check if configured

@@ -14,6 +14,9 @@ export type OutputMode = 'tui' | 'plain';
 // Global state for output mode override
 let modeOverride: OutputMode | null = null;
 
+// Global state for quiet mode
+let quietMode = false;
+
 /**
  * Set the output mode override (called from --plain flag handler)
  */
@@ -88,8 +91,26 @@ export function isTuiMode(): boolean {
 }
 
 /**
+ * Set quiet mode (suppresses non-essential output like spinners, info, success)
+ */
+export function setQuietMode(quiet: boolean): void {
+  quietMode = quiet;
+}
+
+/**
+ * Check if quiet mode is enabled
+ */
+export function isQuietMode(): boolean {
+  if (quietMode) {
+    return true;
+  }
+  return process.env.ZNVAULT_QUIET === 'true' || process.env.ZNVAULT_QUIET === '1';
+}
+
+/**
  * Reset mode override (useful for testing)
  */
 export function resetOutputMode(): void {
   modeOverride = null;
+  quietMode = false;
 }

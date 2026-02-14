@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import chalk from 'chalk';
 import { LocalDBClient, isEmergencyDbAvailable } from '../lib/db.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
@@ -62,7 +62,7 @@ export function registerEmergencyCommands(program: Command): void {
     .action(async (options: TestDbOptions) => {
       checkEmergencyAccess();
 
-      const spinner = ora('Testing database connection...').start();
+      const spinner = output.spinner('Testing database connection...').start();
 
       try {
         const db = new LocalDBClient();
@@ -99,7 +99,7 @@ export function registerEmergencyCommands(program: Command): void {
     .action(async (username: string, options: UserStatusOptions) => {
       checkEmergencyAccess();
 
-      const spinner = ora('Fetching user status...').start();
+      const spinner = output.spinner('Fetching user status...').start();
 
       try {
         const db = new LocalDBClient();
@@ -165,7 +165,7 @@ export function registerEmergencyCommands(program: Command): void {
         }
 
         const password = newPassword ?? await promptNewPassword();
-        const spinner = ora('Resetting password...').start();
+        const spinner = output.spinner('Resetting password...').start();
 
         try {
           const db = new LocalDBClient();
@@ -219,7 +219,7 @@ export function registerEmergencyCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Unlocking user...').start();
+        const spinner = output.spinner('Unlocking user...').start();
 
         try {
           const db = new LocalDBClient();
@@ -274,7 +274,7 @@ export function registerEmergencyCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Disabling TOTP...').start();
+        const spinner = output.spinner('Disabling TOTP...').start();
 
         try {
           const db = new LocalDBClient();

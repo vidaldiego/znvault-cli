@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
@@ -24,7 +24,7 @@ export function registerServerGroupCommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching server groups...').start();
+      const spinner = output.spinner('Fetching server groups...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -68,7 +68,7 @@ export function registerServerGroupCommands(parent: Command): void {
     .option('-d, --description <text>', 'Group description')
     .option('--json', 'Output as JSON')
     .action(async (name: string, options: CreateServerGroupOptions) => {
-      const spinner = ora('Creating server group...').start();
+      const spinner = output.spinner('Creating server group...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -103,7 +103,7 @@ export function registerServerGroupCommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: GetOptions) => {
-      const spinner = ora('Fetching server group...').start();
+      const spinner = output.spinner('Fetching server group...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -162,7 +162,7 @@ export function registerServerGroupCommands(parent: Command): void {
           }
         }
 
-        const spinner = ora('Deleting server group...').start();
+        const spinner = output.spinner('Deleting server group...').start();
 
         try {
           await client.delete(`/v1/ssh/server-groups/${encodeURIComponent(id)}${query}`);
@@ -184,7 +184,7 @@ export function registerServerGroupCommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (groupId: string, linuxUser: string, principals: string[], options: SetAccessOptions) => {
-      const spinner = ora('Setting access rule...').start();
+      const spinner = output.spinner('Setting access rule...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -228,7 +228,7 @@ export function registerServerGroupCommands(parent: Command): void {
           }
         }
 
-        const spinner = ora('Deleting access rule...').start();
+        const spinner = output.spinner('Deleting access rule...').start();
 
         try {
           await client.delete(
@@ -252,7 +252,7 @@ export function registerServerGroupCommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--output <file>', 'Output to file')
     .action(async (groupId: string, options: { tenant?: string; output?: string }) => {
-      const spinner = ora('Generating authorized principals...').start();
+      const spinner = output.spinner('Generating authorized principals...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);

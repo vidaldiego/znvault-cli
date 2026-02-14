@@ -1,7 +1,7 @@
 // Path: znvault-cli/src/commands/unseal.ts
 
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -223,7 +223,7 @@ export function registerUnsealCommands(program: Command): void {
     .description('Check current unseal status')
     .option('--json', 'Output as JSON')
     .action(async (options: UnsealStatusOptions) => {
-      const spinner = ora('Checking unseal status...').start();
+      const spinner = output.spinner('Checking unseal status...').start();
 
       try {
         const status = await client.get<UnsealStatusResponse>('/v1/auth/unseal/status');
@@ -267,7 +267,7 @@ export function registerUnsealCommands(program: Command): void {
     .description('Seal the vault (revoke current unseal session)')
     .option('--json', 'Output as JSON')
     .action(async (options: SealOptions) => {
-      const spinner = ora('Sealing vault...').start();
+      const spinner = output.spinner('Sealing vault...').start();
 
       try {
         await client.post<{ sealed: boolean }>('/v1/auth/unseal/seal', {});
@@ -298,7 +298,7 @@ export function registerUnsealCommands(program: Command): void {
 
         if (options.code) {
           // Retrieve secret from server using TOTP code
-          const spinner = ora('Retrieving TOTP secret from server...').start();
+          const spinner = output.spinner('Retrieving TOTP secret from server...').start();
           try {
             const result = await client.post<{ secret: string; message: string }>(
               '/auth/2fa/reveal-secret',
@@ -330,7 +330,7 @@ export function registerUnsealCommands(program: Command): void {
           // Check if it's a 6-digit code
           if (/^\d{6}$/.test(input)) {
             // It's a TOTP code - retrieve secret from server
-            const spinner = ora('Retrieving TOTP secret from server...').start();
+            const spinner = output.spinner('Retrieving TOTP secret from server...').start();
             try {
               const result = await client.post<{ secret: string; message: string }>(
                 '/auth/2fa/reveal-secret',
@@ -416,7 +416,7 @@ async function unsealWithOTP(options: UnsealOptions): Promise<void> {
     process.exit(1);
   }
 
-  const spinner = ora('Unsealing with OTP...').start();
+  const spinner = output.spinner('Unsealing with OTP...').start();
 
   try {
     const result = await client.post<UnsealStatusResponse>('/v1/auth/unseal', {
@@ -446,7 +446,7 @@ async function unsealWithAutoOTP(options: UnsealOptions): Promise<void> {
     process.exit(1);
   }
 
-  const spinner = ora('Generating TOTP code and unsealing...').start();
+  const spinner = output.spinner('Generating TOTP code and unsealing...').start();
 
   try {
     // Generate TOTP code from stored secret
@@ -490,7 +490,7 @@ async function unsealWithDevice(options: UnsealOptions): Promise<void> {
   }
 
   // Detect key type (software or Secure Enclave)
-  const checkSpinner = ora('Checking for enrolled device...').start();
+  const checkSpinner = output.spinner('Checking for enrolled device...').start();
   const keyType = detectKeyType();
 
   if (keyType === 'none') {
@@ -503,7 +503,7 @@ async function unsealWithDevice(options: UnsealOptions): Promise<void> {
   checkSpinner.succeed(`Device key found (${keyType === 'software' ? 'software' : 'Secure Enclave'})`)
 
   // Get challenge from server
-  const challengeSpinner = ora('Getting challenge from server...').start();
+  const challengeSpinner = output.spinner('Getting challenge from server...').start();
   let challenge: string;
   try {
     const result = await client.post<ChallengeResponse>('/v1/auth/unseal/challenge', {});
@@ -519,7 +519,7 @@ async function unsealWithDevice(options: UnsealOptions): Promise<void> {
   output.info('Touch ID required to sign challenge...');
   console.log();
 
-  const signSpinner = ora('Signing challenge with Secure Enclave...').start();
+  const signSpinner = output.spinner('Signing challenge with Secure Enclave...').start();
   let signature: string;
   try {
     const signResult = execSecureEnclaveHelper<SecureEnclaveSignOutput>(['sign', challenge]);
@@ -535,7 +535,7 @@ async function unsealWithDevice(options: UnsealOptions): Promise<void> {
   }
 
   // Verify signature with server
-  const verifySpinner = ora('Verifying signature...').start();
+  const verifySpinner = output.spinner('Verifying signature...').start();
   try {
     const result = await client.post<UnsealStatusResponse>('/v1/auth/unseal/verify', {
       challenge,

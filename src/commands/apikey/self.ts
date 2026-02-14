@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { SelfOptions, SelfRotateOptions, ApiKeyConditions } from './types.js';
@@ -18,7 +18,7 @@ export function registerSelfCommands(apiKeyCmd: Command): void {
     .description('Show info about the currently used API key')
     .option('--json', 'Output as JSON')
     .action(async (options: SelfOptions) => {
-      const spinner = ora('Fetching API key info...').start();
+      const spinner = output.spinner('Fetching API key info...').start();
 
       try {
         const result = await client.getApiKeySelf();
@@ -78,7 +78,7 @@ export function registerSelfCommands(apiKeyCmd: Command): void {
     .option('-n, --name <name>', 'New name for the rotated key')
     .option('--json', 'Output as JSON')
     .action(async (options: SelfRotateOptions) => {
-      const spinner = ora('Rotating API key...').start();
+      const spinner = output.spinner('Rotating API key...').start();
 
       try {
         const result = await client.rotateApiKeySelf(options.name);

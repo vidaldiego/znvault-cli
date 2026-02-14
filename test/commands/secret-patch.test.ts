@@ -681,13 +681,6 @@ describe('secret patch command', () => {
   beforeEach(() => {
     vi.resetModules();
 
-    // Mock ora
-    vi.doMock('ora', () => ({
-      default: () => ({
-        start: () => ({ stop: vi.fn(), succeed: vi.fn(), fail: vi.fn(), text: '' }),
-      }),
-    }));
-
     // Mock client
     vi.doMock('../../src/lib/client.js', () => ({
       client: {
@@ -706,6 +699,7 @@ describe('secret patch command', () => {
 
     // Mock output
     vi.doMock('../../src/lib/output.js', () => ({
+      spinner: vi.fn(() => ({ start: vi.fn().mockReturnThis(), stop: vi.fn().mockReturnThis(), succeed: vi.fn().mockReturnThis(), fail: vi.fn().mockReturnThis(), warn: vi.fn().mockReturnThis(), info: vi.fn().mockReturnThis(), text: '', isSpinning: false })),
       success: vi.fn(),
       error: vi.fn(),
       info: vi.fn(),
@@ -716,6 +710,7 @@ describe('secret patch command', () => {
     // Mock output-mode
     vi.doMock('../../src/lib/output-mode.js', () => ({
       isPlainMode: vi.fn().mockReturnValue(true),
+      isQuietMode: vi.fn().mockReturnValue(false),
     }));
   });
 

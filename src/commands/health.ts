@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../lib/mode.js';
 import * as output from '../lib/output.js';
 import * as visual from '../lib/visual.js';
@@ -21,7 +21,7 @@ export function registerHealthCommands(program: Command): void {
     .option('--leader', 'Check leader node health')
     .option('--json', 'Output as JSON')
     .action(async (options: HealthOptions) => {
-      const spinner = ora('Checking health...').start();
+      const spinner = output.spinner('Checking health...').start();
 
       try {
         const health = options.leader
@@ -99,7 +99,7 @@ export function registerHealthCommands(program: Command): void {
     .description('Show comprehensive system status')
     .option('--json', 'Output as JSON')
     .action(async (options: StatusOptions) => {
-      const spinner = ora('Gathering status...').start();
+      const spinner = output.spinner('Gathering status...').start();
 
       try {
         const [health, cluster, lockdown] = await Promise.allSettled([

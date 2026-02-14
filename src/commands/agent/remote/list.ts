@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import type { RemoteListOptions, AgentListResponse } from '../types.js';
@@ -20,7 +20,7 @@ export function registerListCommand(parentCmd: Command): void {
     .option('-t, --tenant <tenantId>', 'Filter by tenant (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: RemoteListOptions) => {
-      const spinner = ora('Fetching agents...').start();
+      const spinner = output.spinner('Fetching agents...').start();
 
       try {
         const params = new URLSearchParams();

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { UpdatePermissionsOptions } from './types.js';
@@ -29,7 +29,7 @@ export function registerPermissionsCommand(apiKeyCmd: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Updating permissions...').start();
+      const spinner = output.spinner('Updating permissions...').start();
 
       try {
         let newPermissions: string[];

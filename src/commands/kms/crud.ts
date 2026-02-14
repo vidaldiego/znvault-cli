@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -26,7 +26,7 @@ import { formatDate, formatKeyState, formatPaginationInfo } from './helpers.js';
 // ============================================================================
 
 async function listKeys(options: ListOptions): Promise<void> {
-  const spinner = ora('Fetching KMS keys...').start();
+  const spinner = output.spinner('Fetching KMS keys...').start();
 
   try {
     const query: Record<string, string | undefined> = {};
@@ -69,7 +69,7 @@ async function listKeys(options: ListOptions): Promise<void> {
 }
 
 async function getKey(keyId: string, options: GetOptions): Promise<void> {
-  const spinner = ora('Fetching key details...').start();
+  const spinner = output.spinner('Fetching key details...').start();
 
   try {
     // API returns { keyMetadata: { ... } }
@@ -130,7 +130,7 @@ async function createKey(options: CreateOptions): Promise<void> {
     process.exit(1);
   }
 
-  const spinner = ora('Creating KMS key...').start();
+  const spinner = output.spinner('Creating KMS key...').start();
 
   try {
     const body: Record<string, unknown> = {
@@ -181,7 +181,7 @@ async function createKey(options: CreateOptions): Promise<void> {
 async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
   if (!options.force) {
     // Get key info first
-    const spinner = ora('Fetching key...').start();
+    const spinner = output.spinner('Fetching key...').start();
     try {
       const key = await client.get<KMSKey>(`/v1/kms/keys/${keyId}`);
       spinner.stop();
@@ -207,7 +207,7 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     }
   }
 
-  const deleteSpinner = ora('Scheduling key deletion...').start();
+  const deleteSpinner = output.spinner('Scheduling key deletion...').start();
 
   try {
     const days = options.days ? parseInt(options.days, 10) : 30;

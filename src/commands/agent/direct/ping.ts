@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as output from '../../../lib/output.js';
 import type { DirectCommandOptions } from '../types.js';
 import { resolveHostPort, fetchAgentHealth, formatUptime } from '../helpers.js';
@@ -21,7 +21,7 @@ export function registerPingCommand(parentCmd: Command): void {
         process.exit(1);
       }
       const { host, port } = resolved;
-      const spinner = ora(`Checking agent at ${host}:${port}...`).start();
+      const spinner = output.spinner(`Checking agent at ${host}:${port}...`).start();
 
       try {
         const health = await fetchAgentHealth(host, port);

@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import fs from 'node:fs';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
@@ -39,7 +39,7 @@ export function registerAuditCommands(program: Command): void {
     .option('--limit <number>', 'Number of entries to show', '100')
     .option('--json', 'Output as JSON')
     .action(async (options: AuditListOptions) => {
-      const spinner = ora('Fetching audit logs...').start();
+      const spinner = output.spinner('Fetching audit logs...').start();
 
       try {
         const days = parseInt(options.days, 10);
@@ -103,7 +103,7 @@ export function registerAuditCommands(program: Command): void {
     .description('Verify audit log chain integrity (HMAC)')
     .option('--json', 'Output as JSON')
     .action(async (options: AuditVerifyOptions) => {
-      const spinner = ora('Verifying audit chain...').start();
+      const spinner = output.spinner('Verifying audit chain...').start();
 
       try {
         const result = await mode.verifyAuditChain();
@@ -154,7 +154,7 @@ export function registerAuditCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Exporting audit logs...').start();
+      const spinner = output.spinner('Exporting audit logs...').start();
 
       try {
         const days = parseInt(options.days, 10);

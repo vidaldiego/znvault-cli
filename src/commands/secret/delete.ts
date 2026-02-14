@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -30,7 +30,7 @@ export function registerDeleteCommand(secretCmd: Command): void {
 
       if (!options.force) {
         // Get metadata first
-        const spinner = ora('Fetching secret...').start();
+        const spinner = output.spinner('Fetching secret...').start();
         try {
           const secret = await client.get<SecretMetadata>(`/v1/secrets/${id}/meta`);
           spinner.stop();
@@ -55,7 +55,7 @@ export function registerDeleteCommand(secretCmd: Command): void {
         }
       }
 
-      const deleteSpinner = ora('Deleting secret...').start();
+      const deleteSpinner = output.spinner('Deleting secret...').start();
 
       try {
         await client.delete(`/v1/secrets/${id}`);

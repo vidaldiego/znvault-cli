@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { DeleteOptions } from './types.js';
@@ -23,7 +23,7 @@ export function registerDeleteCommand(apiKeyCmd: Command): void {
         output.warn('The key will stop working immediately.');
       }
 
-      const spinner = ora('Deleting API key...').start();
+      const spinner = output.spinner('Deleting API key...').start();
 
       try {
         await client.deleteApiKey(id, options.tenant);

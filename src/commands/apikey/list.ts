@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -25,7 +25,7 @@ export function registerListCommand(apiKeyCmd: Command): void {
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching API keys...').start();
+      const spinner = output.spinner('Fetching API keys...').start();
 
       try {
         const result = await client.listApiKeys(options.tenant);

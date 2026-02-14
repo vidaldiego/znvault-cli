@@ -2,7 +2,7 @@
 // CLI commands for notification (email) configuration
 
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../lib/client.js';
@@ -87,7 +87,7 @@ interface RecipientsOptions {
 // ============================================================================
 
 async function showStatus(options: StatusOptions): Promise<void> {
-  const spinner = ora('Checking notification status...').start();
+  const spinner = output.spinner('Checking notification status...').start();
 
   try {
     const status = await client.get<NotificationStatus>('/v1/admin/notifications/status');
@@ -112,7 +112,7 @@ async function showStatus(options: StatusOptions): Promise<void> {
 }
 
 async function showConfig(options: ConfigOptions): Promise<void> {
-  const spinner = ora('Fetching SMTP configuration...').start();
+  const spinner = output.spinner('Fetching SMTP configuration...').start();
 
   try {
     const response = await client.get<ConfigResponse>('/v1/admin/notifications/config');
@@ -244,7 +244,7 @@ async function setupConfig(options: SetupOptions): Promise<void> {
     password = pwd;
   }
 
-  const spinner = ora('Saving SMTP configuration...').start();
+  const spinner = output.spinner('Saving SMTP configuration...').start();
 
   try {
     const body = {
@@ -290,7 +290,7 @@ async function setupConfig(options: SetupOptions): Promise<void> {
 }
 
 async function testEmail(options: TestOptions): Promise<void> {
-  const spinner = ora('Sending test email...').start();
+  const spinner = output.spinner('Sending test email...').start();
 
   try {
     const body: Record<string, string | undefined> = {};
@@ -329,7 +329,7 @@ async function removeConfig(options: RemoveOptions): Promise<void> {
     }
   }
 
-  const spinner = ora('Removing SMTP configuration...').start();
+  const spinner = output.spinner('Removing SMTP configuration...').start();
 
   try {
     const result = await client.delete<{ message: string; configured: boolean }>('/v1/admin/notifications/config');
@@ -349,7 +349,7 @@ async function removeConfig(options: RemoveOptions): Promise<void> {
 }
 
 async function showRecipients(options: RecipientsOptions): Promise<void> {
-  const spinner = ora('Fetching recipients...').start();
+  const spinner = output.spinner('Fetching recipients...').start();
 
   try {
     const response = await client.get<RecipientsResponse>('/v1/admin/notifications/recipients');
@@ -390,7 +390,7 @@ async function setRecipients(emails: string, options: SetRecipientsOptions): Pro
     }
   }
 
-  const spinner = ora('Updating recipients...').start();
+  const spinner = output.spinner('Updating recipients...').start();
 
   try {
     const result = await client.patch<{ message: string }>('/v1/admin/notifications/recipients', {
@@ -419,7 +419,7 @@ async function addRecipient(email: string, options: AddRecipientOptions): Promis
     process.exit(1);
   }
 
-  const spinner = ora('Adding recipient...').start();
+  const spinner = output.spinner('Adding recipient...').start();
 
   try {
     // Get current recipients
@@ -457,7 +457,7 @@ async function addRecipient(email: string, options: AddRecipientOptions): Promis
 }
 
 async function removeRecipient(email: string, options: RemoveRecipientOptions): Promise<void> {
-  const spinner = ora('Removing recipient...').start();
+  const spinner = output.spinner('Removing recipient...').start();
 
   try {
     // Get current recipients

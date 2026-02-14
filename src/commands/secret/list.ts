@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -23,7 +23,7 @@ export function registerListCommand(secretCmd: Command): void {
     .option('--expiring <days>', 'Show secrets expiring within N days')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching secrets...').start();
+      const spinner = output.spinner('Fetching secrets...').start();
 
       try {
         const query: Record<string, string | undefined> = {};

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import type { TokenRevokeOptions } from '../types.js';
@@ -27,7 +27,7 @@ export function registerTokenRevokeCommand(parentCmd: Command): void {
         }
       }
 
-      const spinner = ora('Revoking registration token...').start();
+      const spinner = output.spinner('Revoking registration token...').start();
 
       try {
         const tenantQuery = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';

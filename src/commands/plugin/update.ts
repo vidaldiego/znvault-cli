@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import chalk from 'chalk';
 import * as output from '../../lib/output.js';
 import { getPlugins } from '../../lib/config.js';
@@ -34,7 +34,7 @@ export function registerUpdateCommand(parent: Command): void {
       }
 
       const pluginsDir = getPluginsDir();
-      const spinner = ora('Checking for updates...').start();
+      const spinner = output.spinner('Checking for updates...').start();
 
       try {
         // Filter to specific plugin if name provided

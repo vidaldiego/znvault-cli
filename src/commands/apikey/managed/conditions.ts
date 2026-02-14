@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedConditionsOptions } from './types.js';
@@ -42,7 +42,7 @@ export function registerManagedConditionsCommand(managedCmd: Command): void {
         conditions = parseConditionsFromOptions(options);
       }
 
-      const spinner = ora('Updating managed API key conditions...').start();
+      const spinner = output.spinner('Updating managed API key conditions...').start();
 
       try {
         // First, get the managed key to find its ID

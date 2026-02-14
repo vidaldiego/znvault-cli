@@ -4,7 +4,7 @@
  * Lease commands for dynamic secrets
  */
 
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -13,7 +13,7 @@ import type { DbLease, RenewalResult, LeaseListOptions, LeaseRevokeOptions } fro
 import { formatStatus, formatDate, formatDuration } from './helpers.js';
 
 export async function listLeases(options: LeaseListOptions): Promise<void> {
-  const spinner = ora('Fetching leases...').start();
+  const spinner = output.spinner('Fetching leases...').start();
 
   try {
     const params = new URLSearchParams();
@@ -61,7 +61,7 @@ export async function listLeases(options: LeaseListOptions): Promise<void> {
 }
 
 export async function getLease(leaseId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching lease...').start();
+  const spinner = output.spinner('Fetching lease...').start();
 
   try {
     const response = await client.get<DbLease>(`/v1/dynamic-secrets/leases/${leaseId}`);
@@ -99,7 +99,7 @@ export async function renewLease(leaseId: string, options: {
   ttl?: string;
   json?: boolean;
 }): Promise<void> {
-  const spinner = ora('Renewing lease...').start();
+  const spinner = output.spinner('Renewing lease...').start();
 
   try {
     const body: Record<string, unknown> = {};
@@ -137,7 +137,7 @@ export async function revokeLease(leaseId: string, options: LeaseRevokeOptions):
     }
   }
 
-  const spinner = ora('Revoking lease...').start();
+  const spinner = output.spinner('Revoking lease...').start();
 
   try {
     const body: Record<string, unknown> = {};

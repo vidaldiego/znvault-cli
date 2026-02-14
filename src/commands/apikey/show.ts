@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { APIKey } from '../../types/index.js';
@@ -19,7 +19,7 @@ export function registerShowCommand(apiKeyCmd: Command): void {
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: ShowOptions) => {
-      const spinner = ora('Fetching API key...').start();
+      const spinner = output.spinner('Fetching API key...').start();
 
       try {
         // First try to get by ID directly

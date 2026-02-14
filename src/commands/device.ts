@@ -2,7 +2,7 @@
 
 import { type Command } from 'commander';
 import chalk from 'chalk';
-import ora from 'ora';
+
 import { execSync, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -175,7 +175,7 @@ export function registerDeviceCommands(program: Command): void {
     .option('--all', 'Include revoked devices')
     .option('--json', 'Output as JSON')
     .action(async (options: DeviceListOptions) => {
-      const spinner = ora('Loading devices...').start();
+      const spinner = output.spinner('Loading devices...').start();
 
       try {
         const query = options.all ? '?all=true' : '';
@@ -240,7 +240,7 @@ export function registerDeviceCommands(program: Command): void {
         }
       }
 
-      const spinner = ora('Revoking device...').start();
+      const spinner = output.spinner('Revoking device...').start();
 
       try {
         // Include reason as query parameter if provided
@@ -310,7 +310,7 @@ export function registerDeviceCommands(program: Command): void {
       console.log();
 
       // Check if key already exists
-      const checkSpinner = ora('Checking for existing key...').start();
+      const checkSpinner = output.spinner('Checking for existing key...').start();
       try {
         const checkResult = execSecureEnclaveHelper<SecureEnclaveCheckOutput>(['check']);
         if (checkResult.exists) {
@@ -332,7 +332,7 @@ export function registerDeviceCommands(program: Command): void {
       }
 
       // Generate key in Secure Enclave
-      const generateSpinner = ora('Generating key in Secure Enclave (Touch ID required)...').start();
+      const generateSpinner = output.spinner('Generating key in Secure Enclave (Touch ID required)...').start();
       let generateResult: SecureEnclaveGenerateOutput;
       try {
         generateResult = execSecureEnclaveHelper<SecureEnclaveGenerateOutput>(['generate', deviceName]);
@@ -347,7 +347,7 @@ export function registerDeviceCommands(program: Command): void {
       }
 
       // Register with server
-      const registerSpinner = ora('Registering device with server...').start();
+      const registerSpinner = output.spinner('Registering device with server...').start();
       try {
         // First, unseal check - enrollment requires being unsealed
         const unsealStatus = await client.get<{ unsealed: boolean }>('/v1/auth/unseal/status');
@@ -427,7 +427,7 @@ export function registerDeviceCommands(program: Command): void {
         }
       }
 
-      const spinner = ora('Deleting local key...').start();
+      const spinner = output.spinner('Deleting local key...').start();
       try {
         execSecureEnclaveHelper(['delete']);
         spinner.succeed('Local key deleted');

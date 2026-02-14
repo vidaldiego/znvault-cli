@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -22,7 +22,7 @@ import { formatDate } from './helpers.js';
 // ============================================================================
 
 async function rotateKey(keyId: string, options: RotateOptions): Promise<void> {
-  const spinner = ora('Rotating key...').start();
+  const spinner = output.spinner('Rotating key...').start();
 
   try {
     const result = await client.post<{ keyId: string; newVersionId: string; message: string }>(`/v1/kms/keys/${keyId}/rotate`, {});
@@ -44,7 +44,7 @@ async function rotateKey(keyId: string, options: RotateOptions): Promise<void> {
 }
 
 async function enableKey(keyId: string, options: EnableDisableOptions): Promise<void> {
-  const spinner = ora('Enabling key...').start();
+  const spinner = output.spinner('Enabling key...').start();
 
   try {
     const result = await client.post<{ keyId: string; message?: string }>(`/v1/kms/keys/${keyId}/enable`, {});
@@ -64,7 +64,7 @@ async function enableKey(keyId: string, options: EnableDisableOptions): Promise<
 }
 
 async function disableKey(keyId: string, options: EnableDisableOptions): Promise<void> {
-  const spinner = ora('Disabling key...').start();
+  const spinner = output.spinner('Disabling key...').start();
 
   try {
     const result = await client.post<{ keyId: string; message?: string }>(`/v1/kms/keys/${keyId}/disable`, {});
@@ -84,7 +84,7 @@ async function disableKey(keyId: string, options: EnableDisableOptions): Promise
 }
 
 async function listVersions(keyId: string, options: VersionsOptions): Promise<void> {
-  const spinner = ora('Fetching key versions...').start();
+  const spinner = output.spinner('Fetching key versions...').start();
 
   try {
     const versions = await client.get<KeyVersion[]>(`/v1/kms/keys/${keyId}/versions`);

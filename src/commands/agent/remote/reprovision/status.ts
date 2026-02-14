@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../../lib/mode.js';
 import * as output from '../../../../lib/output.js';
 import type { StatusOptions, ReprovisionStatusResponse } from '../../types.js';
@@ -17,7 +17,7 @@ export function registerReprovisionStatusCommand(parentCmd: Command): void {
     .description('Check reprovision status and pending tokens for an agent')
     .option('--json', 'Output as JSON')
     .action(async (agentId: string, options: StatusOptions) => {
-      const spinner = ora('Fetching reprovision status...').start();
+      const spinner = output.spinner('Fetching reprovision status...').start();
 
       try {
         const response = await mode.apiGet<ReprovisionStatusResponse>(

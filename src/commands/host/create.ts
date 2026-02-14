@@ -3,7 +3,7 @@
 
 import fs from 'node:fs';
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { CreateOptions, HostConfig } from './types.js';
@@ -40,7 +40,7 @@ export function registerCreateCommand(parentCmd: Command): void {
         }
       }
 
-      const spinner = ora('Creating host configuration...').start();
+      const spinner = output.spinner('Creating host configuration...').start();
 
       try {
         const response = await mode.apiPost<HostConfig>('/v1/hosts', {

@@ -5,7 +5,6 @@
  * Provides consistent error handling patterns across all CLI commands.
  */
 
-import type { Ora } from 'ora';
 import * as output from './output.js';
 
 /**
@@ -13,7 +12,7 @@ import * as output from './output.js';
  */
 export interface ErrorHandlerOptions {
   /** Optional spinner to fail with message */
-  spinner?: Ora;
+  spinner?: ReturnType<typeof output.spinner>;
   /** Exit code (default: 1) */
   exitCode?: number;
   /** Whether to exit process (default: true) */

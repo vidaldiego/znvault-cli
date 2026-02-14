@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
@@ -63,7 +63,7 @@ export function registerUserCommands(program: Command): void {
     .option('--status <status>', 'Filter by status (active|disabled|locked)')
     .option('--json', 'Output as JSON')
     .action(async (options: ListUserOptions) => {
-      const spinner = ora('Fetching users...').start();
+      const spinner = output.spinner('Fetching users...').start();
 
       try {
         const users = await mode.listUsers({
@@ -122,7 +122,7 @@ export function registerUserCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Creating user...').start();
+      const spinner = output.spinner('Creating user...').start();
 
       try {
         const result = await client.createUser({
@@ -160,7 +160,7 @@ export function registerUserCommands(program: Command): void {
     .description('Get user details')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: GetUserOptions) => {
-      const spinner = ora('Fetching user...').start();
+      const spinner = output.spinner('Fetching user...').start();
 
       try {
         const result = await mode.getUser(id);
@@ -228,7 +228,7 @@ export function registerUserCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Updating user...').start();
+      const spinner = output.spinner('Updating user...').start();
 
       try {
         const result = await client.updateUser(id, updates as Parameters<typeof client.updateUser>[1]);
@@ -274,7 +274,7 @@ export function registerUserCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Deleting user...').start();
+        const spinner = output.spinner('Deleting user...').start();
 
         try {
           await client.deleteUser(id);
@@ -295,7 +295,7 @@ export function registerUserCommands(program: Command): void {
     .description('Unlock a locked user account')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: UnlockOptions) => {
-      const spinner = ora('Unlocking user...').start();
+      const spinner = output.spinner('Unlocking user...').start();
 
       try {
         if (mode.getMode() === 'local') {
@@ -340,7 +340,7 @@ export function registerUserCommands(program: Command): void {
     .action(async (id: string, newPassword: string | undefined, options: ResetPasswordOptions) => {
       try {
         const password = newPassword ?? await promptNewPassword();
-        const spinner = ora('Resetting password...').start();
+        const spinner = output.spinner('Resetting password...').start();
 
         try {
           if (mode.getMode() === 'local') {
@@ -398,7 +398,7 @@ export function registerUserCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Disabling TOTP...').start();
+        const spinner = output.spinner('Disabling TOTP...').start();
 
         try {
           if (mode.getMode() === 'local') {

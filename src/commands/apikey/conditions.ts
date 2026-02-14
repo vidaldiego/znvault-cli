@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { UpdateConditionsOptions, ApiKeyConditions } from './types.js';
@@ -41,7 +41,7 @@ export function registerConditionsCommand(apiKeyCmd: Command): void {
         conditions = parseConditionsFromOptions(options);
       }
 
-      const spinner = ora('Updating conditions...').start();
+      const spinner = output.spinner('Updating conditions...').start();
 
       try {
         const key = await client.updateApiKeyConditions(id, conditions, options.tenant);

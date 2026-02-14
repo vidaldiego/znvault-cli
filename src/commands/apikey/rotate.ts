@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { RotateOptions } from './types.js';
@@ -19,7 +19,7 @@ export function registerRotateCommand(apiKeyCmd: Command): void {
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: RotateOptions) => {
-      const spinner = ora('Rotating API key...').start();
+      const spinner = output.spinner('Rotating API key...').start();
 
       try {
         const result = await client.rotateApiKey(id, options.name, options.tenant);

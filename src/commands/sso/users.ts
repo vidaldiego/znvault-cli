@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
@@ -23,7 +23,7 @@ import { buildTenantQuery } from './helpers.js';
 // ============================================================================
 
 async function listUsers(appId: string, options: UserListOptions): Promise<void> {
-  const spinner = ora('Fetching users...').start();
+  const spinner = output.spinner('Fetching users...').start();
 
   try {
     const query = buildTenantQuery(options.tenant);
@@ -62,7 +62,7 @@ async function listUsers(appId: string, options: UserListOptions): Promise<void>
 }
 
 async function grantAccess(appId: string, userId: string, options: UserGrantOptions): Promise<void> {
-  const spinner = ora('Granting access...').start();
+  const spinner = output.spinner('Granting access...').start();
 
   try {
     const query = buildTenantQuery(options.tenant);
@@ -90,7 +90,7 @@ async function revokeAccess(appId: string, userId: string, options: UserRevokeOp
       }
     }
 
-    const spinner = ora('Revoking access...').start();
+    const spinner = output.spinner('Revoking access...').start();
 
     try {
       await client.delete(`/v1/sso/apps/${encodeURIComponent(appId)}/users/${encodeURIComponent(userId)}${query}`);
@@ -106,7 +106,7 @@ async function revokeAccess(appId: string, userId: string, options: UserRevokeOp
 }
 
 async function setRole(appId: string, userId: string, role: string, options: UserSetRoleOptions): Promise<void> {
-  const spinner = ora('Updating role...').start();
+  const spinner = output.spinner('Updating role...').start();
 
   try {
     const query = buildTenantQuery(options.tenant);

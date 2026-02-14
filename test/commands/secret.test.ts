@@ -4,12 +4,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
 
 // Mock dependencies
-vi.mock('ora', () => ({
-  default: () => ({
-    start: () => ({ stop: vi.fn(), succeed: vi.fn(), fail: vi.fn() }),
-  }),
-}));
-
 vi.mock('inquirer', () => ({
   default: {
     prompt: vi.fn().mockResolvedValue({
@@ -87,6 +81,7 @@ vi.mock('../../src/lib/config.js', () => ({
 }));
 
 vi.mock('../../src/lib/output.js', () => ({
+  spinner: vi.fn(() => ({ start: vi.fn().mockReturnThis(), stop: vi.fn().mockReturnThis(), succeed: vi.fn().mockReturnThis(), fail: vi.fn().mockReturnThis(), warn: vi.fn().mockReturnThis(), info: vi.fn().mockReturnThis(), text: '', isSpinning: false })),
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),

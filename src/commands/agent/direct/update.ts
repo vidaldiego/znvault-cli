@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as output from '../../../lib/output.js';
 import type { UpdateCommandOptions } from '../types.js';
 import {
@@ -30,7 +30,7 @@ export function registerUpdateCommand(parentCmd: Command): void {
       const { host, port } = resolved;
 
       // First check what version is available
-      const checkSpinner = ora(`Checking agent version at ${host}:${port}...`).start();
+      const checkSpinner = output.spinner(`Checking agent version at ${host}:${port}...`).start();
 
       let versionInfo;
       try {
@@ -79,7 +79,7 @@ export function registerUpdateCommand(parentCmd: Command): void {
       }
 
       // Trigger update
-      const updateSpinner = ora('Updating agent...').start();
+      const updateSpinner = output.spinner('Updating agent...').start();
 
       try {
         const response = await triggerAgentUpdate(host, port);

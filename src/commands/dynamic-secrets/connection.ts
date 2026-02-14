@@ -4,7 +4,7 @@
  * Connection commands for dynamic secrets
  */
 
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -13,7 +13,7 @@ import type { DbConnection, TestConnectionResult, ConnectionCreateOptions, Conne
 import { formatStatus, formatDate, formatTtl } from './helpers.js';
 
 export async function listConnections(options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching connections...').start();
+  const spinner = output.spinner('Fetching connections...').start();
 
   try {
     const response = await client.get<DbConnection[]>('/v1/dynamic-secrets/connections');
@@ -56,7 +56,7 @@ export async function listConnections(options: { json?: boolean }): Promise<void
 }
 
 export async function getConnection(nameOrId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching connection...').start();
+  const spinner = output.spinner('Fetching connection...').start();
 
   try {
     const response = await client.get<DbConnection>(`/v1/dynamic-secrets/connections/${nameOrId}`);
@@ -115,7 +115,7 @@ export async function createConnection(options: ConnectionCreateOptions): Promis
     validate: (input: string) => input.trim() ? true : 'Connection string is required',
   }])).connectionString;
 
-  const spinner = ora('Creating connection...').start();
+  const spinner = output.spinner('Creating connection...').start();
 
   try {
     const body: Record<string, unknown> = {
@@ -146,7 +146,7 @@ export async function createConnection(options: ConnectionCreateOptions): Promis
 }
 
 export async function updateConnection(nameOrId: string, options: ConnectionUpdateOptions): Promise<void> {
-  const spinner = ora('Updating connection...').start();
+  const spinner = output.spinner('Updating connection...').start();
 
   try {
     const body: Record<string, unknown> = {};
@@ -186,7 +186,7 @@ export async function deleteConnection(nameOrId: string, options: { force?: bool
     }
   }
 
-  const spinner = ora('Deleting connection...').start();
+  const spinner = output.spinner('Deleting connection...').start();
 
   try {
     await client.delete(`/v1/dynamic-secrets/connections/${nameOrId}`);
@@ -203,7 +203,7 @@ export async function deleteConnection(nameOrId: string, options: { force?: bool
 }
 
 export async function testConnection(nameOrId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Testing connection...').start();
+  const spinner = output.spinner('Testing connection...').start();
 
   try {
     const response = await client.post<TestConnectionResult>(`/v1/dynamic-secrets/connections/${nameOrId}/test`, {});

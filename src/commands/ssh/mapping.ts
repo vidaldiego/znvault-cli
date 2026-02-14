@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
@@ -24,7 +24,7 @@ export function registerMappingCommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching mappings...').start();
+      const spinner = output.spinner('Fetching mappings...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -67,7 +67,7 @@ export function registerMappingCommands(parent: Command): void {
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (groupId: string, principals: string[], options: CreateMappingOptions) => {
-      const spinner = ora('Creating mapping...').start();
+      const spinner = output.spinner('Creating mapping...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -101,7 +101,7 @@ export function registerMappingCommands(parent: Command): void {
     .description('Update principal mapping')
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .action(async (mappingId: string, principals: string[], options: { tenant?: string }) => {
-      const spinner = ora('Updating mapping...').start();
+      const spinner = output.spinner('Updating mapping...').start();
 
       try {
         const query = buildTenantQuery(options.tenant);
@@ -134,7 +134,7 @@ export function registerMappingCommands(parent: Command): void {
           }
         }
 
-        const spinner = ora('Deleting mapping...').start();
+        const spinner = output.spinner('Deleting mapping...').start();
 
         try {
           await client.delete(`/v1/ssh/principal-mappings/${encodeURIComponent(mappingId)}${query}`);

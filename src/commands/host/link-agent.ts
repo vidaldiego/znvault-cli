@@ -2,7 +2,7 @@
 // Link/unlink agents to host configurations
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 
@@ -64,7 +64,7 @@ export function registerLinkAgentCommand(parentCmd: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Linking agent to host config...').start();
+      const spinner = output.spinner('Linking agent to host config...').start();
 
       try {
         const body: Record<string, string> = {};
@@ -122,7 +122,7 @@ export function registerUnlinkAgentCommand(parentCmd: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Unlinking agent from host config...').start();
+      const spinner = output.spinner('Unlinking agent from host config...').start();
 
       try {
         // Build query params

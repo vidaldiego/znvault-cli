@@ -2,7 +2,7 @@
 // Backup CRUD operations
 
 import { readFile, writeFile } from 'node:fs/promises';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -30,7 +30,7 @@ import type {
 } from './types.js';
 
 export async function listBackups(options: ListOptions): Promise<void> {
-  const spinner = ora('Fetching backups...').start();
+  const spinner = output.spinner('Fetching backups...').start();
 
   try {
     const query: Record<string, string | undefined> = {};
@@ -77,7 +77,7 @@ export async function listBackups(options: ListOptions): Promise<void> {
 }
 
 export async function getBackup(id: string, options: GetOptions): Promise<void> {
-  const spinner = ora('Fetching backup...').start();
+  const spinner = output.spinner('Fetching backup...').start();
 
   try {
     const backup = await client.get<Backup>(`/v1/admin/backups/${id}`);
@@ -151,7 +151,7 @@ export async function createBackup(options: CreateBackupOptions): Promise<void> 
     return;
   }
 
-  const spinner = ora('Creating backup...').start();
+  const spinner = output.spinner('Creating backup...').start();
 
   try {
     const body = userKey ? { userKey } : {};
@@ -175,7 +175,7 @@ export async function createBackup(options: CreateBackupOptions): Promise<void> 
 }
 
 export async function generateKey(options: GenerateKeyOptions): Promise<void> {
-  const spinner = ora('Generating master key...').start();
+  const spinner = output.spinner('Generating master key...').start();
 
   try {
     const result = await client.post<GenerateKeyResponse>('/v1/admin/backups/generate-key', {});
@@ -210,7 +210,7 @@ export async function generateKey(options: GenerateKeyOptions): Promise<void> {
 }
 
 export async function verifyBackup(id: string): Promise<void> {
-  const spinner = ora('Verifying backup...').start();
+  const spinner = output.spinner('Verifying backup...').start();
 
   try {
     const result = await client.post<{ valid: boolean; checksum: string; integrityCheck: string; message: string }>(`/v1/admin/backups/${id}/verify`, {});
@@ -233,7 +233,7 @@ export async function verifyBackup(id: string): Promise<void> {
 
 export async function deleteBackup(id: string, options: DeleteOptions): Promise<void> {
   if (!options.force) {
-    const spinner = ora('Fetching backup...').start();
+    const spinner = output.spinner('Fetching backup...').start();
     try {
       const backup = await client.get<Backup>(`/v1/admin/backups/${id}`);
       spinner.stop();
@@ -258,7 +258,7 @@ export async function deleteBackup(id: string, options: DeleteOptions): Promise<
     }
   }
 
-  const deleteSpinner = ora('Deleting backup...').start();
+  const deleteSpinner = output.spinner('Deleting backup...').start();
 
   try {
     await client.delete(`/v1/admin/backups/${id}`);
@@ -273,7 +273,7 @@ export async function deleteBackup(id: string, options: DeleteOptions): Promise<
 
 export async function restoreBackup(id: string, options: RestoreOptions): Promise<void> {
   // Fetch backup details first
-  const fetchSpinner = ora('Fetching backup details...').start();
+  const fetchSpinner = output.spinner('Fetching backup details...').start();
   let backup: Backup;
 
   try {
@@ -355,7 +355,7 @@ export async function restoreBackup(id: string, options: RestoreOptions): Promis
     }
   }
 
-  const restoreSpinner = ora('Restoring backup...').start();
+  const restoreSpinner = output.spinner('Restoring backup...').start();
 
   try {
     const confirmPhrase = `RESTORE-${backup.id.slice(0, 8)}`;
@@ -413,7 +413,7 @@ export async function restoreBackup(id: string, options: RestoreOptions): Promis
 }
 
 export async function showStats(options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching backup stats...').start();
+  const spinner = output.spinner('Fetching backup stats...').start();
 
   try {
     const stats = await client.get<BackupStats>('/v1/admin/backups/stats');
@@ -446,7 +446,7 @@ export async function showStats(options: { json?: boolean }): Promise<void> {
 }
 
 export async function showHealth(options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Checking backup health...').start();
+  const spinner = output.spinner('Checking backup health...').start();
 
   try {
     const health = await client.get<BackupHealth>('/v1/admin/backups/health');

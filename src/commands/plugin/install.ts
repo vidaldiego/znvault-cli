@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import chalk from 'chalk';
 import * as output from '../../lib/output.js';
 import { getPlugins, addPlugin } from '../../lib/config.js';
@@ -30,7 +30,7 @@ export function registerInstallCommand(parent: Command): void {
     .option('-g, --global', 'Install globally instead of in plugins directory')
     .option('--json', 'Output as JSON')
     .action(async (name: string, options: PluginInstallOptions) => {
-      const spinner = ora('Resolving plugin...').start();
+      const spinner = output.spinner('Resolving plugin...').start();
 
       try {
         // Resolve plugin name

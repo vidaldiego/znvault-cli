@@ -2,7 +2,7 @@
 // Permissions commands - list and validate permissions from the API
 
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import chalk from 'chalk';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
@@ -56,7 +56,7 @@ export function registerPermissionsCommands(program: Command): void {
     .option('-c, --category <category>', 'Filter by category')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching permissions...').start();
+      const spinner = output.spinner('Fetching permissions...').start();
 
       try {
         const result = await client.getPermissions(options.category) as PermissionsResponse;
@@ -103,7 +103,7 @@ export function registerPermissionsCommands(program: Command): void {
     .description('List permission categories')
     .option('--json', 'Output as JSON')
     .action(async (options: CategoriesOptions) => {
-      const spinner = ora('Fetching categories...').start();
+      const spinner = output.spinner('Fetching categories...').start();
 
       try {
         const result = await client.getPermissions() as PermissionsResponse;
@@ -134,7 +134,7 @@ export function registerPermissionsCommands(program: Command): void {
     .description('Validate permission IDs')
     .option('--json', 'Output as JSON')
     .action(async (permissions: string[], options: ValidateOptions) => {
-      const spinner = ora('Validating permissions...').start();
+      const spinner = output.spinner('Validating permissions...').start();
 
       try {
         const result = await client.validatePermissions(permissions) as ValidatePermissionsResponse;
@@ -185,7 +185,7 @@ export function registerPermissionsCommands(program: Command): void {
     .description('Search permissions by name or description')
     .option('--json', 'Output as JSON')
     .action(async (query: string, options: SearchOptions) => {
-      const spinner = ora('Searching permissions...').start();
+      const spinner = output.spinner('Searching permissions...').start();
 
       try {
         const result = await client.getPermissions() as PermissionsResponse;

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -44,7 +44,7 @@ async function encryptData(keyId: string, data: string | undefined, options: Enc
     plaintext = Buffer.from(inputData).toString('base64');
   }
 
-  const spinner = ora('Encrypting data...').start();
+  const spinner = output.spinner('Encrypting data...').start();
 
   try {
     const body = {
@@ -103,7 +103,7 @@ async function decryptData(keyId: string, ciphertext: string | undefined, option
     }
   }
 
-  const spinner = ora('Decrypting data...').start();
+  const spinner = output.spinner('Decrypting data...').start();
 
   try {
     const body = {
@@ -145,7 +145,7 @@ async function decryptData(keyId: string, ciphertext: string | undefined, option
 }
 
 async function generateDataKey(keyId: string, options: GenerateDataKeyOptions): Promise<void> {
-  const spinner = ora('Generating data key...').start();
+  const spinner = output.spinner('Generating data key...').start();
 
   try {
     const body = {

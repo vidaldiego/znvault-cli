@@ -1,7 +1,7 @@
 // Path: znvault-cli/src/commands/group.ts
 
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
@@ -87,7 +87,7 @@ export function registerGroupCommands(program: Command): void {
     .option('--tenant <id>', 'Filter by tenant (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching groups...').start();
+      const spinner = output.spinner('Fetching groups...').start();
 
       try {
         const params = new URLSearchParams();
@@ -139,7 +139,7 @@ export function registerGroupCommands(program: Command): void {
     .option('--description <text>', 'Group description')
     .option('--json', 'Output as JSON')
     .action(async (name: string, options: CreateOptions) => {
-      const spinner = ora('Creating group...').start();
+      const spinner = output.spinner('Creating group...').start();
 
       try {
         const body: Record<string, unknown> = {
@@ -182,7 +182,7 @@ export function registerGroupCommands(program: Command): void {
     .description('Get group details')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: GetOptions) => {
-      const spinner = ora('Fetching group...').start();
+      const spinner = output.spinner('Fetching group...').start();
 
       try {
         const data = await client.get<SSOGroup>(`/v1/sso/groups/${id}`);
@@ -222,7 +222,7 @@ export function registerGroupCommands(program: Command): void {
     .option('--description <text>', 'New description')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: UpdateOptions) => {
-      const spinner = ora('Updating group...').start();
+      const spinner = output.spinner('Updating group...').start();
 
       try {
         const body: Record<string, unknown> = {};
@@ -286,7 +286,7 @@ export function registerGroupCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Deleting group...').start();
+        const spinner = output.spinner('Deleting group...').start();
 
         await client.delete(`/v1/sso/groups/${id}`);
         spinner.succeed(`Group "${groupData.name}" deleted`);
@@ -309,7 +309,7 @@ export function registerGroupCommands(program: Command): void {
     .description('List group members')
     .option('--json', 'Output as JSON')
     .action(async (groupId: string, options: MembersListOptions) => {
-      const spinner = ora('Fetching members...').start();
+      const spinner = output.spinner('Fetching members...').start();
 
       try {
         const data = await client.get<{ items: SSOGroupMember[]; pagination: { total: number } }>(
@@ -350,7 +350,7 @@ export function registerGroupCommands(program: Command): void {
     .command('add <groupId> <userId>')
     .description('Add user to group')
     .action(async (groupId: string, userId: string) => {
-      const spinner = ora('Adding member...').start();
+      const spinner = output.spinner('Adding member...').start();
 
       try {
         const data = await client.post<SSOGroupMember>(`/v1/sso/groups/${groupId}/members`, {
@@ -387,7 +387,7 @@ export function registerGroupCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Removing member...').start();
+        const spinner = output.spinner('Removing member...').start();
 
         await client.delete(`/v1/sso/groups/${groupId}/members/${userId}`);
         spinner.succeed('Member removed successfully');
@@ -405,7 +405,7 @@ export function registerGroupCommands(program: Command): void {
     .description('List groups you belong to')
     .option('--json', 'Output as JSON')
     .action(async (options: { json?: boolean }) => {
-      const spinner = ora('Fetching your groups...').start();
+      const spinner = output.spinner('Fetching your groups...').start();
 
       try {
         const data = await client.get<{ groups: Array<{ id: string; name: string; displayName: string | null }> }>(

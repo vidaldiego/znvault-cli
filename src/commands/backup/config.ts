@@ -1,7 +1,7 @@
 // Path: znvault-cli/src/commands/backup/config.ts
 // Backup configuration management
 
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 
 export async function showConfig(options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching backup config...').start();
+  const spinner = output.spinner('Fetching backup config...').start();
 
   try {
     const config = await client.get<BackupConfig>('/v1/admin/backups/config');
@@ -114,7 +114,7 @@ export async function updateConfig(options: ConfigOptions): Promise<void> {
     return;
   }
 
-  const spinner = ora('Updating backup config...').start();
+  const spinner = output.spinner('Updating backup config...').start();
 
   try {
     const result = await client.put<{ message: string; config: BackupConfig }>('/v1/admin/backups/config', body);
@@ -152,7 +152,7 @@ export async function configureS3Storage(options: S3StorageOptions): Promise<voi
     },
   };
 
-  const spinner = ora('Configuring S3 storage...').start();
+  const spinner = output.spinner('Configuring S3 storage...').start();
 
   try {
     const result = await client.put<{ message: string; config: BackupConfig; storageBackendUpdated: boolean }>('/v1/admin/backups/config', body);
@@ -191,7 +191,7 @@ export async function configureLocalStorage(options: LocalStorageOptions): Promi
     },
   };
 
-  const spinner = ora('Configuring local storage...').start();
+  const spinner = output.spinner('Configuring local storage...').start();
 
   try {
     const result = await client.put<{ message: string; config: BackupConfig; storageBackendUpdated: boolean }>('/v1/admin/backups/config', body);
@@ -238,7 +238,7 @@ export async function configureEncryption(options: EncryptionOptions): Promise<v
     }
   }
 
-  const spinner = ora('Configuring encryption...').start();
+  const spinner = output.spinner('Configuring encryption...').start();
 
   try {
     const result = await client.put<{ message: string; config: BackupConfig }>('/v1/admin/backups/config', body);
@@ -260,7 +260,7 @@ export async function configureEncryption(options: EncryptionOptions): Promise<v
 }
 
 export async function testStorage(): Promise<void> {
-  const spinner = ora('Testing storage backend...').start();
+  const spinner = output.spinner('Testing storage backend...').start();
 
   try {
     const health = await client.get<BackupHealth>('/v1/admin/backups/health');

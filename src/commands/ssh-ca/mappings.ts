@@ -4,7 +4,7 @@
  * Principal mapping commands for SSH CA
  */
 
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -28,7 +28,7 @@ interface SSOGroupsResponse {
 }
 
 export async function listMappings(options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching principal mappings...').start();
+  const spinner = output.spinner('Fetching principal mappings...').start();
 
   try {
     const response = await client.get<MappingsListResponse>('/v1/ssh/principal-mappings');
@@ -118,7 +118,7 @@ export async function createMapping(options: MappingCreateOptions): Promise<void
 
   const principals = parsePrincipals(principalsInput);
 
-  const spinner = ora('Creating principal mapping...').start();
+  const spinner = output.spinner('Creating principal mapping...').start();
 
   try {
     const response = await client.post<PrincipalMapping>('/v1/ssh/principal-mappings', {
@@ -162,7 +162,7 @@ export async function updateMapping(mappingId: string, options: MappingUpdateOpt
 
   const principals = parsePrincipals(principalsInput);
 
-  const spinner = ora('Updating principal mapping...').start();
+  const spinner = output.spinner('Updating principal mapping...').start();
 
   try {
     await client.put(`/v1/ssh/principal-mappings/${mappingId}`, { principals });
@@ -193,7 +193,7 @@ export async function deleteMapping(mappingId: string, options: { force?: boolea
     }
   }
 
-  const spinner = ora('Deleting principal mapping...').start();
+  const spinner = output.spinner('Deleting principal mapping...').start();
 
   try {
     await client.delete(`/v1/ssh/principal-mappings/${mappingId}`);

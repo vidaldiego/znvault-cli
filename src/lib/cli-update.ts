@@ -14,6 +14,7 @@ import { render } from 'ink';
 import { UpdateBanner } from '../tui/components/UpdateBanner.js';
 import { createDebugLogger } from './debug.js';
 import { UPDATE_CHECK_INTERVAL_MS, CLI_UPDATE_TIMEOUT_MS } from './constants.js';
+import { isQuietMode } from './output-mode.js';
 
 const log = createDebugLogger('cli-update');
 
@@ -275,8 +276,8 @@ export function showUpdateNotification(latestVersion: string, currentVersion: st
  * Shows notification if update is available
  */
 export function runBackgroundUpdateCheck(): void {
-  // Don't check in CI environments
-  if (process.env.CI || process.env.ZNVAULT_NO_UPDATE_CHECK) {
+  // Don't check in CI environments or quiet mode
+  if (process.env.CI || process.env.ZNVAULT_NO_UPDATE_CHECK || isQuietMode()) {
     return;
   }
 

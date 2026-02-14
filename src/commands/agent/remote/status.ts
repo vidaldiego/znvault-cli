@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import type { StatusOptions, AgentDetailResponse, ReprovisionStatusResponse } from '../types.js';
@@ -17,7 +17,7 @@ export function registerStatusCommand(parentCmd: Command): void {
     .description('Show detailed status of an agent including connection state')
     .option('--json', 'Output as JSON')
     .action(async (agentId: string, options: StatusOptions) => {
-      const spinner = ora('Fetching agent status...').start();
+      const spinner = output.spinner('Fetching agent status...').start();
 
       try {
         // Fetch both agent details and reprovision status in parallel

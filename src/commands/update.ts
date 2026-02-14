@@ -8,7 +8,7 @@
  */
 
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -145,7 +145,7 @@ export function registerUpdateCommands(program: Command): void {
     .option('--channel <channel>', 'Update channel (stable, beta, staging)', 'stable')
     .option('--json', 'Output as JSON')
     .action(async (options: UpdateCheckOptions) => {
-      const spinner = ora('Checking for updates...').start();
+      const spinner = output.spinner('Checking for updates...').start();
 
       try {
         const checker = createUpdateChecker(options.channel as UpdateChannel);
@@ -227,7 +227,7 @@ export function registerUpdateCommands(program: Command): void {
       }
 
       // Check for updates
-      const spinner = ora('Checking for updates...').start();
+      const spinner = output.spinner('Checking for updates...').start();
 
       try {
         const checker = createUpdateChecker(channel);
@@ -280,7 +280,7 @@ export function registerUpdateCommands(program: Command): void {
         }
 
         // Install with progress
-        let currentSpinner: ReturnType<typeof ora> | null = null;
+        let currentSpinner: ReturnType<typeof output.spinner> | null = null;
 
         const progressHandler = (progress: UpdateProgress): void => {
           if (currentSpinner) {
@@ -294,7 +294,7 @@ export function registerUpdateCommands(program: Command): void {
               currentSpinner.text = progress.message;
             }
           } else if (progress.stage !== 'complete' && progress.stage !== 'error') {
-            currentSpinner = ora(progress.message).start();
+            currentSpinner = output.spinner(progress.message).start();
           }
         };
 

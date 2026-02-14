@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -44,7 +44,7 @@ export function registerUpdateCommand(secretCmd: Command): void {
         }
       } else {
         // Interactive mode: prompt for data
-        const spinner = ora('Fetching current secret...').start();
+        const spinner = output.spinner('Fetching current secret...').start();
 
         try {
           const current = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
@@ -105,7 +105,7 @@ export function registerUpdateCommand(secretCmd: Command): void {
         }
       }
 
-      const updateSpinner = ora('Updating secret...').start();
+      const updateSpinner = output.spinner('Updating secret...').start();
 
       try {
         const body: Record<string, unknown> = { data: newData };

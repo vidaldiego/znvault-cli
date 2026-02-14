@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as output from '../../lib/output.js';
 import { getCurrentProfile } from '../../lib/config.js';
 import {
@@ -194,7 +194,7 @@ export function registerExecCommand(parent: Command): void {
       const certStatus = await isCertificateValid(certPath);
 
       if (options.forceSign || !certStatus.valid) {
-        const spinner = ora('Signing certificate...').start();
+        const spinner = output.spinner('Signing certificate...').start();
         try {
           await signCertificate(pubKeyPath, certPath, options.principals, options.ttl, options.tenant);
           spinner.succeed('Certificate signed');
@@ -211,7 +211,7 @@ export function registerExecCommand(parent: Command): void {
 
       if (options.parallel) {
         // Parallel execution
-        const spinner = ora('Executing on ' + resolvedHosts.length + ' hosts...').start();
+        const spinner = output.spinner('Executing on ' + resolvedHosts.length + ' hosts...').start();
         
         const promises = resolvedHosts.map(hostInfo => 
           executeOnHost(command, hostInfo, keyPath, certPath, options)

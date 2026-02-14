@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
@@ -34,7 +34,7 @@ export function registerSuperadminCommands(program: Command): void {
     .description('List all superadmins')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching superadmins...').start();
+      const spinner = output.spinner('Fetching superadmins...').start();
 
       try {
         const admins = await mode.listSuperadmins();
@@ -86,7 +86,7 @@ export function registerSuperadminCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Creating superadmin...').start();
+      const spinner = output.spinner('Creating superadmin...').start();
 
       try {
         const result = await client.createSuperadmin({
@@ -128,7 +128,7 @@ export function registerSuperadminCommands(program: Command): void {
 
       try {
         const password = newPassword ?? await promptNewPassword();
-        const spinner = ora('Resetting password...').start();
+        const spinner = output.spinner('Resetting password...').start();
 
         try {
           const result = await client.resetSuperadminPassword(username, password);
@@ -160,7 +160,7 @@ export function registerSuperadminCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Unlocking superadmin...').start();
+      const spinner = output.spinner('Unlocking superadmin...').start();
 
       try {
         const result = await client.unlockSuperadmin(username);
@@ -201,7 +201,7 @@ export function registerSuperadminCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Disabling superadmin...').start();
+        const spinner = output.spinner('Disabling superadmin...').start();
 
         try {
           const result = await client.disableSuperadmin(username);
@@ -233,7 +233,7 @@ export function registerSuperadminCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Enabling superadmin...').start();
+      const spinner = output.spinner('Enabling superadmin...').start();
 
       try {
         const result = await client.enableSuperadmin(username);

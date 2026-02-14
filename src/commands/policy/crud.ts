@@ -4,7 +4,7 @@
  * Policy CRUD commands
  */
 
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import { promptConfirm } from '../../lib/prompts.js';
 import * as output from '../../lib/output.js';
@@ -55,7 +55,7 @@ export async function createPolicy(options: PolicyCreateOptions): Promise<void> 
       output.fatal('Priority must be a non-negative number');
     }
 
-    const spinner = ora('Creating policy...').start();
+    const spinner = output.spinner('Creating policy...').start();
 
     const result = await client.createPolicy(policyData);
     spinner.succeed('Policy created successfully');
@@ -104,7 +104,7 @@ export async function updatePolicy(id: string, options: PolicyUpdateOptions): Pr
       output.fatal('No updates specified');
     }
 
-    const spinner = ora('Updating policy...').start();
+    const spinner = output.spinner('Updating policy...').start();
 
     const result = await client.updatePolicy(id, updates);
     spinner.succeed('Policy updated successfully');
@@ -136,7 +136,7 @@ export async function deletePolicy(id: string, options: PolicyDeleteOptions): Pr
       }
     }
 
-    const spinner = ora('Deleting policy...').start();
+    const spinner = output.spinner('Deleting policy...').start();
     await client.deletePolicy(id);
     spinner.succeed(`Policy '${id}' deleted successfully`);
 
@@ -149,7 +149,7 @@ export async function deletePolicy(id: string, options: PolicyDeleteOptions): Pr
 }
 
 export async function enablePolicy(id: string, options: PolicyToggleOptions): Promise<void> {
-  const spinner = ora('Enabling policy...').start();
+  const spinner = output.spinner('Enabling policy...').start();
 
   try {
     const result = await client.togglePolicy(id, true);
@@ -171,7 +171,7 @@ export async function enablePolicy(id: string, options: PolicyToggleOptions): Pr
 }
 
 export async function disablePolicy(id: string, options: PolicyToggleOptions): Promise<void> {
-  const spinner = ora('Disabling policy...').start();
+  const spinner = output.spinner('Disabling policy...').start();
 
   try {
     const result = await client.togglePolicy(id, false);
@@ -221,7 +221,7 @@ export async function validatePolicy(options: PolicyValidateOptions): Promise<vo
       }
     }
 
-    const spinner = ora('Validating policy...').start();
+    const spinner = output.spinner('Validating policy...').start();
 
     const result = await client.validatePolicy(policyData);
 

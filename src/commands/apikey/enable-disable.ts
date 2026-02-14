@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { EnableDisableOptions } from './types.js';
@@ -17,7 +17,7 @@ export function registerEnableDisableCommands(apiKeyCmd: Command): void {
     .description('Enable an API key (allow authentication)')
     .option('-t, --tenant <id>', 'Tenant ID')
     .action(async (id: string, options: EnableDisableOptions) => {
-      const spinner = ora('Enabling API key...').start();
+      const spinner = output.spinner('Enabling API key...').start();
 
       try {
         const key = await client.setApiKeyEnabled(id, true, options.tenant);
@@ -36,7 +36,7 @@ export function registerEnableDisableCommands(apiKeyCmd: Command): void {
     .description('Disable an API key (block authentication without deleting)')
     .option('-t, --tenant <id>', 'Tenant ID')
     .action(async (id: string, options: EnableDisableOptions) => {
-      const spinner = ora('Disabling API key...').start();
+      const spinner = output.spinner('Disabling API key...').start();
 
       try {
         const key = await client.setApiKeyEnabled(id, false, options.tenant);

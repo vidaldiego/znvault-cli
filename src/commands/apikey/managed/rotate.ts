@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedRotateOptions } from './types.js';
@@ -17,7 +17,7 @@ export function registerManagedRotateCommand(managedCmd: Command): void {
     .description('Force immediate rotation of a managed key')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .action(async (name: string, options: ManagedRotateOptions) => {
-      const spinner = ora('Rotating managed API key...').start();
+      const spinner = output.spinner('Rotating managed API key...').start();
 
       try {
         const result = await client.rotateManagedApiKey(name, options.tenant);

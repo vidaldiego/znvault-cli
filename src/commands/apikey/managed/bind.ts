@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedBindOptions } from './types.js';
@@ -19,7 +19,7 @@ export function registerManagedBindCommand(managedCmd: Command): void {
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (name: string, options: ManagedBindOptions) => {
-      const spinner = ora('Binding to managed API key...').start();
+      const spinner = output.spinner('Binding to managed API key...').start();
 
       try {
         const result = await client.bindManagedApiKey(name, options.tenant);

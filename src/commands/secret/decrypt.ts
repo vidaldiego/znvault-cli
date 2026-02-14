@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { DecryptOptions, DecryptedSecret } from './types.js';
@@ -26,7 +26,7 @@ Examples:
   znvault secret decrypt certs/server-key -o key.pem # save to file
 `)
     .action(async (idOrAlias: string, options: DecryptOptions) => {
-      const spinner = ora('Resolving secret...').start();
+      const spinner = output.spinner('Resolving secret...').start();
 
       try {
         // Resolve alias to UUID if needed

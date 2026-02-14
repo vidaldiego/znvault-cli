@@ -4,13 +4,13 @@
  * Policy test command
  */
 
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { PolicyTestOptions } from './types.js';
 
 export async function testPolicy(options: PolicyTestOptions): Promise<void> {
-  const spinner = ora('Testing policy evaluation...').start();
+  const spinner = output.spinner('Testing policy evaluation...').start();
 
   try {
     const request = {

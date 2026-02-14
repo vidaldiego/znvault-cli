@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../lib/mode.js';
 import * as output from '../lib/output.js';
 import type {
@@ -77,7 +77,7 @@ export function registerCertCommands(program: Command): void {
     .option('--expiring <days>', 'Show certificates expiring within N days')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
-      const spinner = ora('Fetching certificates...').start();
+      const spinner = output.spinner('Fetching certificates...').start();
 
       try {
         const params = new URLSearchParams();
@@ -138,7 +138,7 @@ export function registerCertCommands(program: Command): void {
     .description('Get certificate details')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: GetOptions) => {
-      const spinner = ora('Fetching certificate...').start();
+      const spinner = output.spinner('Fetching certificate...').start();
 
       try {
         const result = await mode.apiGet<CertificateMetadata>(`/v1/certificates/${id}`);
@@ -198,7 +198,7 @@ export function registerCertCommands(program: Command): void {
     .option('--purpose <purpose>', 'Purpose for access (required)', 'CLI access')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: DecryptOptions) => {
-      const spinner = ora('Decrypting certificate...').start();
+      const spinner = output.spinner('Decrypting certificate...').start();
 
       try {
         const result = await mode.apiPost<DecryptedCertificate>(`/v1/certificates/${id}/decrypt`, {
@@ -237,7 +237,7 @@ export function registerCertCommands(program: Command): void {
     .option('--days <days>', 'Days until expiry (default: 30)', '30')
     .option('--json', 'Output as JSON')
     .action(async (options: ExpiringOptions) => {
-      const spinner = ora('Checking expiring certificates...').start();
+      const spinner = output.spinner('Checking expiring certificates...').start();
 
       try {
         const result = await mode.apiGet<CertificateMetadata[]>(`/v1/certificates/expiring?days=${options.days}`);
@@ -282,7 +282,7 @@ export function registerCertCommands(program: Command): void {
     .description('Get certificate statistics')
     .option('--json', 'Output as JSON')
     .action(async (options: StatsOptions) => {
-      const spinner = ora('Fetching statistics...').start();
+      const spinner = output.spinner('Fetching statistics...').start();
 
       try {
         const result = await mode.apiGet<CertificateStats>('/v1/certificates/stats');
@@ -335,7 +335,7 @@ export function registerCertCommands(program: Command): void {
     .option('--tags <tags>', 'Comma-separated tags')
     .option('--json', 'Output as JSON')
     .action(async (options: StoreOptions) => {
-      const spinner = ora('Storing certificate...').start();
+      const spinner = output.spinner('Storing certificate...').start();
 
       try {
         const fs = await import('node:fs');
@@ -397,7 +397,7 @@ export function registerCertCommands(program: Command): void {
     .option('--reason <reason>', 'Reason for rotation', 'Certificate renewal')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: RotateOptions) => {
-      const spinner = ora('Rotating certificate...').start();
+      const spinner = output.spinner('Rotating certificate...').start();
 
       try {
         const fs = await import('node:fs');
@@ -468,7 +468,7 @@ export function registerCertCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Deleting certificate...').start();
+        const spinner = output.spinner('Deleting certificate...').start();
 
         await mode.apiDelete(`/v1/certificates/${id}`);
         spinner.stop();

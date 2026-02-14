@@ -2,7 +2,7 @@
 // Generate bootstrap token for host
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { BootstrapTokenOptions, BootstrapTokenResponse } from './types.js';
@@ -30,7 +30,7 @@ export function registerBootstrapTokenCommand(parentCmd: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Generating bootstrap token...').start();
+      const spinner = output.spinner('Generating bootstrap token...').start();
 
       try {
         // Build request body

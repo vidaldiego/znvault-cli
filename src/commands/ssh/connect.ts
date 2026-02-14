@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as output from '../../lib/output.js';
 import { getCurrentProfile } from '../../lib/config.js';
 import type { ConnectOptions } from './types.js';
@@ -127,7 +127,7 @@ export async function executeConnect(
 
     // Step 3: Sign if needed
     if (needsSign) {
-      const spinner = ora('Signing certificate...').start();
+      const spinner = output.spinner('Signing certificate...').start();
       try {
         await signCertificate(pubKeyPath, certPath, principalsOverride, options.ttl, options.tenant);
         spinner.succeed('Certificate signed');

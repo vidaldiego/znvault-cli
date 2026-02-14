@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -18,7 +18,7 @@ export function registerRotateCommand(secretCmd: Command): void {
     .description('Rotate secret (supports UUID or tenant/alias format)')
     .option('--json', 'Output as JSON')
     .action(async (idOrAlias: string, options: RotateOptions) => {
-      const spinner = ora('Resolving secret...').start();
+      const spinner = output.spinner('Resolving secret...').start();
 
       try {
         // Resolve alias to UUID if needed
@@ -64,7 +64,7 @@ export function registerRotateCommand(secretCmd: Command): void {
           }
         }
 
-        const rotateSpinner = ora('Rotating secret...').start();
+        const rotateSpinner = output.spinner('Rotating secret...').start();
 
         const result = await client.post<SecretMetadata>(`/v1/secrets/${id}/rotate`, { data: newData });
         rotateSpinner.stop();

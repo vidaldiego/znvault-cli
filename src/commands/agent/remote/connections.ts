@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import type { ConnectionsOptions, ConnectionsListResponse } from '../types.js';
@@ -18,7 +18,7 @@ export function registerConnectionsCommand(parentCmd: Command): void {
     .option('-t, --tenant <tenantId>', 'Filter by tenant (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (options: ConnectionsOptions) => {
-      const spinner = ora('Fetching connections...').start();
+      const spinner = output.spinner('Fetching connections...').start();
 
       try {
         const query = options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : '';

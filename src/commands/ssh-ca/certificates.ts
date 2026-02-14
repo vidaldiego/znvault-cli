@@ -4,7 +4,7 @@
  * Certificate management commands for SSH CA
  */
 
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -18,7 +18,7 @@ import type {
 import { formatDate, formatValidity, formatPrincipals } from './helpers.js';
 
 export async function listCertificates(options: CertListOptions): Promise<void> {
-  const spinner = ora('Fetching certificates...').start();
+  const spinner = output.spinner('Fetching certificates...').start();
 
   try {
     const params = new URLSearchParams();
@@ -68,7 +68,7 @@ export async function listCertificates(options: CertListOptions): Promise<void> 
 }
 
 export async function getCertificate(certId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching certificate...').start();
+  const spinner = output.spinner('Fetching certificate...').start();
 
   try {
     const cert = await client.get<SSHCertificate>(`/v1/ssh/certificates/${certId}`);
@@ -131,7 +131,7 @@ export async function revokeCertificate(certId: string, options: RevokeOptions):
     default: 'Manually revoked via CLI',
   }])).reason;
 
-  const spinner = ora('Revoking certificate...').start();
+  const spinner = output.spinner('Revoking certificate...').start();
 
   try {
     await client.post(`/v1/ssh/certificates/${certId}/revoke`, { reason });

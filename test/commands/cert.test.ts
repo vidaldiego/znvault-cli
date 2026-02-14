@@ -3,16 +3,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
 
-// Mock ora
-vi.mock('ora', () => ({
-  default: () => ({
-    start: vi.fn().mockReturnThis(),
-    stop: vi.fn(),
-    succeed: vi.fn(),
-    fail: vi.fn(),
-  }),
-}));
-
 // Mock mode (API client)
 vi.mock('../../src/lib/mode.js', () => ({
   apiGet: vi.fn(),
@@ -23,6 +13,7 @@ vi.mock('../../src/lib/mode.js', () => ({
 
 // Mock output
 vi.mock('../../src/lib/output.js', () => ({
+  spinner: vi.fn(() => ({ start: vi.fn().mockReturnThis(), stop: vi.fn().mockReturnThis(), succeed: vi.fn().mockReturnThis(), fail: vi.fn().mockReturnThis(), warn: vi.fn().mockReturnThis(), info: vi.fn().mockReturnThis(), text: '', isSpinning: false })),
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),

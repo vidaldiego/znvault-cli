@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 
@@ -40,7 +40,7 @@ export function registerHostsCommand(parent: Command): void {
     .option('--online-only', 'Show only online agents')
     .option('--json', 'Output as JSON')
     .action(async (options: { tenant?: string; onlineOnly?: boolean; json?: boolean }) => {
-      const spinner = ora('Fetching hosts...').start();
+      const spinner = output.spinner('Fetching hosts...').start();
 
       try {
         const params = new URLSearchParams();

@@ -48,7 +48,7 @@ import {
 } from './lib/config.js';
 import { cliBanner, helpHint, cliStatusDisplay, quickCommands, type CLIStatusInfo } from './lib/visual.js';
 import { runBackgroundUpdateCheck } from './lib/cli-update.js';
-import { setOutputMode } from './lib/output-mode.js';
+import { setOutputMode, setQuietMode } from './lib/output-mode.js';
 import { profileIndicator } from './lib/output.js';
 import { configureContextHelp } from './lib/context-help.js';
 import { getVersion } from './lib/version.js';
@@ -59,6 +59,7 @@ interface GlobalOptions {
   insecure?: boolean;
   profile?: string;
   plain?: boolean;
+  quiet?: boolean;
 }
 
 const program = new Command();
@@ -71,6 +72,7 @@ program
   .option('--insecure', 'Skip TLS certificate verification')
   .option('--profile <name>', 'Use a specific configuration profile')
   .option('--plain', 'Use plain text output (no colors or TUI)')
+  .option('-q, --quiet', 'Suppress non-essential output (spinners, info messages, banners)')
   .hook('preAction', (thisCommand, actionCommand) => {
     // Apply global options
     const opts = thisCommand.opts<GlobalOptions>();
@@ -78,6 +80,11 @@ program
     // Set output mode first (before any output)
     if (opts.plain) {
       setOutputMode('plain');
+    }
+
+    // Set quiet mode (suppresses spinners, info, success, banners)
+    if (opts.quiet) {
+      setQuietMode(true);
     }
 
     // Set profile override (before any config access)
@@ -198,6 +205,11 @@ async function main(): Promise<void> {
     console.log(quickCommands());
     console.log(helpHint());
     process.exit(0);
+  }
+
+  // Apply quiet mode early from argv (before commander parses)
+  if (process.argv.includes('--quiet') || process.argv.includes('-q')) {
+    setQuietMode(true);
   }
 
   // Load CLI plugins

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -19,7 +19,7 @@ export function registerHistoryCommand(secretCmd: Command): void {
     .description('Show secret version history (supports UUID or tenant/alias format)')
     .option('--json', 'Output as JSON')
     .action(async (idOrAlias: string, options: HistoryOptions) => {
-      const spinner = ora('Resolving secret...').start();
+      const spinner = output.spinner('Resolving secret...').start();
 
       try {
         // Resolve alias to UUID if needed

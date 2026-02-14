@@ -4,7 +4,7 @@
  * Credential generation commands for dynamic secrets
  */
 
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { GeneratedCredential } from './types.js';
@@ -14,7 +14,7 @@ export async function generateCredentials(roleId: string, options: {
   ttl?: string;
   json?: boolean;
 }): Promise<void> {
-  const spinner = ora('Generating credentials...').start();
+  const spinner = output.spinner('Generating credentials...').start();
 
   try {
     const body: Record<string, unknown> = {};

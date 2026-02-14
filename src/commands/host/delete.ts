@@ -2,7 +2,7 @@
 // Delete a host configuration
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import { promptConfirm } from '../../lib/prompts.js';
@@ -28,7 +28,7 @@ export function registerDeleteCommand(parentCmd: Command): void {
         }
       }
 
-      const spinner = ora('Deleting host configuration...').start();
+      const spinner = output.spinner('Deleting host configuration...').start();
 
       try {
         // First get the host to show what's being deleted

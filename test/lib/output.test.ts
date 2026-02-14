@@ -4,8 +4,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../../src/lib/output-mode.js', () => ({
   isPlainMode: () => false,
   isTuiMode: () => true,
+  isQuietMode: () => false,
   getOutputMode: () => 'tui',
   setOutputMode: vi.fn(),
+  setQuietMode: vi.fn(),
   resetOutputMode: vi.fn(),
 }));
 

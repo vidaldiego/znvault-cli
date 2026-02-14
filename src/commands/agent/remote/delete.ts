@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import type { DeleteOptions } from '../types.js';
@@ -27,7 +27,7 @@ export function registerDeleteCommand(parentCmd: Command): void {
         }
       }
 
-      const spinner = ora('Deleting agent...').start();
+      const spinner = output.spinner('Deleting agent...').start();
 
       try {
         await mode.apiDelete(`/v1/agents/${encodeURIComponent(agentId)}`);

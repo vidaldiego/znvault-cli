@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as output from '../../../lib/output.js';
 import type { DirectCommandOptions } from '../types.js';
 import { resolveHostPort, fetchPluginVersions } from '../helpers.js';
@@ -21,7 +21,7 @@ export function registerPluginsCommand(parentCmd: Command): void {
         process.exit(1);
       }
       const { host, port } = resolved;
-      const spinner = ora(`Checking plugins at ${host}:${port}...`).start();
+      const spinner = output.spinner(`Checking plugins at ${host}:${port}...`).start();
 
       try {
         const response = await fetchPluginVersions(host, port);

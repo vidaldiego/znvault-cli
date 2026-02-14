@@ -25,6 +25,7 @@ vi.mock('../../src/tui/App.js', () => ({
 
 // Mock output
 vi.mock('../../src/lib/output.js', () => ({
+  spinner: vi.fn(() => ({ start: vi.fn().mockReturnThis(), stop: vi.fn().mockReturnThis(), succeed: vi.fn().mockReturnThis(), fail: vi.fn().mockReturnThis(), warn: vi.fn().mockReturnThis(), info: vi.fn().mockReturnThis(), text: '', isSpinning: false })),
   json: vi.fn(),
   info: vi.fn(),
   error: vi.fn(),

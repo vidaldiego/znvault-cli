@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm } from '../lib/prompts.js';
@@ -54,7 +54,7 @@ export function registerTenantCommands(program: Command): void {
     .option('--with-usage', 'Include usage statistics')
     .option('--json', 'Output as JSON')
     .action(async (options: TenantListOptions) => {
-      const spinner = ora('Fetching tenants...').start();
+      const spinner = output.spinner('Fetching tenants...').start();
 
       try {
         const tenants = await mode.listTenants({
@@ -119,7 +119,7 @@ export function registerTenantCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Creating tenant...').start();
+      const spinner = output.spinner('Creating tenant...').start();
 
       try {
         const result = await client.createTenant({
@@ -157,7 +157,7 @@ export function registerTenantCommands(program: Command): void {
     .option('--with-usage', 'Include usage statistics')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: TenantGetOptions) => {
-      const spinner = ora('Fetching tenant...').start();
+      const spinner = output.spinner('Fetching tenant...').start();
 
       try {
         const result = await mode.getTenant(id, options.withUsage);
@@ -234,7 +234,7 @@ export function registerTenantCommands(program: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Updating tenant...').start();
+      const spinner = output.spinner('Updating tenant...').start();
 
       try {
         const result = await client.updateTenant(id, updates as Parameters<typeof client.updateTenant>[1]);
@@ -282,7 +282,7 @@ export function registerTenantCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Archiving tenant...').start();
+        const spinner = output.spinner('Archiving tenant...').start();
 
         try {
           await client.deleteTenant(id);
@@ -307,7 +307,7 @@ export function registerTenantCommands(program: Command): void {
     .description('Get tenant usage statistics')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: TenantUsageOptions) => {
-      const spinner = ora('Fetching usage...').start();
+      const spinner = output.spinner('Fetching usage...').start();
 
       try {
         const usage = await mode.getTenantUsage(id);

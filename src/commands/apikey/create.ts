@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { CreateOptions, ApiKeyConditions } from './types.js';
@@ -36,7 +36,7 @@ export function registerCreateCommand(apiKeyCmd: Command): void {
 
       const permissions = options.permissions.split(',').map((p) => p.trim());
 
-      const spinner = ora('Creating API key...').start();
+      const spinner = output.spinner('Creating API key...').start();
 
       try {
         // Parse options

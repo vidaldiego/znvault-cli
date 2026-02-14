@@ -1,5 +1,5 @@
 import { type Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm } from '../lib/prompts.js';
@@ -25,7 +25,7 @@ export function registerClusterCommands(program: Command): void {
     .description('Show cluster status')
     .option('--json', 'Output as JSON')
     .action(async (options: ClusterStatusOptions) => {
-      const spinner = ora('Getting cluster status...').start();
+      const spinner = output.spinner('Getting cluster status...').start();
 
       try {
         const status = await mode.clusterStatus();
@@ -113,7 +113,7 @@ export function registerClusterCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Taking over leadership...').start();
+        const spinner = output.spinner('Taking over leadership...').start();
 
         try {
           const result = await client.clusterTakeover();
@@ -168,7 +168,7 @@ export function registerClusterCommands(program: Command): void {
           }
         }
 
-        const spinner = ora(`Promoting node ${nodeId}...`).start();
+        const spinner = output.spinner(`Promoting node ${nodeId}...`).start();
 
         try {
           const result = await client.clusterPromote(nodeId);
@@ -216,7 +216,7 @@ export function registerClusterCommands(program: Command): void {
           }
         }
 
-        const spinner = ora('Releasing leadership...').start();
+        const spinner = output.spinner('Releasing leadership...').start();
 
         try {
           const result = await client.clusterRelease();
@@ -271,7 +271,7 @@ export function registerClusterCommands(program: Command): void {
           }
         }
 
-        const spinner = ora(`${enable ? 'Enabling' : 'Disabling'} maintenance mode...`).start();
+        const spinner = output.spinner(`${enable ? 'Enabling' : 'Disabling'} maintenance mode...`).start();
 
         try {
           const result = await client.clusterMaintenance(enable);

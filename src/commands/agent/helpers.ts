@@ -4,7 +4,7 @@
  * Helper functions for agent commands
  */
 
-import ora from 'ora';
+
 import inquirer from 'inquirer';
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
@@ -230,7 +230,7 @@ export async function selectAgentInteractively(): Promise<{ host: string; port: 
     return null;
   }
 
-  const spinner = ora('Fetching agents from vault...').start();
+  const spinner = output.spinner('Fetching agents from vault...').start();
 
   try {
     const response = await mode.apiGet<AgentListResponse>('/v1/agents?pageSize=100');

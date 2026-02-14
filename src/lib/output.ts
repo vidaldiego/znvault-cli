@@ -8,10 +8,11 @@
 
 import chalk from 'chalk';
 import Table from 'cli-table3';
+import ora, { type Ora } from 'ora';
 import React from 'react';
 import { render } from 'ink';
 import type { OutputFormat } from '../types/index.js';
-import { isPlainMode } from './output-mode.js';
+import { isPlainMode, isQuietMode } from './output-mode.js';
 import { getVersion } from './version.js';
 import {
   Table as TuiTable,
@@ -29,6 +30,7 @@ import {
  * Print success message
  */
 export function success(message: string): void {
+  if (isQuietMode()) return;
   if (isPlainMode()) {
     console.log(`[OK] ${message}`);
   } else {
@@ -139,6 +141,7 @@ export function fatal(message: string, exitCode = 1): never {
  * Print warning message
  */
 export function warn(message: string): void {
+  if (isQuietMode()) return;
   if (isPlainMode()) {
     console.warn(`[WARN] ${message}`);
   } else {
@@ -150,6 +153,7 @@ export function warn(message: string): void {
  * Print info message
  */
 export function info(message: string): void {
+  if (isQuietMode()) return;
   if (isPlainMode()) {
     console.log(`[INFO] ${message}`);
   } else {
@@ -569,6 +573,7 @@ export function printData(
  * Print a section header
  */
 export function section(title: string): void {
+  if (isQuietMode()) return;
   console.log();
   if (isPlainMode()) {
     console.log(title);
@@ -583,6 +588,7 @@ export function section(title: string): void {
  * Print a horizontal rule
  */
 export function hr(): void {
+  if (isQuietMode()) return;
   if (isPlainMode()) {
     console.log('-'.repeat(60));
   } else {
@@ -594,6 +600,7 @@ export function hr(): void {
  * Print an empty line
  */
 export function newline(): void {
+  if (isQuietMode()) return;
   console.log();
 }
 
@@ -602,6 +609,7 @@ export function newline(): void {
  * Shows at the start of each command to indicate which profile is active
  */
 export function profileIndicator(profileName: string, url: string): void {
+  if (isQuietMode()) return;
   const version = getVersion();
   if (isPlainMode()) {
     console.log(`[znvault v${version}] [profile: ${profileName} -> ${url}]`);
@@ -617,7 +625,42 @@ export function profileIndicator(profileName: string, url: string): void {
   }
 }
 
+/**
+ * No-op spinner interface for quiet mode
+ */
+interface NoopSpinner {
+  start(): NoopSpinner;
+  stop(): NoopSpinner;
+  succeed(text?: string): NoopSpinner;
+  fail(text?: string): NoopSpinner;
+  warn(text?: string): NoopSpinner;
+  info(text?: string): NoopSpinner;
+  text: string;
+  isSpinning: boolean;
+}
+
+/**
+ * Create a spinner that is suppressed in quiet mode.
+ * Returns a real ora spinner normally, or a no-op when --quiet is active.
+ */
+export function spinner(text: string): Ora | NoopSpinner {
+  if (isQuietMode()) {
+    const noop: NoopSpinner = {
+      start() { return this; },
+      stop() { return this; },
+      succeed() { return this; },
+      fail() { return this; },
+      warn() { return this; },
+      info() { return this; },
+      text: '',
+      isSpinning: false,
+    };
+    return noop;
+  }
+  return ora(text);
+}
+
 // Re-export mode detection for convenience
-export { isPlainMode } from './output-mode.js';
+export { isPlainMode, isQuietMode } from './output-mode.js';
 export type { TableColumn } from '../tui/components/Table.js';
 export type { ListItem } from '../tui/components/List.js';

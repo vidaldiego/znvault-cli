@@ -4,7 +4,7 @@
  * Policy attachment commands
  */
 
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { shortId, formatActiveStatus } from '../../lib/format-helpers.js';
@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 
 export async function showAttachments(id: string, options: PolicyAttachmentsOptions): Promise<void> {
-  const spinner = ora('Fetching attachments...').start();
+  const spinner = output.spinner('Fetching attachments...').start();
 
   try {
     const result = await client.getPolicyAttachments(id);
@@ -63,7 +63,7 @@ export async function showAttachments(id: string, options: PolicyAttachmentsOpti
 }
 
 export async function attachPolicyToUser(policyId: string, userId: string, options: PolicyAttachOptions): Promise<void> {
-  const spinner = ora('Attaching policy to user...').start();
+  const spinner = output.spinner('Attaching policy to user...').start();
 
   try {
     await client.attachPolicyToUser(policyId, userId);
@@ -79,7 +79,7 @@ export async function attachPolicyToUser(policyId: string, userId: string, optio
 }
 
 export async function attachPolicyToRole(policyId: string, roleId: string, options: PolicyAttachOptions): Promise<void> {
-  const spinner = ora('Attaching policy to role...').start();
+  const spinner = output.spinner('Attaching policy to role...').start();
 
   try {
     await client.attachPolicyToRole(policyId, roleId);
@@ -95,7 +95,7 @@ export async function attachPolicyToRole(policyId: string, roleId: string, optio
 }
 
 export async function detachPolicyFromUser(policyId: string, userId: string, options: PolicyAttachOptions): Promise<void> {
-  const spinner = ora('Detaching policy from user...').start();
+  const spinner = output.spinner('Detaching policy from user...').start();
 
   try {
     await client.detachPolicyFromUser(policyId, userId);
@@ -111,7 +111,7 @@ export async function detachPolicyFromUser(policyId: string, userId: string, opt
 }
 
 export async function detachPolicyFromRole(policyId: string, roleId: string, options: PolicyAttachOptions): Promise<void> {
-  const spinner = ora('Detaching policy from role...').start();
+  const spinner = output.spinner('Detaching policy from role...').start();
 
   try {
     await client.detachPolicyFromRole(policyId, roleId);
@@ -127,7 +127,7 @@ export async function detachPolicyFromRole(policyId: string, roleId: string, opt
 }
 
 export async function listUserPolicies(userId: string, options: PolicyUserPoliciesOptions): Promise<void> {
-  const spinner = ora('Fetching user policies...').start();
+  const spinner = output.spinner('Fetching user policies...').start();
 
   try {
     const policies = await client.getUserPolicies(userId);
@@ -162,7 +162,7 @@ export async function listUserPolicies(userId: string, options: PolicyUserPolici
 }
 
 export async function listRolePolicies(roleId: string, options: PolicyRolePoliciesOptions): Promise<void> {
-  const spinner = ora('Fetching role policies...').start();
+  const spinner = output.spinner('Fetching role policies...').start();
 
   try {
     const policies = await client.getRolePolicies(roleId);

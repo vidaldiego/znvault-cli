@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../../lib/mode.js';
 import * as output from '../../../../lib/output.js';
 import type { ReprovisionOptions, ReprovisionResponse } from '../../types.js';
@@ -17,7 +17,7 @@ export function registerReprovisionCreateCommand(parentCmd: Command): void {
     .option('-r, --reason <reason>', 'Reason for reprovisioning (for audit trail)')
     .option('-e, --expires-in <duration>', 'Token expiration (default: 15m)', '15m')
     .action(async (agentId: string, options: ReprovisionOptions) => {
-      const spinner = ora('Generating reprovision token...').start();
+      const spinner = output.spinner('Generating reprovision token...').start();
 
       try {
         const response = await mode.apiPost<ReprovisionResponse>(

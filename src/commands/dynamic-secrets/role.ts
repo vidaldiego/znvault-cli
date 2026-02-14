@@ -4,7 +4,7 @@
  * Role commands for dynamic secrets
  */
 
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -13,7 +13,7 @@ import type { DbRole, RoleCreateOptions, RoleUpdateOptions } from './types.js';
 import { formatDate, formatTtl } from './helpers.js';
 
 export async function listRoles(options: { connection?: string; json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching roles...').start();
+  const spinner = output.spinner('Fetching roles...').start();
 
   try {
     let url = '/v1/dynamic-secrets/roles';
@@ -60,7 +60,7 @@ export async function listRoles(options: { connection?: string; json?: boolean }
 }
 
 export async function getRole(roleId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching role...').start();
+  const spinner = output.spinner('Fetching role...').start();
 
   try {
     const response = await client.get<DbRole>(`/v1/dynamic-secrets/roles/${roleId}`);
@@ -114,7 +114,7 @@ export async function createRole(connectionId: string, options: RoleCreateOption
       message: 'Revocation SQL statements (one per line, use {{username}} placeholder):',
     }])).statements.split('\n').filter(s => s.trim());
 
-  const spinner = ora('Creating role...').start();
+  const spinner = output.spinner('Creating role...').start();
 
   try {
     const body: Record<string, unknown> = {
@@ -145,7 +145,7 @@ export async function createRole(connectionId: string, options: RoleCreateOption
 }
 
 export async function updateRole(roleId: string, options: RoleUpdateOptions): Promise<void> {
-  const spinner = ora('Updating role...').start();
+  const spinner = output.spinner('Updating role...').start();
 
   try {
     const body: Record<string, unknown> = {};
@@ -183,7 +183,7 @@ export async function deleteRole(roleId: string, options: { force?: boolean; jso
     }
   }
 
-  const spinner = ora('Deleting role...').start();
+  const spinner = output.spinner('Deleting role...').start();
 
   try {
     await client.delete(`/v1/dynamic-secrets/roles/${roleId}`);

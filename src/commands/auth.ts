@@ -1,6 +1,6 @@
 import { type Command } from 'commander';
 import { readFileSync, existsSync } from 'node:fs';
-import ora from 'ora';
+
 import React from 'react';
 import { render } from 'ink';
 import { client } from '../lib/client.js';
@@ -165,7 +165,7 @@ export function registerAuthCommands(program: Command): void {
         const isNonInteractive = process.env.CI === 'true' || (options.username != null && hasPasswordOption);
         const totp = options.totp ?? (isNonInteractive ? undefined : await promptTotp());
 
-        const spinner = ora('Authenticating...').start();
+        const spinner = output.spinner('Authenticating...').start();
 
         try {
           const response = await client.login(username, password, totp);

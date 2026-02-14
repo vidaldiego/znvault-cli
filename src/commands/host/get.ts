@@ -2,7 +2,7 @@
 // Get host configuration details
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { GetOptions, HostConfig, OutdatedAgentsResponse } from './types.js';
@@ -17,7 +17,7 @@ export function registerGetCommand(parentCmd: Command): void {
     .description('Get host configuration details')
     .option('--json', 'Output as JSON')
     .action(async (hostname: string, options: GetOptions) => {
-      const spinner = ora('Fetching host configuration...').start();
+      const spinner = output.spinner('Fetching host configuration...').start();
 
       try {
         const response = await mode.apiGet<HostConfig>(
@@ -51,7 +51,7 @@ export function registerOutdatedAgentsCommand(parentCmd: Command): void {
     .description('List agents with outdated configuration')
     .option('--json', 'Output as JSON')
     .action(async (hostname: string, options: { json?: boolean }) => {
-      const spinner = ora('Checking for outdated agents...').start();
+      const spinner = output.spinner('Checking for outdated agents...').start();
 
       try {
         const response = await mode.apiGet<OutdatedAgentsResponse>(

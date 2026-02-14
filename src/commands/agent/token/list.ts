@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import type { TokenListOptions, RegistrationTokenListResponse } from '../types.js';
@@ -30,7 +30,7 @@ export function registerTokenListCommand(parentCmd: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Fetching registration tokens...').start();
+      const spinner = output.spinner('Fetching registration tokens...').start();
 
       try {
         const params = new URLSearchParams();

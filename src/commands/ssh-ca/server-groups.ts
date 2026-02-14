@@ -4,7 +4,7 @@
  * Server group commands for SSH CA
  */
 
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
@@ -19,7 +19,7 @@ import type {
 import { formatDate, parsePrincipals, isValidPrincipal } from './helpers.js';
 
 export async function listServerGroups(options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching server groups...').start();
+  const spinner = output.spinner('Fetching server groups...').start();
 
   try {
     const response = await client.get<ServerGroupsListResponse>('/v1/ssh/server-groups');
@@ -60,7 +60,7 @@ export async function listServerGroups(options: { json?: boolean }): Promise<voi
 }
 
 export async function getServerGroup(groupId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching server group...').start();
+  const spinner = output.spinner('Fetching server group...').start();
 
   try {
     const group = await client.get<ServerGroup>(`/v1/ssh/server-groups/${groupId}`);
@@ -122,7 +122,7 @@ export async function createServerGroup(options: ServerGroupCreateOptions): Prom
     message: 'Description (optional):',
   }])).desc || undefined);
 
-  const spinner = ora('Creating server group...').start();
+  const spinner = output.spinner('Creating server group...').start();
 
   try {
     const response = await client.post<ServerGroup>('/v1/ssh/server-groups', {
@@ -167,7 +167,7 @@ export async function deleteServerGroup(groupId: string, options: { force?: bool
     }
   }
 
-  const spinner = ora('Deleting server group...').start();
+  const spinner = output.spinner('Deleting server group...').start();
 
   try {
     await client.delete(`/v1/ssh/server-groups/${groupId}`);
@@ -207,7 +207,7 @@ export async function setAccessRule(groupId: string, options: AccessRuleOptions)
 
   const allowedPrincipals = parsePrincipals(principalsInput);
 
-  const spinner = ora('Setting access rule...').start();
+  const spinner = output.spinner('Setting access rule...').start();
 
   try {
     const response = await client.put<AccessRule>(
@@ -251,7 +251,7 @@ export async function deleteAccessRule(
     }
   }
 
-  const spinner = ora('Deleting access rule...').start();
+  const spinner = output.spinner('Deleting access rule...').start();
 
   try {
     await client.delete(`/v1/ssh/server-groups/${groupId}/access/${linuxUser}`);
@@ -268,7 +268,7 @@ export async function deleteAccessRule(
 }
 
 export async function getAuthorizedPrincipals(groupId: string, options: { json?: boolean }): Promise<void> {
-  const spinner = ora('Fetching authorized principals...').start();
+  const spinner = output.spinner('Fetching authorized principals...').start();
 
   try {
     const principals = await client.get<Record<string, string[]>>(

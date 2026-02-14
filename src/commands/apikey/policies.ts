@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
@@ -20,7 +20,7 @@ export function registerPolicyCommands(apiKeyCmd: Command): void {
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: ListPoliciesOptions) => {
-      const spinner = ora('Fetching policies...').start();
+      const spinner = output.spinner('Fetching policies...').start();
 
       try {
         const result = await client.getApiKeyPolicies(id, options.tenant);
@@ -64,7 +64,7 @@ export function registerPolicyCommands(apiKeyCmd: Command): void {
     .description('Attach an ABAC policy to an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
     .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions) => {
-      const spinner = ora('Attaching policy...').start();
+      const spinner = output.spinner('Attaching policy...').start();
 
       try {
         await client.attachApiKeyPolicy(keyId, policyId, options.tenant);
@@ -82,7 +82,7 @@ export function registerPolicyCommands(apiKeyCmd: Command): void {
     .description('Detach an ABAC policy from an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
     .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions) => {
-      const spinner = ora('Detaching policy...').start();
+      const spinner = output.spinner('Detaching policy...').start();
 
       try {
         await client.detachApiKeyPolicy(keyId, policyId, options.tenant);

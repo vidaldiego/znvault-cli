@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import type { AlertsOptions, RemoteAgent } from '../types.js';
@@ -23,7 +23,7 @@ export function registerAlertsCommand(parentCmd: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Updating agent alerts...').start();
+      const spinner = output.spinner('Updating agent alerts...').start();
 
       try {
         const payload: { alertOnDisconnect?: boolean; disconnectThresholdSeconds?: number } = {};

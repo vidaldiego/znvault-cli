@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as output from '../../../lib/output.js';
 import type { UpdateCommandOptions } from '../types.js';
 import {
@@ -30,7 +30,7 @@ export function registerUpdatePluginsCommand(parentCmd: Command): void {
       const { host, port } = resolved;
 
       // First check what needs updating
-      const checkSpinner = ora(`Checking plugins at ${host}:${port}...`).start();
+      const checkSpinner = output.spinner(`Checking plugins at ${host}:${port}...`).start();
 
       let versions;
       try {
@@ -73,7 +73,7 @@ export function registerUpdatePluginsCommand(parentCmd: Command): void {
       }
 
       // Trigger update
-      const updateSpinner = ora('Updating plugins...').start();
+      const updateSpinner = output.spinner('Updating plugins...').start();
 
       try {
         const response = await triggerPluginUpdate(host, port);

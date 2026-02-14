@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../lib/mode.js';
 import * as output from '../../../lib/output.js';
 import { DEFAULT_AGENT_PORT } from '../../../lib/constants.js';
@@ -39,7 +39,7 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
     .option('-y, --yes', 'Skip confirmation')
     .option('--json', 'Output as JSON')
     .action(async (options: UpdateAllOptions) => {
-      const spinner = ora('Fetching online agents...').start();
+      const spinner = output.spinner('Fetching online agents...').start();
 
       try {
         // Build query params
@@ -78,7 +78,7 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
         }
 
         // Check versions for all agents
-        const checkSpinner = ora(`Checking ${reachableAgents.length} agent(s)...`).start();
+        const checkSpinner = output.spinner(`Checking ${reachableAgents.length} agent(s)...`).start();
         const agentInfo: AgentUpdateInfo[] = [];
 
         for (const { agent, ip } of reachableAgents) {

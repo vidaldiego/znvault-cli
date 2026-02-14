@@ -6,7 +6,7 @@
 
 import type { Command } from 'commander';
 import { execFileSync } from 'node:child_process';
-import ora from 'ora';
+
 import chalk from 'chalk';
 import * as output from '../../lib/output.js';
 import { getPlugins } from '../../lib/config.js';
@@ -26,7 +26,7 @@ export function registerInfoCommand(parent: Command): void {
     .description('Show plugin information')
     .option('--json', 'Output as JSON')
     .action(async (name: string, options: PluginInfoOptions) => {
-      const spinner = ora('Fetching plugin info...').start();
+      const spinner = output.spinner('Fetching plugin info...').start();
 
       try {
         const packageName = resolvePluginName(name);

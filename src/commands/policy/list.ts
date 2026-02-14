@@ -4,14 +4,14 @@
  * Policy list and get commands
  */
 
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { shortId, formatActiveStatus, formatPaginationInfo } from '../../lib/format-helpers.js';
 import type { PolicyListOptions, PolicyGetOptions } from './types.js';
 
 export async function listPolicies(options: PolicyListOptions): Promise<void> {
-  const spinner = ora('Fetching policies...').start();
+  const spinner = output.spinner('Fetching policies...').start();
 
   try {
     const result = await client.listPolicies({
@@ -53,7 +53,7 @@ export async function listPolicies(options: PolicyListOptions): Promise<void> {
 }
 
 export async function getPolicy(id: string, options: PolicyGetOptions): Promise<void> {
-  const spinner = ora('Fetching policy...').start();
+  const spinner = output.spinner('Fetching policy...').start();
 
   try {
     const result = await client.getPolicy(id);

@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../../../lib/mode.js';
 import * as output from '../../../../lib/output.js';
 import { confirmAction } from '../../helpers.js';
@@ -24,7 +24,7 @@ export function registerReprovisionCancelCommand(parentCmd: Command): void {
         }
       }
 
-      const spinner = ora('Cancelling reprovision token...').start();
+      const spinner = output.spinner('Cancelling reprovision token...').start();
 
       try {
         await mode.apiDelete(`/v1/agents/${encodeURIComponent(agentId)}/reprovision`);

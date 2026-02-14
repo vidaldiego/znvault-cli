@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { CopyOptions, CopyResponse } from './types.js';
@@ -18,7 +18,7 @@ export function registerCopyCommand(secretCmd: Command): void {
     .option('--no-metadata', 'Do not copy tags/metadata')
     .option('--json', 'Output as JSON')
     .action(async (source: string, destinationAlias: string, options: CopyOptions) => {
-      const spinner = ora('Copying secret...').start();
+      const spinner = output.spinner('Copying secret...').start();
 
       try {
         const body: Record<string, unknown> = {

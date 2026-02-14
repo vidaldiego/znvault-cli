@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedDeleteOptions } from './types.js';
@@ -23,7 +23,7 @@ export function registerManagedDeleteCommand(managedCmd: Command): void {
         output.warn('All bound applications will lose access immediately.');
       }
 
-      const spinner = ora('Deleting managed API key...').start();
+      const spinner = output.spinner('Deleting managed API key...').start();
 
       try {
         await client.deleteManagedApiKey(name, options.tenant);

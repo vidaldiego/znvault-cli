@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { ConfigOptions, HostConfig } from './types.js';
@@ -62,7 +62,7 @@ export function registerConfigCommand(parentCmd: Command): void {
     .option('-i, --import <file>', 'Import config from JSON file')
     .option('--json', 'Output as JSON')
     .action(async (hostname: string, options: ConfigOptions) => {
-      const spinner = ora('Fetching host configuration...').start();
+      const spinner = output.spinner('Fetching host configuration...').start();
 
       try {
         // Get current config

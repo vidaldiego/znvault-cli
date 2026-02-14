@@ -9,7 +9,7 @@ import { type Command } from 'commander';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import ora from 'ora';
+
 import chalk from 'chalk';
 import * as output from '../lib/output.js';
 import {
@@ -180,7 +180,7 @@ export function registerSelfUpdateCommands(program: Command): void {
     .option('--skip-plugins', 'Skip plugin updates')
     .option('--json', 'Output as JSON')
     .action(async (options: SelfUpdateOptions) => {
-      const spinner = ora('Checking for updates...').start();
+      const spinner = output.spinner('Checking for updates...').start();
 
       try {
         // Check CLI updates
@@ -282,7 +282,7 @@ export function registerSelfUpdateCommands(program: Command): void {
 
         // Perform CLI update
         if (hasCliUpdate) {
-          const updateSpinner = ora('Updating CLI...').start();
+          const updateSpinner = output.spinner('Updating CLI...').start();
 
           const updateResult = await performUpdate({ silent: false, global: true });
 
@@ -300,7 +300,7 @@ export function registerSelfUpdateCommands(program: Command): void {
 
         // Perform plugin updates
         if (hasPluginUpdates) {
-          const pluginSpinner = ora('Updating plugins...').start();
+          const pluginSpinner = output.spinner('Updating plugins...').start();
 
           const pluginsDir = getPluginsDir();
           const packagesToUpdate = pluginUpdates.map(p => p.package);
@@ -350,7 +350,7 @@ export function registerSelfUpdateCommands(program: Command): void {
       const currentVersion = getCurrentVersion();
 
       if (options.json) {
-        const spinner = ora('Checking for updates...').start();
+        const spinner = output.spinner('Checking for updates...').start();
         try {
           const result = await checkForUpdate(true);
           const pluginUpdates = checkPluginUpdates();
@@ -373,7 +373,7 @@ export function registerSelfUpdateCommands(program: Command): void {
 
       console.log(`znvault version ${currentVersion}`);
 
-      const spinner = ora('Checking for updates...').start();
+      const spinner = output.spinner('Checking for updates...').start();
 
       try {
         const result = await checkForUpdate(true);

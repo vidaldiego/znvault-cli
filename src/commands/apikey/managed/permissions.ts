@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import ora from 'ora';
+
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedPermissionsOptions } from './types.js';
@@ -29,7 +29,7 @@ export function registerManagedPermissionsCommand(managedCmd: Command): void {
         process.exit(1);
       }
 
-      const spinner = ora('Updating managed API key permissions...').start();
+      const spinner = output.spinner('Updating managed API key permissions...').start();
 
       try {
         // First, get the managed key to find its ID and current permissions
