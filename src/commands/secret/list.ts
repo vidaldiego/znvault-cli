@@ -16,7 +16,9 @@ export function registerListCommand(secretCmd: Command): void {
   secretCmd
     .command('list')
     .description('List secrets (metadata only)')
-    .option('-t, --tenant <id>', 'Filter by tenant')
+    // Note: `--tenant` was removed in v3.0.0. The server lists secrets
+    // owned by the caller's tenant; superadmins get 403 by design — they
+    // should use the `secrets` admin endpoints (read-only) instead.
     .option('--type <type>', 'Filter by type (opaque, credential, setting)')
     .option('--sub-type <subType>', 'Filter by sub-type')
     .option('--alias-prefix <prefix>', 'Filter by alias prefix')
@@ -27,7 +29,6 @@ export function registerListCommand(secretCmd: Command): void {
 
       try {
         const query: Record<string, string | undefined> = {};
-        if (options.tenant) query.tenant = options.tenant;
         if (options.type) query.type = options.type;
         if (options.subType) query.subType = options.subType;
         if (options.aliasPrefix) query.aliasPrefix = options.aliasPrefix;

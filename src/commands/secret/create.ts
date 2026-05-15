@@ -18,7 +18,9 @@ export function registerCreateCommand(secretCmd: Command): void {
   secretCmd
     .command('create <alias>')
     .description('Create a new secret (use --suggest for AI naming help)')
-    .option('-t, --tenant <id>', 'Tenant ID (defaults to current user tenant)')
+    // Note: `--tenant` was removed in v3.0.0. Secret creation is always
+    // performed against the caller's own tenant (derived from the JWT).
+    // Superadmins must use a tenant principal to create secrets, by design.
     .option('--type <type>', 'Secret type (opaque, credential, setting)', 'opaque')
     .option('--sub-type <subType>', 'Semantic sub-type')
     .option('--tags <tags>', 'Comma-separated tags')
@@ -41,7 +43,10 @@ export function registerCreateCommand(secretCmd: Command): void {
 
       // AI Suggestion flow
       if (options.suggest) {
-        const tenant = options.tenant || 'me';
+        // Advisor endpoint accepts the magic 'me' alias to resolve tenant
+        // from the authenticated principal — that is the only mode the CLI
+        // ever needs (we dropped cross-tenant override in v3.0.0).
+        const tenant = 'me';
 
         // Analyze file if --file is provided
         let fileInfo: FileAnalysisInfo | null = null;
@@ -183,12 +188,17 @@ export function registerCreateCommand(secretCmd: Command): void {
         }
       }
 
-      // Resolve tenant: use explicit option, or get from stored credentials
+      // Resolve tenant from the authenticated principal. Superadmins do not
+      // have a tenantId in their JWT and cannot create secrets through this
+      // command — they must log in as a tenant principal.
       const authContext = getAuthContext();
-      const tenantId = options.tenant || authContext.tenantId;
+      const tenantId = authContext.tenantId;
 
       if (!tenantId) {
-        output.error('Tenant is required. Use --tenant <id> or login to a tenant account.');
+        output.error(
+          'Tenant principal required. `znvault secret create` does not work for superadmin '
+          + 'accounts (separation of duties). Log in as a tenant user instead.'
+        );
         process.exit(1);
       }
 
@@ -299,9 +309,12 @@ export function registerCreateCommand(secretCmd: Command): void {
       const spinner = output.spinner('Creating secret...').start();
 
       try {
+        // Body does NOT include `tenant`; the server derives tenant from
+        // the authenticated principal's JWT. We retain the local tenantId
+        // only for nicer error messages above.
+        void tenantId;
         const body: Record<string, unknown> = {
           alias,
-          tenant: tenantId,
           type: actualType,
           data,
         };

@@ -21,6 +21,8 @@ import type {
 } from './types.js';
 import { formatDate, formatKeyState, formatPaginationInfo } from './helpers.js';
 
+import { kmsKeysPath, kmsKeysQuery, kmsIsAdminCall } from './routing.js';
+
 // ============================================================================
 // Command Implementations
 // ============================================================================
@@ -29,11 +31,9 @@ async function listKeys(options: ListOptions): Promise<void> {
   const spinner = output.spinner('Fetching KMS keys...').start();
 
   try {
-    const query: Record<string, string | undefined> = {};
-    if (options.tenant) query.tenant = options.tenant;
-    if (options.state) query.state = options.state;
-
-    const response = await client.get<ListKeysResponse>('/v1/kms/keys?' + new URLSearchParams(query as Record<string, string>).toString());
+    const response = await client.get<ListKeysResponse>(
+      kmsKeysPath(options.tenant) + kmsKeysQuery(options.tenant, { state: options.state })
+    );
     spinner.stop();
 
     if (options.json) {
@@ -73,7 +73,9 @@ async function getKey(keyId: string, options: GetOptions): Promise<void> {
 
   try {
     // API returns { keyMetadata: { ... } }
-    const response = await client.get<{ keyMetadata: KMSKey }>(`/v1/kms/keys/${keyId}`);
+    const response = await client.get<{ keyMetadata: KMSKey }>(
+      kmsKeysPath(options.tenant, `/${keyId}`) + kmsKeysQuery(options.tenant)
+    );
     const key = response.keyMetadata;
     spinner.stop();
 
@@ -133,9 +135,7 @@ async function createKey(options: CreateOptions): Promise<void> {
   const spinner = output.spinner('Creating KMS key...').start();
 
   try {
-    const body: Record<string, unknown> = {
-      tenant: tenantId,
-    };
+    const body: Record<string, unknown> = {};
 
     if (options.alias) {
       // Ensure alias starts with "alias/"
@@ -156,7 +156,13 @@ async function createKey(options: CreateOptions): Promise<void> {
       body.tags = tags;
     }
 
-    const result = await client.post<KMSKey>('/v1/kms/keys', body);
+    // Routing: if --tenant is cross-tenant (superadmin), use admin surface;
+    // otherwise rely on JWT-derived tenant in /v1/kms/keys (server ignores
+    // any `tenant` field in the body for tenant-scoped routes).
+    const result = await client.post<KMSKey>(
+      kmsKeysPath(options.tenant) + kmsKeysQuery(options.tenant),
+      body
+    );
     spinner.stop();
 
     if (options.json) {
@@ -183,7 +189,9 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     // Get key info first
     const spinner = output.spinner('Fetching key...').start();
     try {
-      const key = await client.get<KMSKey>(`/v1/kms/keys/${keyId}`);
+      const key = await client.get<KMSKey>(
+        kmsKeysPath(options.tenant, `/${keyId}`) + kmsKeysQuery(options.tenant)
+      );
       spinner.stop();
 
       const days = options.days ? parseInt(options.days, 10) : 30;
@@ -211,9 +219,20 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
 
   try {
     const days = options.days ? parseInt(options.days, 10) : 30;
-    const result = await client.delete<{ keyId: string; deletionDate: string; message: string }>(
-      `/v1/kms/keys/${keyId}?pendingWindowInDays=${days}`
-    );
+    // Tenant route: DELETE /v1/kms/keys/:keyId?pendingWindowInDays=N
+    // Admin route: POST /v1/superadmin/kms/keys/:keyId/schedule-deletion?tenantId=X
+    //   with body { pendingWindowInDays: N }.
+    let result: { keyId: string; deletionDate: string; message?: string };
+    if (kmsIsAdminCall(options.tenant)) {
+      result = await client.post<{ keyId: string; deletionDate: string; message?: string }>(
+        `/v1/superadmin/kms/keys/${keyId}/schedule-deletion?tenantId=${encodeURIComponent(options.tenant!)}`,
+        { pendingWindowInDays: days }
+      );
+    } else {
+      result = await client.delete<{ keyId: string; deletionDate: string; message: string }>(
+        `/v1/kms/keys/${keyId}?pendingWindowInDays=${days}`
+      );
+    }
     deleteSpinner.stop();
 
     if (options.json) {
@@ -250,6 +269,7 @@ export function registerCrudCommands(parent: Command): void {
   parent
     .command('get <keyId>')
     .description('Get KMS key details')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
     .action(getKey);
 
@@ -270,6 +290,7 @@ export function registerCrudCommands(parent: Command): void {
   parent
     .command('delete <keyId>')
     .description('Schedule key deletion')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--days <days>', 'Waiting period in days (7-30)', '30')
     .option('-f, --force', 'Skip confirmation')
     .option('--json', 'Output as JSON')

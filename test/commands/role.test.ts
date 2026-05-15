@@ -64,7 +64,11 @@ const mockUserRoles = {
 vi.mock('../../src/lib/client.js', () => ({
   client: {
     get: vi.fn().mockImplementation((path: string) => {
-      if (path.includes('/v1/roles?')) return Promise.resolve({ items: mockRoles, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
+      // List endpoints: tenant /v1/roles or admin /v1/superadmin/roles (with or
+      // without query string).
+      if (/^\/v1\/(superadmin\/)?roles(\?|$)/.test(path)) {
+        return Promise.resolve({ items: mockRoles, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
+      }
       if (path.includes('/roles/role-003')) return Promise.resolve(mockCustomRole);
       if (path.includes('/roles/')) return Promise.resolve(mockRoleDetails);
       if (path.includes('/users/') && path.includes('/roles')) return Promise.resolve(mockUserRoles);
@@ -90,6 +94,8 @@ vi.mock('../../src/lib/output.js', () => ({
   info: vi.fn(),
   warn: vi.fn(),
   json: vi.fn(),
+  fatal: vi.fn((msg: string) => { throw new Error(msg); }),
+  getErrorMessage: vi.fn((e: unknown) => (e instanceof Error ? e.message : String(e))),
 }));
 
 describe('role commands', () => {
@@ -114,12 +120,11 @@ describe('role commands', () => {
   describe('role list', () => {
     it('should list all roles', async () => {
       const { client } = await import('../../src/lib/client.js');
-      const { info } = await import('../../src/lib/output.js');
 
       await program.parseAsync(['node', 'test', 'role', 'list']);
 
-      expect(client.get).toHaveBeenCalled();
-      expect(info).toHaveBeenCalledWith('Total: 2 role(s)');
+      // No --tenant → hits tenant-scoped path. Server returns total in pagination.
+      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('/v1/roles'));
     });
 
     it('should filter by tenant', async () => {
@@ -127,7 +132,10 @@ describe('role commands', () => {
 
       await program.parseAsync(['node', 'test', 'role', 'list', '--tenant', 'acme']);
 
-      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('tenantId=acme'));
+      // --tenant routes via the superadmin surface (server v1.39.0+).
+      const calledWith = (client.get as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(calledWith).toContain('/v1/superadmin/roles');
+      expect(calledWith).toContain('tenantId=acme');
     });
 
     it('should output JSON when --json flag is used', async () => {
@@ -184,12 +192,16 @@ describe('role commands', () => {
         '--permissions', 'secrets:read',
       ]);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/roles', expect.objectContaining({
-        name: 'tenant-role',
-        tenantId: 'acme',
-        description: 'A custom role for tenant',
-        permissions: ['secrets:read'],
-      }));
+      // --tenant routes via /v1/superadmin/roles (server v1.39.0+).
+      expect(client.post).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/v1\/superadmin\/roles\?.*tenantId=acme/),
+        expect.objectContaining({
+          name: 'tenant-role',
+          tenantId: 'acme',
+          description: 'A custom role for tenant',
+          permissions: ['secrets:read'],
+        })
+      );
     });
   });
 

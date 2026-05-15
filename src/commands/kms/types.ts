@@ -76,6 +76,7 @@ export interface ListOptions {
 }
 
 export interface GetOptions {
+  tenant?: string;
   json?: boolean;
 }
 
@@ -103,16 +104,19 @@ export interface DecryptOptions {
 }
 
 export interface RotateOptions {
+  tenant?: string;
   json?: boolean;
 }
 
 export interface DeleteOptions {
+  tenant?: string;
   days?: string;
   force?: boolean;
   json?: boolean;
 }
 
 export interface EnableDisableOptions {
+  tenant?: string;
   json?: boolean;
 }
 

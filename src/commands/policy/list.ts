@@ -56,7 +56,7 @@ export async function getPolicy(id: string, options: PolicyGetOptions): Promise<
   const spinner = output.spinner('Fetching policy...').start();
 
   try {
-    const result = await client.getPolicy(id);
+    const result = await client.getPolicy(id, options.tenant);
     spinner.stop();
 
     if (options.json) {

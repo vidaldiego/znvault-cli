@@ -2,10 +2,23 @@
 
 /**
  * Managed API Key client
+ *
+ * Routing policy:
+ *   - When `tenantId` is supplied, target `/v1/superadmin/api-keys/*`
+ *     (cross-tenant superadmin surface).
+ *   - When `tenantId` is omitted, target `/auth/api-keys/*` (tenant
+ *     principal, tenant derived from JWT).
  */
 
 import { HttpClient } from './http.js';
 import { formatSecondsToHuman } from '../format-helpers.js';
+
+const TENANT_BASE = '/auth/api-keys';
+const ADMIN_BASE = '/v1/superadmin/api-keys';
+
+function basePath(tenantId?: string): string {
+  return tenantId ? ADMIN_BASE : TENANT_BASE;
+}
 import type {
   ManagedAPIKey,
   ManagedKeyBindResponse,
@@ -102,7 +115,7 @@ export class ManagedKeysClient extends HttpClient {
   async create(data: CreateManagedKeyRequest): Promise<CreateManagedKeyResponse> {
     const response = await this.request<ServerCreateResponse>({
       method: 'POST',
-      path: '/auth/api-keys',
+      path: basePath(data.tenantId),
       query: data.tenantId ? { tenantId: data.tenantId } : undefined,
       body: {
         name: data.name,
@@ -162,7 +175,7 @@ export class ManagedKeysClient extends HttpClient {
 
     const response = await this.request<ServerListResponse>({
       method: 'GET',
-      path: '/auth/api-keys/managed',
+      path: `${basePath(tenantId)}/managed`,
       query: tenantId ? { tenantId } : undefined,
     });
 
@@ -202,7 +215,7 @@ export class ManagedKeysClient extends HttpClient {
   async getByName(name: string, tenantId?: string): Promise<ManagedAPIKey> {
     const info = await this.request<ServerManagedKeyInfo>({
       method: 'GET',
-      path: `/auth/api-keys/managed/${encodeURIComponent(name)}`,
+      path: `${basePath(tenantId)}/managed/${encodeURIComponent(name)}`,
       query: tenantId ? { tenantId } : undefined,
     });
 
@@ -239,7 +252,7 @@ export class ManagedKeysClient extends HttpClient {
   async bind(name: string, tenantId?: string): Promise<ManagedKeyBindResponse> {
     return this.request<ManagedKeyBindResponse>({
       method: 'POST',
-      path: `/auth/api-keys/managed/${encodeURIComponent(name)}/bind`,
+      path: `${basePath(tenantId)}/managed/${encodeURIComponent(name)}/bind`,
       query: tenantId ? { tenantId } : undefined,
       body: {},
     });
@@ -248,7 +261,7 @@ export class ManagedKeysClient extends HttpClient {
   async rotate(name: string, tenantId?: string): Promise<{ message: string; nextRotationAt?: string }> {
     return this.request<{ message: string; nextRotationAt?: string }>({
       method: 'POST',
-      path: `/auth/api-keys/managed/${encodeURIComponent(name)}/rotate`,
+      path: `${basePath(tenantId)}/managed/${encodeURIComponent(name)}/rotate`,
       query: tenantId ? { tenantId } : undefined,
       body: {},
     });
@@ -261,7 +274,7 @@ export class ManagedKeysClient extends HttpClient {
   ): Promise<ManagedAPIKey> {
     const info = await this.request<ServerManagedKeyInfo>({
       method: 'PATCH',
-      path: `/auth/api-keys/managed/${encodeURIComponent(name)}/config`,
+      path: `${basePath(tenantId)}/managed/${encodeURIComponent(name)}/config`,
       query: tenantId ? { tenantId } : undefined,
       body: config,
     });
@@ -297,10 +310,12 @@ export class ManagedKeysClient extends HttpClient {
   }
 
   async deleteByName(name: string, tenantId?: string): Promise<void> {
+    // Both admin and tenant routes require an id-based DELETE; the tenant
+    // surface does not expose DELETE by name. Always resolve to id first.
     const key = await this.getByName(name, tenantId);
     await this.request<unknown>({
       method: 'DELETE',
-      path: `/auth/api-keys/${encodeURIComponent(key.id)}`,
+      path: `${basePath(tenantId)}/${encodeURIComponent(key.id)}`,
       query: tenantId ? { tenantId } : undefined,
     });
   }

@@ -43,6 +43,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('get <id>')
     .description('Get policy details')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(getPolicy);
 
@@ -66,6 +67,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('update <id>')
     .description('Update an ABAC policy')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--name <name>', 'New policy name')
     .option('--description <desc>', 'New description')
     .option('--effect <effect>', 'New effect (allow|deny)')
@@ -81,6 +83,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('delete <id>')
     .description('Delete an ABAC policy')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('-y, --yes', 'Skip confirmation')
     .option('--json', 'Output as JSON')
     .action(deletePolicy);
@@ -89,6 +92,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('enable <id>')
     .description('Enable an ABAC policy')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(enablePolicy);
 
@@ -96,6 +100,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('disable <id>')
     .description('Disable an ABAC policy')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(disablePolicy);
 
@@ -117,6 +122,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('attachments <id>')
     .description('Show users and roles attached to a policy')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(showAttachments);
 
@@ -124,6 +130,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('attach-user <policyId> <userId>')
     .description('Attach a policy to a user')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(attachPolicyToUser);
 
@@ -131,6 +138,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('attach-role <policyId> <roleId>')
     .description('Attach a policy to a role')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(attachPolicyToRole);
 
@@ -138,6 +146,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('detach-user <policyId> <userId>')
     .description('Detach a policy from a user')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(detachPolicyFromUser);
 
@@ -145,6 +154,7 @@ export function registerPolicyCommands(program: Command): void {
   policy
     .command('detach-role <policyId> <roleId>')
     .description('Detach a policy from a role')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/policies)')
     .option('--json', 'Output as JSON')
     .action(detachPolicyFromRole);
 

@@ -19,7 +19,7 @@ export async function showAttachments(id: string, options: PolicyAttachmentsOpti
   const spinner = output.spinner('Fetching attachments...').start();
 
   try {
-    const result = await client.getPolicyAttachments(id);
+    const result = await client.getPolicyAttachments(id, options.tenant);
     spinner.stop();
 
     if (options.json) {
@@ -66,7 +66,7 @@ export async function attachPolicyToUser(policyId: string, userId: string, optio
   const spinner = output.spinner('Attaching policy to user...').start();
 
   try {
-    await client.attachPolicyToUser(policyId, userId);
+    await client.attachPolicyToUser(policyId, userId, options.tenant);
     spinner.succeed('Policy attached to user successfully');
 
     if (options.json) {
@@ -82,7 +82,7 @@ export async function attachPolicyToRole(policyId: string, roleId: string, optio
   const spinner = output.spinner('Attaching policy to role...').start();
 
   try {
-    await client.attachPolicyToRole(policyId, roleId);
+    await client.attachPolicyToRole(policyId, roleId, options.tenant);
     spinner.succeed('Policy attached to role successfully');
 
     if (options.json) {
@@ -98,7 +98,7 @@ export async function detachPolicyFromUser(policyId: string, userId: string, opt
   const spinner = output.spinner('Detaching policy from user...').start();
 
   try {
-    await client.detachPolicyFromUser(policyId, userId);
+    await client.detachPolicyFromUser(policyId, userId, options.tenant);
     spinner.succeed('Policy detached from user successfully');
 
     if (options.json) {
@@ -114,7 +114,7 @@ export async function detachPolicyFromRole(policyId: string, roleId: string, opt
   const spinner = output.spinner('Detaching policy from role...').start();
 
   try {
-    await client.detachPolicyFromRole(policyId, roleId);
+    await client.detachPolicyFromRole(policyId, roleId, options.tenant);
     spinner.succeed('Policy detached from role successfully');
 
     if (options.json) {

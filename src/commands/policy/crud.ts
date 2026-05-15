@@ -106,7 +106,7 @@ export async function updatePolicy(id: string, options: PolicyUpdateOptions): Pr
 
     const spinner = output.spinner('Updating policy...').start();
 
-    const result = await client.updatePolicy(id, updates);
+    const result = await client.updatePolicy(id, updates, options.tenant);
     spinner.succeed('Policy updated successfully');
 
     if (options.json) {
@@ -137,7 +137,7 @@ export async function deletePolicy(id: string, options: PolicyDeleteOptions): Pr
     }
 
     const spinner = output.spinner('Deleting policy...').start();
-    await client.deletePolicy(id);
+    await client.deletePolicy(id, options.tenant);
     spinner.succeed(`Policy '${id}' deleted successfully`);
 
     if (options.json) {
@@ -152,7 +152,7 @@ export async function enablePolicy(id: string, options: PolicyToggleOptions): Pr
   const spinner = output.spinner('Enabling policy...').start();
 
   try {
-    const result = await client.togglePolicy(id, true);
+    const result = await client.togglePolicy(id, true, options.tenant);
     spinner.succeed('Policy enabled successfully');
 
     if (options.json) {
@@ -174,7 +174,7 @@ export async function disablePolicy(id: string, options: PolicyToggleOptions): P
   const spinner = output.spinner('Disabling policy...').start();
 
   try {
-    const result = await client.togglePolicy(id, false);
+    const result = await client.togglePolicy(id, false, options.tenant);
     spinner.succeed('Policy disabled successfully');
 
     if (options.json) {

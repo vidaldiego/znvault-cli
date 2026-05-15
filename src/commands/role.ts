@@ -47,6 +47,7 @@ interface ListOptions {
 }
 
 interface GetOptions {
+  tenant?: string;
   json?: boolean;
 }
 
@@ -58,6 +59,7 @@ interface CreateOptions {
 }
 
 interface UpdateOptions {
+  tenant?: string;
   name?: string;
   description?: string;
   permissions?: string;
@@ -65,6 +67,7 @@ interface UpdateOptions {
 }
 
 interface DeleteOptions {
+  tenant?: string;
   force?: boolean;
   json?: boolean;
 }
@@ -80,6 +83,27 @@ interface AssignOptions {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Choose the right HTTP base path:
+ *   - When the caller passes --tenant, target /v1/superadmin/roles (the
+ *     cross-tenant superadmin surface) and forward tenantId as ?tenantId=.
+ *   - Otherwise target /v1/roles (tenant principal, tenant from JWT).
+ */
+function rolesPath(tenantId: string | undefined, suffix = ''): string {
+  const base = tenantId ? '/v1/superadmin/roles' : '/v1/roles';
+  return base + suffix;
+}
+
+function withTenantQuery(tenantId: string | undefined, params: Record<string, string | undefined> = {}): string {
+  const query: Record<string, string> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined) query[k] = v;
+  }
+  if (tenantId) query.tenantId = tenantId;
+  const qs = new URLSearchParams(query).toString();
+  return qs ? `?${qs}` : '';
+}
 
 function formatPermissions(permissions: string[]): string {
   if (permissions.length === 0) return 'None';
@@ -100,11 +124,9 @@ async function listRoles(options: ListOptions): Promise<void> {
   const spinner = output.spinner('Fetching roles...').start();
 
   try {
-    const query: Record<string, string | undefined> = {};
-    if (options.tenant) query.tenantId = options.tenant;
-    if (options.includeSystem !== undefined) query.includeSystem = String(options.includeSystem);
-
-    const response = await client.get<RoleListResponse>('/v1/roles?' + new URLSearchParams(query as Record<string, string>).toString());
+    const includeSystem = options.includeSystem !== undefined ? String(options.includeSystem) : undefined;
+    const qs = withTenantQuery(options.tenant, { includeSystem });
+    const response = await client.get<RoleListResponse>(rolesPath(options.tenant) + qs);
     spinner.stop();
 
     if (options.json) {
@@ -146,7 +168,7 @@ async function getRole(roleId: string, options: GetOptions): Promise<void> {
   const spinner = output.spinner('Fetching role...').start();
 
   try {
-    const role = await client.get<Role>(`/v1/roles/${roleId}`);
+    const role = await client.get<Role>(rolesPath(options.tenant, `/${roleId}`) + withTenantQuery(options.tenant));
     spinner.stop();
 
     if (options.json) {
@@ -196,10 +218,13 @@ async function createRole(name: string, options: CreateOptions): Promise<void> {
       permissions: options.permissions.split(',').map(p => p.trim()),
     };
 
+    // For tenant-scoped /v1/roles the server reads tenant from JWT; we keep
+    // tenantId on the body for backwards compatibility there. For the admin
+    // surface tenantId is forwarded as a query parameter.
     if (options.tenant) body.tenantId = options.tenant;
     if (options.description) body.description = options.description;
 
-    const result = await client.post<Role>('/v1/roles', body);
+    const result = await client.post<Role>(rolesPath(options.tenant) + withTenantQuery(options.tenant), body);
     spinner.stop();
 
     if (options.json) {
@@ -223,7 +248,7 @@ async function updateRole(roleId: string, options: UpdateOptions): Promise<void>
   const spinner = output.spinner('Fetching role...').start();
 
   try {
-    const current = await client.get<Role>(`/v1/roles/${roleId}`);
+    const current = await client.get<Role>(rolesPath(options.tenant, `/${roleId}`) + withTenantQuery(options.tenant));
     spinner.stop();
 
     if (current.is_system) {
@@ -245,7 +270,7 @@ async function updateRole(roleId: string, options: UpdateOptions): Promise<void>
     }
 
     const updateSpinner = output.spinner('Updating role...').start();
-    const result = await client.patch<Role>(`/v1/roles/${roleId}`, body);
+    const result = await client.patch<Role>(rolesPath(options.tenant, `/${roleId}`) + withTenantQuery(options.tenant), body);
     updateSpinner.stop();
 
     if (options.json) {
@@ -265,7 +290,7 @@ async function deleteRole(roleId: string, options: DeleteOptions): Promise<void>
   if (!options.force) {
     const spinner = output.spinner('Fetching role...').start();
     try {
-      const role = await client.get<Role>(`/v1/roles/${roleId}`);
+      const role = await client.get<Role>(rolesPath(options.tenant, `/${roleId}`) + withTenantQuery(options.tenant));
       spinner.stop();
 
       if (role.is_system) {
@@ -301,7 +326,7 @@ async function deleteRole(roleId: string, options: DeleteOptions): Promise<void>
   const deleteSpinner = output.spinner('Deleting role...').start();
 
   try {
-    await client.delete(`/v1/roles/${roleId}`);
+    await client.delete(rolesPath(options.tenant, `/${roleId}`) + withTenantQuery(options.tenant));
     deleteSpinner.stop();
 
     if (options.json) {
@@ -477,6 +502,7 @@ export function registerRoleCommands(program: Command): void {
   role
     .command('get <roleId>')
     .description('Get role details')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)')
     .option('--json', 'Output as JSON')
     .action(getRole);
 
@@ -494,6 +520,7 @@ export function registerRoleCommands(program: Command): void {
   role
     .command('update <roleId>')
     .description('Update a custom role')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)')
     .option('-n, --name <name>', 'New role name')
     .option('-d, --description <desc>', 'New description')
     .option('-p, --permissions <perms>', 'New permissions (comma-separated)')
@@ -504,6 +531,7 @@ export function registerRoleCommands(program: Command): void {
   role
     .command('delete <roleId>')
     .description('Delete a custom role')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)')
     .option('-f, --force', 'Skip confirmation')
     .option('--json', 'Output as JSON')
     .action(deleteRole);

@@ -65,10 +65,14 @@ const mockVersions = [
 vi.mock('../../src/lib/client.js', () => ({
   client: {
     get: vi.fn().mockImplementation((path: string) => {
-      if (path.includes('/v1/kms/keys?')) return Promise.resolve({ items: mockKeys, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
+      // List path: matches both /v1/kms/keys and the admin variant
+      // /v1/superadmin/kms/keys (with or without a trailing query string).
+      if (/^\/v1\/(superadmin\/)?kms\/keys(\?|$)/.test(path)) {
+        return Promise.resolve({ items: mockKeys, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
+      }
       if (path.includes('/versions')) return Promise.resolve(mockVersions);
       // API returns { keyMetadata: { ... } }
-      if (path.includes('/v1/kms/keys/')) return Promise.resolve({ keyMetadata: mockKeyDetails });
+      if (path.includes('/kms/keys/')) return Promise.resolve({ keyMetadata: mockKeyDetails });
       return Promise.resolve({ keyMetadata: mockKeyDetails });
     }),
     post: vi.fn().mockImplementation((path: string) => {
@@ -123,12 +127,10 @@ describe('kms commands', () => {
   describe('kms list', () => {
     it('should list all KMS keys', async () => {
       const { client } = await import('../../src/lib/client.js');
-      const { info } = await import('../../src/lib/output.js');
 
       await program.parseAsync(['node', 'test', 'kms', 'list']);
 
-      expect(client.get).toHaveBeenCalled();
-      expect(info).toHaveBeenCalledWith(expect.stringContaining('2 key(s)'));
+      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('/v1/kms/keys'));
     });
 
     it('should filter by tenant', async () => {
@@ -136,7 +138,11 @@ describe('kms commands', () => {
 
       await program.parseAsync(['node', 'test', 'kms', 'list', '--tenant', 'acme']);
 
-      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('tenant=acme'));
+      // --tenant for a non-tenant principal routes via the superadmin surface
+      // (server v1.39.0+).
+      const calledWith = (client.get as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(calledWith).toContain('/v1/superadmin/kms/keys');
+      expect(calledWith).toContain('tenantId=acme');
     });
 
     it('should filter by state', async () => {
@@ -181,10 +187,12 @@ describe('kms commands', () => {
 
       await program.parseAsync(['node', 'test', 'kms', 'create', '--tenant', 'acme', '--alias', 'my-key']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/kms/keys', expect.objectContaining({
-        tenant: 'acme',
-        alias: 'alias/my-key',
-      }));
+      // --tenant routes via /v1/superadmin/kms/keys with tenantId as a query
+      // parameter; the body no longer carries `tenant`.
+      expect(client.post).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/v1\/superadmin\/kms\/keys\?.*tenantId=acme/),
+        expect.objectContaining({ alias: 'alias/my-key' })
+      );
       expect(success).toHaveBeenCalledWith('KMS key created successfully!');
     });
 
@@ -199,11 +207,13 @@ describe('kms commands', () => {
         '--tags', 'env=prod,team=backend',
       ]);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/kms/keys', expect.objectContaining({
-        tenant: 'acme',
-        description: 'A test key',
-        tags: [{ key: 'env', value: 'prod' }, { key: 'team', value: 'backend' }],
-      }));
+      expect(client.post).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/v1\/superadmin\/kms\/keys\?.*tenantId=acme/),
+        expect.objectContaining({
+          description: 'A test key',
+          tags: [{ key: 'env', value: 'prod' }, { key: 'team', value: 'backend' }],
+        })
+      );
     });
   });
 

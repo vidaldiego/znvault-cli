@@ -257,28 +257,28 @@ export class VaultClient extends HttpClient {
 
   listPolicies = (options?: Parameters<PoliciesClient['list']>[0]) =>
     this.policiesClient.list(options);
-  getPolicy = (id: string) =>
-    this.policiesClient.getById(id);
+  getPolicy = (id: string, tenantId?: string) =>
+    this.policiesClient.getById(id, tenantId);
   createPolicy = (data: Parameters<PoliciesClient['create']>[0]) =>
     this.policiesClient.create(data);
-  updatePolicy = (id: string, data: Parameters<PoliciesClient['update']>[1]) =>
-    this.policiesClient.update(id, data);
-  deletePolicy = (id: string) =>
-    this.policiesClient.deleteById(id);
-  togglePolicy = (id: string, enabled: boolean) =>
-    this.policiesClient.toggle(id, enabled);
+  updatePolicy = (id: string, data: Parameters<PoliciesClient['update']>[1], tenantId?: string) =>
+    this.policiesClient.update(id, data, tenantId);
+  deletePolicy = (id: string, tenantId?: string) =>
+    this.policiesClient.deleteById(id, tenantId);
+  togglePolicy = (id: string, enabled: boolean, tenantId?: string) =>
+    this.policiesClient.toggle(id, enabled, tenantId);
   validatePolicy = (policy: Parameters<PoliciesClient['validate']>[0]) =>
     this.policiesClient.validate(policy);
-  getPolicyAttachments = (policyId: string) =>
-    this.policiesClient.getAttachments(policyId);
-  attachPolicyToUser = (policyId: string, userId: string) =>
-    this.policiesClient.attachToUser(policyId, userId);
-  attachPolicyToRole = (policyId: string, roleId: string) =>
-    this.policiesClient.attachToRole(policyId, roleId);
-  detachPolicyFromUser = (policyId: string, userId: string) =>
-    this.policiesClient.detachFromUser(policyId, userId);
-  detachPolicyFromRole = (policyId: string, roleId: string) =>
-    this.policiesClient.detachFromRole(policyId, roleId);
+  getPolicyAttachments = (policyId: string, tenantId?: string) =>
+    this.policiesClient.getAttachments(policyId, tenantId);
+  attachPolicyToUser = (policyId: string, userId: string, tenantId?: string) =>
+    this.policiesClient.attachToUser(policyId, userId, tenantId);
+  attachPolicyToRole = (policyId: string, roleId: string, tenantId?: string) =>
+    this.policiesClient.attachToRole(policyId, roleId, tenantId);
+  detachPolicyFromUser = (policyId: string, userId: string, tenantId?: string) =>
+    this.policiesClient.detachFromUser(policyId, userId, tenantId);
+  detachPolicyFromRole = (policyId: string, roleId: string, tenantId?: string) =>
+    this.policiesClient.detachFromRole(policyId, roleId, tenantId);
   getUserPolicies = (userId: string) =>
     this.policiesClient.getUserPolicies(userId);
   getRolePolicies = (roleId: string) =>

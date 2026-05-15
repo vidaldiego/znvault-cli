@@ -14,6 +14,7 @@ export interface PolicyListOptions {
 }
 
 export interface PolicyGetOptions {
+  tenant?: string;
   json?: boolean;
 }
 
@@ -31,6 +32,7 @@ export interface PolicyCreateOptions {
 }
 
 export interface PolicyUpdateOptions {
+  tenant?: string;
   name?: string;
   description?: string;
   effect?: string;
@@ -43,15 +45,18 @@ export interface PolicyUpdateOptions {
 }
 
 export interface PolicyDeleteOptions {
+  tenant?: string;
   yes?: boolean;
   json?: boolean;
 }
 
 export interface PolicyToggleOptions {
+  tenant?: string;
   json?: boolean;
 }
 
 export interface PolicyAttachOptions {
+  tenant?: string;
   json?: boolean;
 }
 
@@ -67,6 +72,7 @@ export interface PolicyValidateOptions {
 }
 
 export interface PolicyAttachmentsOptions {
+  tenant?: string;
   json?: boolean;
 }
 

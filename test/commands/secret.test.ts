@@ -119,12 +119,12 @@ describe('secret commands', () => {
       expect(info).toHaveBeenCalledWith('Total: 2 secret(s)');
     });
 
-    it('should filter by tenant', async () => {
-      const { client } = await import('../../src/lib/client.js');
-
-      await program.parseAsync(['node', 'test', 'secret', 'list', '--tenant', 'acme']);
-
-      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('tenant=acme'));
+    it('rejects --tenant (removed in v3.0.0)', async () => {
+      // `--tenant` was removed from `secret list` in v3.0.0 because secrets
+      // are tenant data and the server derives tenant from the JWT.
+      await expect(
+        program.parseAsync(['node', 'test', 'secret', 'list', '--tenant', 'acme'])
+      ).rejects.toThrow(/unknown option/);
     });
 
     it('should filter by type', async () => {

@@ -16,6 +16,7 @@ import type {
   VersionsOptions,
 } from './types.js';
 import { formatDate } from './helpers.js';
+import { kmsKeysPath, kmsKeysQuery } from './routing.js';
 
 // ============================================================================
 // Command Implementations
@@ -25,7 +26,10 @@ async function rotateKey(keyId: string, options: RotateOptions): Promise<void> {
   const spinner = output.spinner('Rotating key...').start();
 
   try {
-    const result = await client.post<{ keyId: string; newVersionId: string; message: string }>(`/v1/kms/keys/${keyId}/rotate`, {});
+    const result = await client.post<{ keyId: string; newVersionId: string; message: string }>(
+      kmsKeysPath(options.tenant, `/${keyId}/rotate`) + kmsKeysQuery(options.tenant),
+      {}
+    );
     spinner.stop();
 
     if (options.json) {
@@ -47,7 +51,10 @@ async function enableKey(keyId: string, options: EnableDisableOptions): Promise<
   const spinner = output.spinner('Enabling key...').start();
 
   try {
-    const result = await client.post<{ keyId: string; message?: string }>(`/v1/kms/keys/${keyId}/enable`, {});
+    const result = await client.post<{ keyId: string; message?: string }>(
+      kmsKeysPath(options.tenant, `/${keyId}/enable`) + kmsKeysQuery(options.tenant),
+      {}
+    );
     spinner.stop();
 
     if (options.json) {
@@ -67,7 +74,10 @@ async function disableKey(keyId: string, options: EnableDisableOptions): Promise
   const spinner = output.spinner('Disabling key...').start();
 
   try {
-    const result = await client.post<{ keyId: string; message?: string }>(`/v1/kms/keys/${keyId}/disable`, {});
+    const result = await client.post<{ keyId: string; message?: string }>(
+      kmsKeysPath(options.tenant, `/${keyId}/disable`) + kmsKeysQuery(options.tenant),
+      {}
+    );
     spinner.stop();
 
     if (options.json) {
@@ -130,6 +140,7 @@ export function registerLifecycleCommands(parent: Command): void {
   parent
     .command('rotate <keyId>')
     .description('Rotate a KMS key (create new version)')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
     .action(rotateKey);
 
@@ -137,6 +148,7 @@ export function registerLifecycleCommands(parent: Command): void {
   parent
     .command('enable <keyId>')
     .description('Enable a disabled key')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
     .action(enableKey);
 
@@ -144,6 +156,7 @@ export function registerLifecycleCommands(parent: Command): void {
   parent
     .command('disable <keyId>')
     .description('Disable a key')
+    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
     .action(disableKey);
 

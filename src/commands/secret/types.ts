@@ -37,7 +37,7 @@ export interface DecryptedSecret extends SecretMetadata {
 // ============================================================================
 
 export interface ListOptions {
-  tenant?: string;
+  // `tenant` removed in v3.0.0 — see secret/list.ts.
   type?: string;
   subType?: string;
   aliasPrefix?: string;
@@ -55,7 +55,8 @@ export interface DecryptOptions {
 }
 
 export interface CreateOptions {
-  tenant?: string;
+  // `tenant` removed in v3.0.0 — secret creation is always against the
+  // caller's own tenant (derived from JWT). See secret/create.ts.
   type: string;
   subType?: string;
   tags?: string;
