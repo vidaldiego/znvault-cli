@@ -19,7 +19,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          # Do NOT pass `registry-url` here. setup-node writes a stub
+          # `_authToken=${NODE_AUTH_TOKEN}` line into .npmrc when this is
+          # set, which forces npm into classic Bearer-token auth and
+          # bypasses OIDC trusted publishing. With Trusted Publishers
+          # enabled on npm.com, npm picks up the GitHub OIDC token from
+          # ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN automatically.
 
       - name: Update npm for OIDC support
         # Pin to a known-good version. `npm@latest` periodically ships
