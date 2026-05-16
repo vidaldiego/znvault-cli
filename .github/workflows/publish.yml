@@ -27,11 +27,11 @@ jobs:
           # ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN automatically.
 
       - name: Update npm for OIDC support
-        # Pin to a known-good version. `npm@latest` periodically ships
-        # broken artifacts (e.g. "Cannot find module 'promise-retry'" on
-        # 2026-05-15). Pinning to a known-good 10.x line keeps OIDC
-        # trusted publishing working without inheriting the breakage.
-        run: npm install -g npm@10.9.2
+        # OIDC Trusted Publishing requires npm >= 11.5.1. The 10.x line
+        # falls back to classic Bearer-token auth and returns ENEEDAUTH
+        # in this workflow. `npm@latest` itself is broken on 2026-05-15
+        # (missing `promise-retry`), so pin to a known-good 11.x.
+        run: npm install -g npm@11.10.1
 
       - name: Install dependencies
         run: npm ci
