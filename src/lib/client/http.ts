@@ -238,6 +238,37 @@ export class HttpClient {
             const parsed: unknown = data ? JSON.parse(data) : (statusCode === 204 ? undefined : {});
 
             if (statusCode >= 400) {
+              // v3.3.0: on a 401, transparently try a token refresh
+              // once and replay the request. The server returns 401
+              // not just for "no token" but also for "token's JTI
+              // isn't in the session store" — which happens after a
+              // server restart even if the token's clock-based exp
+              // is still in the future. Without this retry the user
+              // sees "session expired" and has to log in again on
+              // every deploy. The _retriedAfter401Refresh flag stops
+              // infinite recursion if the refresh itself doesn't
+              // help (refresh token is invalid, etc.).
+              if (
+                statusCode === 401 &&
+                !options.skipAuth &&
+                !options._retriedAfter401Refresh
+              ) {
+                const credentials = getCredentials();
+                if (credentials?.refreshToken) {
+                  this.refreshToken()
+                    .then(() => {
+                      // Recurse with the retry flag set, using the
+                      // freshly-stored credentials.
+                      return this.request<T>({
+                        ...options,
+                        _retriedAfter401Refresh: true,
+                      });
+                    })
+                    .then(resolve)
+                    .catch(reject);
+                  return;
+                }
+              }
               if (isApiErrorLike(parsed)) {
                 const errorMessage = parsed.message ?? parsed.error ?? `Request failed with status ${statusCode}`;
                 reject(new Error(errorMessage));

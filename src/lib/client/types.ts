@@ -10,6 +10,12 @@ export interface RequestOptions {
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
   skipAuth?: boolean;
+  // Internal: set by the http client when retrying once after a 401
+  // refresh. Prevents infinite recursion when the refresh succeeds
+  // but the next request still 401s (which would mean the refresh
+  // token itself is rejected — surface that to the user as a hard
+  // re-login).
+  _retriedAfter401Refresh?: boolean;
 }
 
 export interface MessageResponse {
