@@ -10,6 +10,18 @@ vi.mock('../../src/lib/prompts.js', () => ({
   promptNewPassword: vi.fn().mockResolvedValue('newPassword123'),
 }));
 
+// Tests run without real credentials — stub auth context.
+vi.mock('../../src/lib/auth-context.js', () => ({
+  getAuthContext: vi.fn().mockReturnValue({
+    isAuthenticated: true,
+    isSuperadmin: false,
+    isAdmin: true,
+    role: 'admin',
+  }),
+  isSuperadmin: vi.fn().mockReturnValue(false),
+  isAuthenticated: vi.fn().mockReturnValue(true),
+}));
+
 const mockUsers = [
   { id: 'user-1', username: 'alice', email: 'alice@example.com', role: 'user', status: 'active', tenantId: 'tenant-1', totpEnabled: false, failedAttempts: 0, lastLogin: null, createdAt: new Date().toISOString() },
   { id: 'user-2', username: 'bob', email: 'bob@example.com', role: 'admin', status: 'locked', tenantId: 'tenant-1', totpEnabled: true, failedAttempts: 3, lastLogin: new Date().toISOString(), createdAt: new Date().toISOString() },
@@ -163,7 +175,11 @@ describe('user commands', () => {
 
       await program.parseAsync(['node', 'test', 'user', 'reset-password', 'user-1', 'newSecretPass123']);
 
-      expect(client.resetUserPassword).toHaveBeenCalledWith('user-1', 'newSecretPass123');
+      expect(client.resetUserPassword).toHaveBeenCalledWith(
+        'user-1',
+        'newSecretPass123',
+        expect.objectContaining({ asSuperadmin: expect.any(Boolean) })
+      );
     });
   });
 

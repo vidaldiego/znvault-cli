@@ -76,10 +76,24 @@ export class UsersClient extends HttpClient {
     });
   }
 
-  async resetPassword(id: string, newPassword: string): Promise<MessageResponse> {
+  /**
+   * Reset a user's password.
+   *
+   * Routing:
+   *   - `asSuperadmin: true` → `/v1/superadmin/users/:id/reset-password` (cross-tenant)
+   *   - otherwise → `/v1/users/:id/reset-password` (tenant admin, same tenant only)
+   */
+  async resetPassword(
+    id: string,
+    newPassword: string,
+    opts?: { asSuperadmin?: boolean }
+  ): Promise<MessageResponse> {
+    const path = opts?.asSuperadmin
+      ? `/v1/superadmin/users/${id}/reset-password`
+      : `/v1/users/${id}/reset-password`;
     return this.request<MessageResponse>({
       method: 'POST',
-      path: `/v1/users/${id}/reset-password`,
+      path,
       body: { newPassword },
     });
   }

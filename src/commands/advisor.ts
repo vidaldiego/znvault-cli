@@ -120,8 +120,6 @@ export function registerAdvisorCommands(program: Command): void {
       const spinner = output.spinner('Running security audit...').start();
 
       try {
-        // Use 'me' if no tenant specified (server will use auth context)
-        const tenant = options.tenant ?? 'me';
         const body: Record<string, unknown> = {};
         if (options.category) {
           body.categories = [options.category];
@@ -133,10 +131,10 @@ export function registerAdvisorCommands(program: Command): void {
           body.includeAiSummary = true;
         }
 
-        const response = await client.post<{ success: boolean; data: AuditResult }>(
-          `/v1/advisor/${tenant}/audit`,
-          body
-        );
+        const path = options.tenant
+          ? `/v1/superadmin/advisor/audit?tenantId=${encodeURIComponent(options.tenant)}`
+          : '/v1/advisor/audit';
+        const response = await client.post<{ success: boolean; data: AuditResult }>(path, body);
         spinner.stop();
 
         if (options.json) {
@@ -266,7 +264,6 @@ export function registerAdvisorCommands(program: Command): void {
       const spinner = output.spinner('Getting AI suggestions...').start();
 
       try {
-        const tenant = options.tenant ?? 'me';
         const body: Record<string, unknown> = { description };
         const hints: Record<string, string> = {};
         if (options.environment) hints.environment = options.environment;
@@ -274,6 +271,9 @@ export function registerAdvisorCommands(program: Command): void {
         if (options.team) hints.team = options.team;
         if (Object.keys(hints).length > 0) body.hints = hints;
 
+        const path = options.tenant
+          ? `/v1/superadmin/advisor/suggest?tenantId=${encodeURIComponent(options.tenant)}`
+          : '/v1/advisor/suggest';
         const response = await client.post<{
           success: boolean;
           data: {
@@ -288,7 +288,7 @@ export function registerAdvisorCommands(program: Command): void {
             confidence: number;
             reasoning: string;
           };
-        }>(`/v1/advisor/${tenant}/suggest`, body);
+        }>(path, body);
         spinner.stop();
 
         if (options.json) {

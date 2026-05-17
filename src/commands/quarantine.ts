@@ -108,12 +108,13 @@ export function registerQuarantineCommands(program: Command): void {
   quarantine
     .command('get <id>')
     .description('Get quarantine details by ID')
+    .option('-t, --tenant <tenant>', 'Tenant ID (superadmin only, cross-tenant)')
     .option('--json', 'Output as JSON')
-    .action(async (id: string, options: { json?: boolean }) => {
+    .action(async (id: string, options: { json?: boolean; tenant?: string }) => {
       const spinner = output.spinner('Fetching quarantine details...').start();
 
       try {
-        const q = await client.getQuarantine(id);
+        const q = await client.getQuarantine(id, options.tenant);
         spinner.stop();
 
         if (options.json) {
@@ -167,12 +168,13 @@ export function registerQuarantineCommands(program: Command): void {
   quarantine
     .command('release <id> <reason>')
     .description('Release a quarantine by ID')
+    .option('-t, --tenant <tenant>', 'Tenant ID (superadmin only, cross-tenant)')
     .option('-y, --yes', 'Skip confirmation')
     .option('--json', 'Output as JSON')
-    .action(async (id: string, reason: string, options: ReleaseOptions) => {
+    .action(async (id: string, reason: string, options: ReleaseOptions & { tenant?: string }) => {
       try {
         // Get quarantine info first
-        const q = await client.getQuarantine(id);
+        const q = await client.getQuarantine(id, options.tenant);
 
         if (!options.yes) {
           const confirmed = await promptConfirm(
@@ -187,7 +189,7 @@ export function registerQuarantineCommands(program: Command): void {
         const spinner = output.spinner('Releasing quarantine...').start();
 
         try {
-          const result = await client.releaseQuarantine(id, reason);
+          const result = await client.releaseQuarantine(id, reason, options.tenant);
           spinner.succeed('Quarantine released');
 
           if (options.json) {

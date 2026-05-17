@@ -154,8 +154,12 @@ export class VaultClient extends HttpClient {
     this.usersClient.deleteById(id);
   unlockUser = (id: string) =>
     this.usersClient.unlock(id);
-  resetUserPassword = (id: string, newPassword: string) =>
-    this.usersClient.resetPassword(id, newPassword);
+  resetUserPassword = (
+    id: string,
+    newPassword: string,
+    opts?: { asSuperadmin?: boolean }
+  ) =>
+    this.usersClient.resetPassword(id, newPassword, opts);
   disableUserTotp = (id: string) =>
     this.usersClient.disableTotp(id);
 
@@ -290,10 +294,10 @@ export class VaultClient extends HttpClient {
 
   listQuarantines = (options?: Parameters<QuarantineClient['list']>[0]) =>
     this.quarantineClient.list(options);
-  getQuarantine = (id: string) =>
-    this.quarantineClient.getById(id);
-  releaseQuarantine = (id: string, reason: string) =>
-    this.quarantineClient.release(id, reason);
+  getQuarantine = (id: string, tenantId?: string) =>
+    this.quarantineClient.getById(id, tenantId);
+  releaseQuarantine = (id: string, reason: string, tenantId?: string) =>
+    this.quarantineClient.release(id, reason, tenantId);
   releaseQuarantineIp = (ip: string, reason: string, tenantId?: string) =>
     this.quarantineClient.releaseIp(ip, reason, tenantId);
   getQuarantineHistory = (ip: string, options?: Parameters<QuarantineClient['getHistory']>[1]) =>

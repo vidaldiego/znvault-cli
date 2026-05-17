@@ -96,7 +96,7 @@ describe('Advisor Commands', () => {
 
       await program.parseAsync(['node', 'test', 'advisor', 'audit']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/me/audit', {});
+      expect(client.post).toHaveBeenCalledWith('/v1/advisor/audit', {});
       expect(output.section).toHaveBeenCalledWith('Audit Summary');
       expect(output.table).toHaveBeenCalled();
     });
@@ -114,7 +114,7 @@ describe('Advisor Commands', () => {
 
       await program.parseAsync(['node', 'test', 'advisor', 'audit', '--tenant', 'custom']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/custom/audit', {});
+      expect(client.post).toHaveBeenCalledWith('/v1/superadmin/advisor/audit?tenantId=custom', {});
     });
 
     it('should filter by category', async () => {
@@ -130,7 +130,7 @@ describe('Advisor Commands', () => {
 
       await program.parseAsync(['node', 'test', 'advisor', 'audit', '--category', 'security']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/me/audit', { categories: ['security'] });
+      expect(client.post).toHaveBeenCalledWith('/v1/advisor/audit', { categories: ['security'] });
     });
 
     it('should filter by severity', async () => {
@@ -146,7 +146,7 @@ describe('Advisor Commands', () => {
 
       await program.parseAsync(['node', 'test', 'advisor', 'audit', '--severity', 'critical']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/me/audit', { severity: ['critical'] });
+      expect(client.post).toHaveBeenCalledWith('/v1/advisor/audit', { severity: ['critical'] });
     });
 
     it('should include AI summary when requested', async () => {
@@ -174,7 +174,7 @@ describe('Advisor Commands', () => {
 
       await program.parseAsync(['node', 'test', 'advisor', 'audit', '--ai-summary']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/me/audit', { includeAiSummary: true });
+      expect(client.post).toHaveBeenCalledWith('/v1/advisor/audit', { includeAiSummary: true });
       expect(output.section).toHaveBeenCalledWith('AI Summary');
     });
 
@@ -293,7 +293,7 @@ describe('Advisor Commands', () => {
 
       await program.parseAsync(['node', 'test', 'advisor', 'suggest', 'stripe api key for payments']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/me/suggest', { description: 'stripe api key for payments' });
+      expect(client.post).toHaveBeenCalledWith('/v1/advisor/suggest', { description: 'stripe api key for payments' });
       expect(output.section).toHaveBeenCalledWith('Suggested Configuration');
       expect(output.section).toHaveBeenCalledWith('Alternative Names');
       expect(output.section).toHaveBeenCalledWith('Warnings');
@@ -317,7 +317,7 @@ describe('Advisor Commands', () => {
         '--team', 'backend',
       ]);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/me/suggest', {
+      expect(client.post).toHaveBeenCalledWith('/v1/advisor/suggest', {
         description: 'stripe key',
         hints: {
           environment: 'dev',
@@ -333,7 +333,7 @@ describe('Advisor Commands', () => {
 
       await program.parseAsync(['node', 'test', 'advisor', 'suggest', 'test secret', '--tenant', 'acme']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/advisor/acme/suggest', expect.any(Object));
+      expect(client.post).toHaveBeenCalledWith('/v1/superadmin/advisor/suggest?tenantId=acme', expect.any(Object));
     });
 
     it('should output JSON when --json flag is set', async () => {

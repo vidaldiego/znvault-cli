@@ -43,11 +43,6 @@ export function registerCreateCommand(secretCmd: Command): void {
 
       // AI Suggestion flow
       if (options.suggest) {
-        // Advisor endpoint accepts the magic 'me' alias to resolve tenant
-        // from the authenticated principal — that is the only mode the CLI
-        // ever needs (we dropped cross-tenant override in v3.0.0).
-        const tenant = 'me';
-
         // Analyze file if --file is provided
         let fileInfo: FileAnalysisInfo | null = null;
         if (options.file) {
@@ -98,7 +93,7 @@ export function registerCreateCommand(secretCmd: Command): void {
           const response = await client.post<{
             success: boolean;
             data: SuggestResult;
-          }>(`/v1/advisor/${tenant}/suggest`, body);
+          }>('/v1/advisor/suggest', body);
 
           spinner.stop();
 

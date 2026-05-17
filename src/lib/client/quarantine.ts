@@ -2,6 +2,10 @@
 
 /**
  * IP Quarantine management client
+ *
+ * Routing: if `tenantId` is provided we hit `/v1/superadmin/quarantine/*`
+ * (cross-tenant; requires superadmin role). Otherwise we hit `/v1/quarantine/*`
+ * (tenant-scoped; tenant is derived from the JWT).
  */
 
 import { HttpClient } from './http.js';
@@ -27,14 +31,15 @@ export interface ReleaseResult {
   releasedCount?: number;
 }
 
+function adminBase(tenantId: string | undefined): string {
+  return tenantId !== undefined && tenantId !== '' ? '/v1/superadmin/quarantine' : '/v1/quarantine';
+}
+
 export class QuarantineClient extends HttpClient {
-  /**
-   * List quarantined IPs
-   */
   async list(options?: ListQuarantineOptions): Promise<PaginatedResponse<IpQuarantine>> {
     return this.request<PaginatedResponse<IpQuarantine>>({
       method: 'GET',
-      path: '/v1/quarantine',
+      path: adminBase(options?.tenantId),
       query: {
         status: options?.status,
         tenantId: options?.tenantId,
@@ -45,45 +50,39 @@ export class QuarantineClient extends HttpClient {
     });
   }
 
-  /**
-   * Get quarantine details by ID
-   */
-  async getById(id: string): Promise<IpQuarantine> {
+  async getById(id: string, tenantId?: string): Promise<IpQuarantine> {
     return this.request<IpQuarantine>({
       method: 'GET',
-      path: `/v1/quarantine/${id}`,
+      path: `${adminBase(tenantId)}/${id}`,
+      query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  /**
-   * Release a quarantine by ID
-   */
-  async release(id: string, reason: string): Promise<ReleaseResult> {
+  async release(id: string, reason: string, tenantId?: string): Promise<ReleaseResult> {
     return this.request<ReleaseResult>({
       method: 'POST',
-      path: `/v1/quarantine/${id}/release`,
+      path: `${adminBase(tenantId)}/${id}/release`,
+      query: tenantId ? { tenantId } : undefined,
       body: { reason },
     });
   }
 
-  /**
-   * Release all quarantines for an IP
-   */
   async releaseIp(ip: string, reason: string, tenantId?: string): Promise<ReleaseResult> {
     return this.request<ReleaseResult>({
       method: 'POST',
-      path: `/v1/quarantine/ip/${encodeURIComponent(ip)}/release`,
-      body: { reason, tenantId },
+      path: `${adminBase(tenantId)}/ip/${encodeURIComponent(ip)}/release`,
+      query: tenantId ? { tenantId } : undefined,
+      body: { reason },
     });
   }
 
-  /**
-   * Get failure history for an IP
-   */
-  async getHistory(ip: string, options?: { limit?: number; tenantId?: string }): Promise<{ ip: string; failures: IpFailureHistory[] }> {
+  async getHistory(
+    ip: string,
+    options?: { limit?: number; tenantId?: string }
+  ): Promise<{ ip: string; failures: IpFailureHistory[] }> {
     return this.request({
       method: 'GET',
-      path: `/v1/quarantine/ip/${encodeURIComponent(ip)}/history`,
+      path: `${adminBase(options?.tenantId)}/ip/${encodeURIComponent(ip)}/history`,
       query: {
         limit: options?.limit ?? 100,
         tenantId: options?.tenantId,
@@ -91,39 +90,30 @@ export class QuarantineClient extends HttpClient {
     });
   }
 
-  /**
-   * Get quarantine statistics
-   */
   async getStats(tenantId?: string): Promise<IpQuarantineStats> {
     return this.request<IpQuarantineStats>({
       method: 'GET',
-      path: '/v1/quarantine/stats',
-      query: { tenantId },
+      path: `${adminBase(tenantId)}/stats`,
+      query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  /**
-   * Get quarantine configuration
-   */
   async getConfig(tenantId?: string): Promise<IpQuarantineConfig> {
     return this.request<IpQuarantineConfig>({
       method: 'GET',
-      path: '/v1/quarantine/config',
-      query: { tenantId },
+      path: `${adminBase(tenantId)}/config`,
+      query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  /**
-   * Update quarantine configuration
-   */
   async updateConfig(
     config: Partial<Omit<IpQuarantineConfig, 'id' | 'tenantId' | 'createdAt' | 'updatedAt'>>,
     tenantId?: string
   ): Promise<{ success: boolean; config: IpQuarantineConfig }> {
     return this.request({
       method: 'PUT',
-      path: '/v1/quarantine/config',
-      query: { tenantId },
+      path: `${adminBase(tenantId)}/config`,
+      query: tenantId ? { tenantId } : undefined,
       body: config,
     });
   }

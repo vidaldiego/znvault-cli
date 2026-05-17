@@ -4,6 +4,7 @@ import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+import { isSuperadmin } from '../lib/auth-context.js';
 
 // Option interfaces for each command
 interface ListUserOptions {
@@ -359,8 +360,11 @@ export function registerUserCommands(program: Command): void {
               process.exit(1);
             }
           } else {
-            // API mode
-            const result = await client.resetUserPassword(id, password);
+            // API mode — superadmins must use /v1/superadmin/users/:id/reset-password
+            // because the tenant route is JWT-tenant-scoped after v1.41.2.
+            const result = await client.resetUserPassword(id, password, {
+              asSuperadmin: isSuperadmin(),
+            });
             spinner.succeed('Password reset successfully');
             if (options.json) {
               output.json({ success: true, id, ...result });
