@@ -1,17 +1,57 @@
 // Path: znvault-cli/src/commands/lmk.ts
 //
-// LMK rotation operational commands. Today this is just `rotation resume`
-// (M4 of the zn-api integration hardening plan); future LMK admin
-// subcommands (status, list versions, etc.) belong under this same
-// `lmk` namespace.
+// LMK rotation operational commands.
+//
+// Subcommands under `znvault lmk rotation`:
+//   start    POST /v1/admin/lmk/rotate (initiate, with destructive-confirm)
+//   resume   POST /v1/admin/lmk/rotation/resume
+//   list     GET  /v1/admin/lmk/rotations
+//   show     GET  /v1/admin/lmk/rotation/:rotationId
+//   cancel   POST /v1/admin/lmk/rotation/:rotationId/cancel
+//
+// Direct alias: `znvault lmk rotate` → same as `lmk rotation start`.
 
 import { type Command } from 'commander';
 
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
+import { promptConfirm } from '../lib/prompts.js';
 
-interface RotationResumeOptions {
+interface JsonOption {
   json?: boolean;
+}
+
+interface RotateOptions extends JsonOption {
+  description?: string;
+  manual?: boolean;
+  force?: boolean;
+}
+
+interface CancelOptions extends JsonOption {
+  reason?: string;
+  force?: boolean;
+}
+
+interface ListOptions extends JsonOption {
+  limit?: string;
+  offset?: string;
+}
+
+interface RotateAutomaticResponse {
+  success: boolean;
+  rotationId: string;
+  newLmkVersion: number;
+  deksMigrated?: number;
+  deksFailed?: number;
+  status: string;
+}
+
+interface RotateManualResponse {
+  success: boolean;
+  rotationId: string;
+  newLmkVersion: number;
+  deksToMigrate?: number;
+  status: string;
 }
 
 interface RotationResumeResponse {
@@ -25,6 +65,47 @@ interface RotationResumeResponse {
   failed?: number;
 }
 
+interface RotationProgress {
+  rotationId: string;
+  status: string;
+  startedAt: string;
+  completedAt?: string;
+  newLmkVersion: number;
+  oldLmkVersion: number;
+  totalDeks: number;
+  deksMigrated: number;
+  deksFailed: number;
+  errors?: unknown[];
+  description?: string;
+  initiatedBy?: string;
+}
+
+interface RotationListItem {
+  rotationId: string;
+  status: string;
+  startedAt: string;
+  completedAt?: string;
+  newLmkVersion: number;
+  oldLmkVersion: number;
+  totalDeks: number;
+  migratedDeks: number;
+  failedDeks: number;
+  description?: string;
+  initiatedBy?: string;
+}
+
+interface RotationListResponse {
+  rotations: RotationListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+interface CancelResponse {
+  success: boolean;
+  message: string;
+}
+
 export function registerLmkCommands(program: Command): void {
   const lmk = program
     .command('lmk')
@@ -34,6 +115,44 @@ export function registerLmkCommands(program: Command): void {
     .command('rotation')
     .description('LMK rotation operations');
 
+  // -------------------------------------------------------------------------
+  // lmk rotation start
+  // -------------------------------------------------------------------------
+  rotation
+    .command('start')
+    .description(
+      'Start an LMK rotation. Creates a new LMK version and re-wraps all ' +
+      'DEKs. Operator-only; requires confirmation unless --force.'
+    )
+    .option('-d, --description <text>', 'Free-text description of why this rotation is being run')
+    .option(
+      '--manual',
+      'Only initiate (do not auto-run re-wrap or complete). Useful for ' +
+      'staged rotations on large clusters; follow up with `lmk rotation resume`.'
+    )
+    .option('-f, --force', 'Skip confirmation prompt')
+    .option('--json', 'Output as JSON')
+    .action(async (options: RotateOptions) => {
+      await runStart(options);
+    });
+
+  // -------------------------------------------------------------------------
+  // lmk rotate  (top-level alias for `lmk rotation start`)
+  // -------------------------------------------------------------------------
+  lmk
+    .command('rotate')
+    .description('Alias for `lmk rotation start`')
+    .option('-d, --description <text>', 'Free-text description of why this rotation is being run')
+    .option('--manual', 'Only initiate (do not auto-run re-wrap or complete)')
+    .option('-f, --force', 'Skip confirmation prompt')
+    .option('--json', 'Output as JSON')
+    .action(async (options: RotateOptions) => {
+      await runStart(options);
+    });
+
+  // -------------------------------------------------------------------------
+  // lmk rotation resume
+  // -------------------------------------------------------------------------
   rotation
     .command('resume')
     .description(
@@ -42,7 +161,7 @@ export function registerLmkCommands(program: Command): void {
       'WARN log line).'
     )
     .option('--json', 'Output as JSON')
-    .action(async (options: RotationResumeOptions) => {
+    .action(async (options: JsonOption) => {
       const spinner = output.spinner('Resuming LMK rotation...').start();
 
       try {
@@ -52,7 +171,7 @@ export function registerLmkCommands(program: Command): void {
         );
         spinner.stop();
 
-        if (options.json) {
+        if (options.json === true) {
           output.json(result);
           return;
         }
@@ -90,4 +209,231 @@ export function registerLmkCommands(program: Command): void {
         throw err;
       }
     });
+
+  // -------------------------------------------------------------------------
+  // lmk rotation list
+  // -------------------------------------------------------------------------
+  rotation
+    .command('list')
+    .description('List historical LMK rotations.')
+    .option('--limit <n>', 'Page size (default 50)')
+    .option('--offset <n>', 'Page offset (default 0)')
+    .option('--json', 'Output as JSON')
+    .action(async (options: ListOptions) => {
+      const limit = options.limit !== undefined ? parseInt(options.limit, 10) : 50;
+      const offset = options.offset !== undefined ? parseInt(options.offset, 10) : 0;
+      const query = `?limit=${limit}&offset=${offset}`;
+
+      const result = await client.get<RotationListResponse>(
+        `/v1/admin/lmk/rotations${query}`
+      );
+
+      if (options.json === true) {
+        output.json(result);
+        return;
+      }
+
+      if (result.rotations.length === 0) {
+        output.info('No LMK rotations recorded.');
+        return;
+      }
+
+      output.section(`LMK Rotations (${result.rotations.length}/${result.total})`);
+      output.table(
+        ['Rotation ID', 'Status', 'Old → New', 'DEKs (mig/fail/total)', 'Started', 'By'],
+        result.rotations.map((r) => [
+          r.rotationId,
+          r.status,
+          `${r.oldLmkVersion} → ${r.newLmkVersion}`,
+          `${r.migratedDeks}/${r.failedDeks}/${r.totalDeks}`,
+          output.formatDate(r.startedAt),
+          r.initiatedBy ?? '-',
+        ])
+      );
+    });
+
+  // -------------------------------------------------------------------------
+  // lmk rotation show <rotationId>
+  // -------------------------------------------------------------------------
+  rotation
+    .command('show <rotationId>')
+    .description('Show details of a single LMK rotation.')
+    .option('--json', 'Output as JSON')
+    .action(async (rotationId: string, options: JsonOption) => {
+      const result = await client.get<RotationProgress>(
+        `/v1/admin/lmk/rotation/${rotationId}`
+      );
+
+      if (options.json === true) {
+        output.json(result);
+        return;
+      }
+
+      output.section(`LMK Rotation ${result.rotationId}`);
+      output.keyValue({
+        'Status': result.status,
+        'Old LMK version': result.oldLmkVersion,
+        'New LMK version': result.newLmkVersion,
+        'DEKs total': result.totalDeks,
+        'DEKs migrated': result.deksMigrated,
+        'DEKs failed': result.deksFailed,
+        'Started': output.formatDate(result.startedAt),
+        'Completed': result.completedAt !== undefined ? output.formatDate(result.completedAt) : '-',
+        'Description': result.description ?? '-',
+        'Initiated by': result.initiatedBy ?? '-',
+      });
+
+      if (result.errors !== undefined && result.errors.length > 0) {
+        output.warn(`${result.errors.length} per-DEK errors recorded; see audit log / dek_rotation_history.`);
+      }
+    });
+
+  // -------------------------------------------------------------------------
+  // lmk rotation cancel <rotationId>
+  // -------------------------------------------------------------------------
+  rotation
+    .command('cancel <rotationId>')
+    .description(
+      'Cancel an in-progress LMK rotation. DEKs already re-wrapped to the new ' +
+      'LMK version remain on the new version — cancel does NOT roll those ' +
+      'back. Use with care.'
+    )
+    .option('-r, --reason <text>', 'Reason recorded in the rotation row (audit trail)')
+    .option('-f, --force', 'Skip confirmation prompt')
+    .option('--json', 'Output as JSON')
+    .action(async (rotationId: string, options: CancelOptions) => {
+      if (options.force !== true) {
+        output.warn(
+          'Cancellation will NOT roll back DEKs already re-wrapped to the ' +
+          'new LMK version. Those DEKs remain on the new version and the ' +
+          'cluster will keep both LMK versions in lmk_versions for them.'
+        );
+        const proceed = await promptConfirm(
+          `Cancel rotation ${rotationId}?`,
+          false
+        );
+        if (!proceed) {
+          output.info('Aborted.');
+          return;
+        }
+      }
+
+      const result = await client.post<CancelResponse>(
+        `/v1/admin/lmk/rotation/${rotationId}/cancel`,
+        { reason: options.reason ?? 'Cancelled by operator via CLI' }
+      );
+
+      if (options.json === true) {
+        output.json(result);
+        return;
+      }
+
+      output.success(result.message);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Shared start handler — used by both `lmk rotation start` and the
+// top-level `lmk rotate` alias.
+// ---------------------------------------------------------------------------
+async function runStart(options: RotateOptions): Promise<void> {
+  const automatic = options.manual !== true;
+
+  if (options.force !== true) {
+    output.warn(
+      'LMK rotation is a cluster-wide cryptographic operation. The readiness ' +
+      'gate will refuse traffic with a 503 while DEK re-wrap runs. Existing ' +
+      'lmk.bin will be rotated to a new file (lmk.bin.v<N+1>) — back it up ' +
+      'before proceeding.'
+    );
+    if (!automatic) {
+      output.info(
+        'Manual mode: only initiate() will run. You will need to follow up ' +
+        'with `znvault lmk rotation resume` to finish the rewrap + complete.'
+      );
+    }
+    const proceed = await promptConfirm(
+      automatic
+        ? 'Proceed with full automatic LMK rotation?'
+        : 'Proceed with manual LMK rotation initiate?',
+      false
+    );
+    if (!proceed) {
+      output.info('Aborted.');
+      return;
+    }
+  }
+
+  const spinner = output
+    .spinner(automatic ? 'Rotating LMK (initiate + re-wrap + complete)...' : 'Initiating LMK rotation...')
+    .start();
+
+  try {
+    const body: { description?: string; automatic: boolean } = { automatic };
+    if (options.description !== undefined) {
+      body.description = options.description;
+    }
+
+    if (automatic) {
+      const result = await client.post<RotateAutomaticResponse>(
+        '/v1/admin/lmk/rotate',
+        body
+      );
+      spinner.stop();
+
+      if (options.json === true) {
+        output.json(result);
+        return;
+      }
+
+      output.section('LMK Rotation Complete');
+      output.keyValue({
+        'Rotation ID': result.rotationId,
+        'New LMK version': result.newLmkVersion,
+        'Status': result.status,
+        'DEKs migrated': result.deksMigrated ?? 0,
+        'DEKs failed': result.deksFailed ?? 0,
+      });
+
+      if ((result.deksFailed ?? 0) > 0) {
+        output.warn(
+          'Rotation completed with per-DEK failures. Inspect ' +
+          'dek_rotation_history for details and consider rerunning ' +
+          '`znvault lmk rotation resume` after resolving the underlying cause.'
+        );
+      } else {
+        output.success(
+          `LMK now at version ${String(result.newLmkVersion)}. Back up the new ` +
+          `lmk.bin file (data/lmk.bin.v${String(result.newLmkVersion)}) on all nodes.`
+        );
+      }
+    } else {
+      const result = await client.post<RotateManualResponse>(
+        '/v1/admin/lmk/rotate',
+        body
+      );
+      spinner.stop();
+
+      if (options.json === true) {
+        output.json(result);
+        return;
+      }
+
+      output.section('LMK Rotation Initiated (manual mode)');
+      output.keyValue({
+        'Rotation ID': result.rotationId,
+        'New LMK version': result.newLmkVersion,
+        'Status': result.status,
+        'DEKs to migrate': result.deksToMigrate ?? 0,
+      });
+      output.info(
+        `Next: run \`znvault lmk rotation resume\` to finish the rewrap and ` +
+        `complete the rotation. /v1/health/ready will refuse traffic with 503 ` +
+        `until that finishes.`
+      );
+    }
+  } catch (err) {
+    spinner.fail('LMK rotation failed');
+    throw err;
+  }
 }
