@@ -111,17 +111,16 @@ ZNVAULT_PROFILE=prod znvault health
 ### Health & Status
 
 ```bash
-znvault health                    # Quick health check
-znvault status                    # Detailed system status
-znvault cluster status            # HA cluster health
-znvault cluster takeover --yes    # Force leadership (HA)
+znvault health                              # Quick health check
+znvault status                              # Detailed system status
+znvault superadmin cluster status           # HA cluster health (superadmin)
+znvault superadmin cluster takeover --yes   # Force leadership (HA, superadmin)
 ```
 
 ### Secret Management
 
 ```bash
-znvault secret list                              # List all secrets
-znvault secret list --tenant acme                # Filter by tenant
+znvault secret list                              # List all secrets (your tenant)
 znvault secret get <alias>                       # Get secret value
 znvault secret create <alias> --value "secret"   # Create secret
 znvault secret create <alias> --json '{"k":"v"}' # Create JSON secret
@@ -172,24 +171,29 @@ znvault cert rotate <id>                         # Rotate certificate
 znvault cert delete <id>                         # Delete certificate
 ```
 
-### Tenant Management
+### Tenant Management (superadmin only)
+
+As of v4, tenant management lives entirely under `znvault superadmin`.
 
 ```bash
-znvault tenant list                              # List tenants
-znvault tenant create <id> --name "Acme Corp"    # Create tenant
-znvault tenant show <id>                         # Tenant details
-znvault tenant delete <id>                       # Delete tenant
+znvault superadmin tenant list                            # List tenants
+znvault superadmin tenant create <id> --name "Acme Corp"  # Create tenant
+znvault superadmin tenant show <id>                       # Tenant details
+znvault superadmin tenant delete <id>                     # Delete tenant
 ```
 
 ### User Management
 
 ```bash
-znvault user list                                # List users
-znvault user list --tenant acme                  # Filter by tenant
-znvault user create <username> --role admin      # Create user
+znvault user list                                # List users in your tenant
+znvault user create <username> --role admin      # Create user (your tenant)
 znvault user unlock <username>                   # Unlock locked user
 znvault user reset-password <username>           # Reset password
 znvault user totp-disable <username>             # Disable 2FA
+
+# Cross-tenant (superadmin only):
+znvault superadmin user list --tenant acme       # List users in another tenant
+znvault superadmin user create <username> --tenant acme --role admin
 ```
 
 ### RBAC Role Management
@@ -211,29 +215,29 @@ znvault policy create --name "Read Prod" --file policy.json
 znvault policy delete <id>                       # Delete policy
 ```
 
-### Backup Management
+### Backup Management (superadmin only)
 
 ```bash
-znvault backup list                              # List backups
-znvault backup create                            # Create backup
-znvault backup get <id>                          # Backup details
-znvault backup verify <id>                       # Verify integrity
-znvault backup restore <id>                      # Restore backup
-znvault backup config                            # Show config
-znvault backup health                            # Check health
+znvault superadmin backup list                              # List backups
+znvault superadmin backup create                            # Create backup
+znvault superadmin backup get <id>                          # Backup details
+znvault superadmin backup verify <id>                       # Verify integrity
+znvault superadmin backup restore <id>                      # Restore backup
+znvault superadmin backup config                            # Show config
+znvault superadmin backup health                            # Check health
 
 # Storage configuration
-znvault backup storage show
-znvault backup storage set-s3 --bucket my-bucket --region us-east-1
+znvault superadmin backup storage show
+znvault superadmin backup storage set-s3 --bucket my-bucket --region us-east-1
 ```
 
 ### Audit & Security
 
 ```bash
-znvault audit list                               # Recent audit logs
-znvault audit list --days 7 --action LOGIN       # Filter logs
-znvault lockdown status                          # Lockdown state
-znvault lockdown set <level>                     # Set level (admin)
+znvault audit list                                          # Recent audit logs (your tenant)
+znvault audit list --days 7 --action LOGIN                  # Filter logs
+znvault superadmin lockdown status                          # Lockdown state (superadmin)
+znvault superadmin lockdown set <level>                     # Set level (superadmin)
 ```
 
 ### Emergency Operations
