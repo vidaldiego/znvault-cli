@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { applyTenantContextPatch } from './lib/command-context.js';
 import { registerAuthCommands } from './commands/auth.js';
+
+// Apply the global Commander patch that gates `--tenant` options by registration
+// context. Must run before any command registration.
+applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
 import { registerHealthCommands } from './commands/health.js';
 import { registerClusterCommands } from './commands/cluster.js';
 import { registerTenantCommands } from './commands/tenant.js';

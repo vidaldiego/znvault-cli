@@ -5,6 +5,12 @@ import * as mode from '../lib/mode.js';
 import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import { isSuperadmin } from '../lib/auth-context.js';
+import {
+  addTenantOption,
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../lib/command-context.js';
 
 // Option interfaces for each command
 interface ListUserOptions {
@@ -50,16 +56,22 @@ interface ResetPasswordOptions {
   json?: boolean;
 }
 
-export function registerUserCommands(program: Command): void {
-  const user = program
+export function registerUserCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  withRegisterContext(ctx, () => registerUserCommandsInner(parent, ctx));
+}
+
+function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const user = parent
     .command('user')
     .description('User management commands');
 
   // List users
-  user
+  const listCmd = user
     .command('list')
-    .description('List users')
-    .option('--tenant <id>', 'Filter by tenant ID')
+    .description('List users');
+  addTenantOption(listCmd, ctx, 'Filter by tenant ID');
+  listCmd
     .option('--role <role>', 'Filter by role (user|admin|superadmin)')
     .option('--status <status>', 'Filter by status (active|disabled|locked)')
     .option('--json', 'Output as JSON')
@@ -109,11 +121,12 @@ export function registerUserCommands(program: Command): void {
     });
 
   // Create user (API only)
-  user
+  const createCmd = user
     .command('create <username> <password>')
     .description('Create a new user')
-    .option('--email <email>', 'User email')
-    .option('--tenant <id>', 'Tenant ID')
+    .option('--email <email>', 'User email');
+  addTenantOption(createCmd, ctx, 'Tenant ID');
+  createCmd
     .option('--role <role>', 'User role (user|admin)', 'user')
     .option('--json', 'Output as JSON')
     .action(async (username: string, password: string, options: CreateUserOptions) => {

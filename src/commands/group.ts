@@ -5,6 +5,11 @@ import { type Command } from 'commander';
 import { client } from '../lib/client.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../lib/command-context.js';
 
 // ============================================================================
 // Types
@@ -73,20 +78,29 @@ interface MembersRemoveOptions {
 // Commands
 // ============================================================================
 
-export function registerGroupCommands(program: Command): void {
-  const group = program
+export function registerGroupCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  withRegisterContext(ctx, () => registerGroupCommandsInner(parent, ctx));
+}
+
+function registerGroupCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const group = parent
     .command('group')
     .description('SSO group management');
 
   // ---------------------------------------------------------------------------
   // List Groups
   // ---------------------------------------------------------------------------
-  group
-    .command('list')
-    .description('List SSO groups')
-    .option('--tenant <id>', 'Filter by tenant (superadmin only)')
-    .option('--json', 'Output as JSON')
-    .action(async (options: ListOptions) => {
+  {
+    const listCmd = group
+      .command('list')
+      .description('List SSO groups');
+    if (ctx === 'superadmin') {
+      listCmd.option('--tenant <id>', 'Filter by tenant ID');
+    }
+    listCmd
+      .option('--json', 'Output as JSON')
+      .action(async (options: ListOptions) => {
       const spinner = output.spinner('Fetching groups...').start();
 
       try {
@@ -128,6 +142,7 @@ export function registerGroupCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // ---------------------------------------------------------------------------
   // Create Group

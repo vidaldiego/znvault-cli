@@ -8,6 +8,11 @@ import inquirer from 'inquirer';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
 import { formatDate, formatPaginationInfo } from '../lib/format-helpers.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../lib/command-context.js';
 
 // ============================================================================
 // Type Definitions
@@ -483,58 +488,82 @@ async function getUserPermissions(userId: string, options: { json?: boolean }): 
 // Command Registration
 // ============================================================================
 
-export function registerRoleCommands(program: Command): void {
-  const role = program
+export function registerRoleCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  withRegisterContext(ctx, () => registerRoleCommandsInner(parent, ctx));
+}
+
+function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const role = parent
     .command('role')
     .description('RBAC role management');
 
+  // Helper: only register --tenant in superadmin context
+  const t = (cmd: Command, desc: string): Command =>
+    ctx === 'superadmin' ? cmd.option('-t, --tenant <id>', desc) : cmd;
+
   // List roles
-  role
-    .command('list')
-    .description('List all roles')
-    .option('-t, --tenant <id>', 'Filter by tenant')
-    .option('--include-system', 'Include system roles (default: true)')
-    .option('--no-include-system', 'Exclude system roles')
-    .option('--json', 'Output as JSON')
-    .action(listRoles);
+  {
+    const listCmd = role
+      .command('list')
+      .description('List all roles');
+    t(listCmd, 'Filter by tenant');
+    listCmd
+      .option('--include-system', 'Include system roles (default: true)')
+      .option('--no-include-system', 'Exclude system roles')
+      .option('--json', 'Output as JSON')
+      .action(listRoles);
+  }
 
   // Get role
-  role
-    .command('get <roleId>')
-    .description('Get role details')
-    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)')
-    .option('--json', 'Output as JSON')
-    .action(getRole);
+  {
+    const getCmd = role
+      .command('get <roleId>')
+      .description('Get role details');
+    t(getCmd, 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)');
+    getCmd
+      .option('--json', 'Output as JSON')
+      .action(getRole);
+  }
 
   // Create role
-  role
-    .command('create <name>')
-    .description('Create a custom role')
-    .option('-t, --tenant <id>', 'Tenant ID (optional, creates system role if not specified)')
-    .option('-d, --description <desc>', 'Role description')
-    .requiredOption('-p, --permissions <perms>', 'Comma-separated permissions')
-    .option('--json', 'Output as JSON')
-    .action(createRole);
+  {
+    const createCmd = role
+      .command('create <name>')
+      .description('Create a custom role');
+    t(createCmd, 'Tenant ID (optional, creates system role if not specified)');
+    createCmd
+      .option('-d, --description <desc>', 'Role description')
+      .requiredOption('-p, --permissions <perms>', 'Comma-separated permissions')
+      .option('--json', 'Output as JSON')
+      .action(createRole);
+  }
 
   // Update role
-  role
-    .command('update <roleId>')
-    .description('Update a custom role')
-    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)')
-    .option('-n, --name <name>', 'New role name')
-    .option('-d, --description <desc>', 'New description')
-    .option('-p, --permissions <perms>', 'New permissions (comma-separated)')
-    .option('--json', 'Output as JSON')
-    .action(updateRole);
+  {
+    const updateCmd = role
+      .command('update <roleId>')
+      .description('Update a custom role');
+    t(updateCmd, 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)');
+    updateCmd
+      .option('-n, --name <name>', 'New role name')
+      .option('-d, --description <desc>', 'New description')
+      .option('-p, --permissions <perms>', 'New permissions (comma-separated)')
+      .option('--json', 'Output as JSON')
+      .action(updateRole);
+  }
 
   // Delete role
-  role
-    .command('delete <roleId>')
-    .description('Delete a custom role')
-    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)')
-    .option('-f, --force', 'Skip confirmation')
-    .option('--json', 'Output as JSON')
-    .action(deleteRole);
+  {
+    const deleteCmd = role
+      .command('delete <roleId>')
+      .description('Delete a custom role');
+    t(deleteCmd, 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)');
+    deleteCmd
+      .option('-f, --force', 'Skip confirmation')
+      .option('--json', 'Output as JSON')
+      .action(deleteRole);
+  }
 
   // Assign role to user
   role

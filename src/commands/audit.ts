@@ -4,6 +4,11 @@ import fs from 'node:fs';
 import { client } from '../lib/client.js';
 import * as mode from '../lib/mode.js';
 import * as output from '../lib/output.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../lib/command-context.js';
 
 interface AuditListOptions {
   user?: string;
@@ -24,8 +29,13 @@ interface AuditExportOptions {
   json?: boolean;
 }
 
-export function registerAuditCommands(program: Command): void {
-  const audit = program
+export function registerAuditCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  withRegisterContext(ctx, () => registerAuditCommandsInner(parent));
+}
+
+function registerAuditCommandsInner(parent: Command): void {
+  const audit = parent
     .command('audit')
     .description('Audit log commands');
 

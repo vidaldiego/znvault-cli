@@ -19,25 +19,38 @@ import { registerConditionsCommand } from './conditions.js';
 import { registerPolicyCommands } from './policies.js';
 import { registerSelfCommands } from './self.js';
 import { registerManagedCommands } from './managed/index.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../../lib/command-context.js';
 
-export function registerApiKeyCommands(program: Command): void {
-  const apiKeyCmd = program
+export function registerApiKeyCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  const apiKeyCmd = parent
     .command('apikey')
     .alias('api-key')
     .description('API key management (independent, tenant-scoped)');
 
-  // Register all subcommands
-  registerListCommand(apiKeyCmd);
-  registerCreateCommand(apiKeyCmd);
-  registerShowCommand(apiKeyCmd);
-  registerDeleteCommand(apiKeyCmd);
-  registerRotateCommand(apiKeyCmd);
-  registerEnableDisableCommands(apiKeyCmd);
-  registerPermissionsCommand(apiKeyCmd);
-  registerConditionsCommand(apiKeyCmd);
-  registerPolicyCommands(apiKeyCmd);
-  registerSelfCommands(apiKeyCmd);
-  registerManagedCommands(apiKeyCmd);
+  withRegisterContext(ctx, () => {
+    // Register all subcommands
+    registerListCommand(apiKeyCmd);
+    registerCreateCommand(apiKeyCmd);
+    registerShowCommand(apiKeyCmd);
+    registerDeleteCommand(apiKeyCmd);
+    registerRotateCommand(apiKeyCmd);
+    registerEnableDisableCommands(apiKeyCmd);
+    registerPermissionsCommand(apiKeyCmd);
+    registerConditionsCommand(apiKeyCmd);
+    registerPolicyCommands(apiKeyCmd);
+    // `self` / `self-rotate` are tenant-only: they introspect the currently
+    // used API key, which is always tenant-scoped. Don't expose under
+    // `superadmin apikey`.
+    if (ctx === 'tenant') {
+      registerSelfCommands(apiKeyCmd);
+    }
+    registerManagedCommands(apiKeyCmd);
+  });
 }
 
 // Re-export types for external use

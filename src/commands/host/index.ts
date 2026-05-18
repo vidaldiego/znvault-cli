@@ -10,36 +10,44 @@ import { registerDeleteCommand } from './delete.js';
 import { registerBootstrapTokenCommand } from './bootstrap-token.js';
 import { registerSyncCommand } from './sync.js';
 import { registerLinkAgentCommand, registerUnlinkAgentCommand } from './link-agent.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../../lib/command-context.js';
 
 /**
  * Register all host management commands
  */
-export function registerHostCommands(program: Command): void {
-  const hostCmd = program
+export function registerHostCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  const hostCmd = parent
     .command('host')
     .alias('hosts')
     .description('Manage host configurations for unified agent deployment');
 
-  // List and stats
-  registerListCommand(hostCmd);
-  registerStatsCommand(hostCmd);
+  withRegisterContext(ctx, () => {
+    // List and stats
+    registerListCommand(hostCmd);
+    registerStatsCommand(hostCmd);
 
-  // CRUD operations
-  registerCreateCommand(hostCmd);
-  registerGetCommand(hostCmd);
-  registerConfigCommand(hostCmd);
-  registerDeleteCommand(hostCmd);
+    // CRUD operations
+    registerCreateCommand(hostCmd);
+    registerGetCommand(hostCmd);
+    registerConfigCommand(hostCmd);
+    registerDeleteCommand(hostCmd);
 
-  // Bootstrap and sync
-  registerBootstrapTokenCommand(hostCmd);
-  registerSyncCommand(hostCmd);
+    // Bootstrap and sync
+    registerBootstrapTokenCommand(hostCmd);
+    registerSyncCommand(hostCmd);
 
-  // Agent linking
-  registerLinkAgentCommand(hostCmd);
-  registerUnlinkAgentCommand(hostCmd);
+    // Agent linking
+    registerLinkAgentCommand(hostCmd);
+    registerUnlinkAgentCommand(hostCmd);
 
-  // Utility commands
-  registerOutdatedAgentsCommand(hostCmd);
+    // Utility commands
+    registerOutdatedAgentsCommand(hostCmd);
+  });
 }
 
 // Re-export types

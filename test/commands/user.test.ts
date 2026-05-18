@@ -79,8 +79,14 @@ describe('user commands', () => {
     program = new Command();
     program.exitOverride();
 
+    const { applyTenantContextPatch } = await import('../../src/lib/command-context.js');
+    applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
+
     const { registerUserCommands } = await import('../../src/commands/user.js');
     registerUserCommands(program);
+    // Superadmin namespace (mirrors v4 layout)
+    const superadminGroup = program.command('superadmin').description('Superadmin');
+    registerUserCommands(superadminGroup, { context: 'superadmin' });
   });
 
   afterEach(() => {
@@ -99,10 +105,10 @@ describe('user commands', () => {
       expect(info).toHaveBeenCalledWith('Total: 2 user(s)');
     });
 
-    it('should filter by tenant', async () => {
+    it('should filter by tenant (superadmin only)', async () => {
       const mode = await import('../../src/lib/mode.js');
 
-      await program.parseAsync(['node', 'test', 'user', 'list', '--tenant', 'acme']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'user', 'list', '--tenant', 'acme']);
 
       expect(mode.listUsers).toHaveBeenCalledWith({ tenantId: 'acme', role: undefined, status: undefined });
     });
@@ -117,10 +123,10 @@ describe('user commands', () => {
   });
 
   describe('user create', () => {
-    it('should create a new user', async () => {
+    it('should create a new user (superadmin with --tenant)', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'user', 'create', 'newuser', 'password123', '--tenant', 'acme']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'user', 'create', 'newuser', 'password123', '--tenant', 'acme']);
 
       expect(client.createUser).toHaveBeenCalledWith({
         username: 'newuser',
@@ -131,10 +137,10 @@ describe('user commands', () => {
       });
     });
 
-    it('should create user with all options', async () => {
+    it('should create user with all options (superadmin with --tenant)', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'user', 'create', 'newuser', 'password123', '--tenant', 'acme', '--email', 'new@example.com', '--role', 'admin']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'user', 'create', 'newuser', 'password123', '--tenant', 'acme', '--email', 'new@example.com', '--role', 'admin']);
 
       expect(client.createUser).toHaveBeenCalledWith({
         username: 'newuser',

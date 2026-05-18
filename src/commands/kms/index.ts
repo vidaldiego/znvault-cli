@@ -13,16 +13,25 @@ import type { Command } from 'commander';
 import { registerCrudCommands } from './crud.js';
 import { registerCryptoCommands } from './crypto.js';
 import { registerLifecycleCommands } from './lifecycle.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../../lib/command-context.js';
 
-export function registerKmsCommands(program: Command): void {
-  const kms = program
+export function registerKmsCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  const kms = parent
     .command('kms')
     .description('KMS (Key Management Service) operations');
 
-  // Register all sub-command groups
-  registerCrudCommands(kms);
-  registerCryptoCommands(kms);
-  registerLifecycleCommands(kms);
+  // Register all sub-command groups under the active context (controls whether
+  // `--tenant` options are accepted; see command-context.applyTenantContextPatch).
+  withRegisterContext(ctx, () => {
+    registerCrudCommands(kms);
+    registerCryptoCommands(kms);
+    registerLifecycleCommands(kms);
+  });
 }
 
 // Re-export types for external use

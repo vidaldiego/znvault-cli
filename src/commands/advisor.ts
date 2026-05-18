@@ -5,10 +5,10 @@ import { type Command } from 'commander';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
 import {
-  configureContextHelp,
-  addTenantOption,
-  superadminDesc,
-} from '../lib/context-help.js';
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../lib/command-context.js';
 
 // Types for advisor API responses
 interface Finding {
@@ -95,28 +95,47 @@ interface LLMConfigUpdateOptions {
   enabled?: string;
 }
 
-export function registerAdvisorCommands(program: Command): void {
-  const advisor = program
+/**
+ * Register the `advisor` command group.
+ *
+ * Context semantics:
+ *   - `tenant` (default, top-level): exposes `audit`, `suggest`, and `rules`
+ *     (read-only catalog). No `--tenant` option. No `llm` subgroup.
+ *   - `superadmin` (under `znvault superadmin advisor`): exposes `audit` and
+ *     `suggest` with `--tenant`, plus the system-wide `llm` subgroup.
+ *
+ * Note: `rules` is the read-only rule catalog and is intentionally NOT
+ * mirrored to superadmin — it's tenant-context only.
+ */
+export function registerAdvisorCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  withRegisterContext(ctx, () => registerAdvisorCommandsInner(parent, ctx));
+}
+
+function registerAdvisorCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const advisor = parent
     .command('advisor')
-    .description('AI-powered security advisor commands');
+    .description(
+      ctx === 'superadmin'
+        ? 'AI-powered security advisor (cross-tenant)'
+        : 'AI-powered security advisor commands'
+    );
 
-  // Configure context-aware help for this command group
-  configureContextHelp(advisor);
+  // Helper: only register --tenant in superadmin context
+  const t = (cmd: Command, desc: string): Command =>
+    ctx === 'superadmin' ? cmd.option('--tenant <id>', desc) : cmd;
 
-  // Run security audit
-  const auditCmd = advisor
-    .command('audit')
-    .description('Run a security audit (tenant inferred from auth)')
-    .option('--category <category>', 'Filter by category (security, organization, compliance)')
-    .option('--severity <severity>', 'Filter by severity (critical, high, medium, low)')
-    .option('--ai-summary', 'Include AI-generated summary')
-    .option('--json', 'Output as JSON');
-
-  // Add tenant option (hidden for tenant users)
-  addTenantOption(auditCmd);
-
-  auditCmd
-    .action(async (options: AuditOptions) => {
+  // ========== audit (dual-purpose) ==========
+  {
+    const auditCmd = advisor
+      .command('audit')
+      .description('Run a security audit')
+      .option('--category <category>', 'Filter by category (security, organization, compliance)')
+      .option('--severity <severity>', 'Filter by severity (critical, high, medium, low)')
+      .option('--ai-summary', 'Include AI-generated summary')
+      .option('--json', 'Output as JSON');
+    t(auditCmd, 'Target tenant ID (superadmin cross-tenant)');
+    auditCmd.action(async (options: AuditOptions) => {
       const spinner = output.spinner('Running security audit...').start();
 
       try {
@@ -202,65 +221,66 @@ export function registerAdvisorCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
-  // List available rules
-  advisor
-    .command('rules')
-    .description('List available security rules')
-    .option('--category <category>', 'Filter by category')
-    .option('--severity <severity>', 'Filter by severity')
-    .option('--json', 'Output as JSON')
-    .action(async (options: RulesListOptions) => {
-      const spinner = output.spinner('Fetching rules...').start();
+  // ========== rules (tenant-only catalog) ==========
+  if (ctx === 'tenant') {
+    advisor
+      .command('rules')
+      .description('List available security rules')
+      .option('--category <category>', 'Filter by category')
+      .option('--severity <severity>', 'Filter by severity')
+      .option('--json', 'Output as JSON')
+      .action(async (options: RulesListOptions) => {
+        const spinner = output.spinner('Fetching rules...').start();
 
-      try {
-        const query: string[] = [];
-        if (options.category) query.push(`category=${options.category}`);
-        if (options.severity) query.push(`severity=${options.severity}`);
+        try {
+          const query: string[] = [];
+          if (options.category) query.push(`category=${options.category}`);
+          if (options.severity) query.push(`severity=${options.severity}`);
 
-        const path = query.length > 0 ? `/v1/advisor/rules?${query.join('&')}` : '/v1/advisor/rules';
-        const response = await client.get<{ success: boolean; data: Rule[] }>(path);
-        spinner.stop();
+          const path = query.length > 0 ? `/v1/advisor/rules?${query.join('&')}` : '/v1/advisor/rules';
+          const response = await client.get<{ success: boolean; data: Rule[] }>(path);
+          spinner.stop();
 
-        if (options.json) {
-          output.json(response.data);
-          return;
+          if (options.json) {
+            output.json(response.data);
+            return;
+          }
+
+          const rules = response.data;
+
+          output.table(
+            ['ID', 'Name', 'Category', 'Severity'],
+            rules.map(r => [
+              r.id,
+              r.name.substring(0, 30),
+              r.category,
+              r.severity.toUpperCase(),
+            ])
+          );
+
+          output.info(`Total: ${rules.length} rules`);
+        } catch (err) {
+          spinner.fail('Failed to list rules');
+          output.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
         }
+      });
+  }
 
-        const rules = response.data;
-
-        output.table(
-          ['ID', 'Name', 'Category', 'Severity'],
-          rules.map(r => [
-            r.id,
-            r.name.substring(0, 30),
-            r.category,
-            r.severity.toUpperCase(),
-          ])
-        );
-
-        output.info(`Total: ${rules.length} rules`);
-      } catch (err) {
-        spinner.fail('Failed to list rules');
-        output.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-    });
-
-  // Suggest secret configuration
-  const suggestCmd = advisor
-    .command('suggest')
-    .description('Get AI suggestions for naming and configuring a new secret')
-    .argument('<description>', 'Description of the secret (e.g., "stripe api key for payments")')
-    .option('--environment <env>', 'Environment hint (prod, staging, dev)')
-    .option('--service <name>', 'Service name hint')
-    .option('--team <name>', 'Team name hint')
-    .option('--json', 'Output as JSON');
-
-  // Add tenant option (hidden for tenant users)
-  addTenantOption(suggestCmd);
-
-  suggestCmd.action(async (description: string, options: SuggestOptions) => {
+  // ========== suggest (dual-purpose) ==========
+  {
+    const suggestCmd = advisor
+      .command('suggest')
+      .description('Get AI suggestions for naming and configuring a new secret')
+      .argument('<description>', 'Description of the secret (e.g., "stripe api key for payments")')
+      .option('--environment <env>', 'Environment hint (prod, staging, dev)')
+      .option('--service <name>', 'Service name hint')
+      .option('--team <name>', 'Team name hint')
+      .option('--json', 'Output as JSON');
+    t(suggestCmd, 'Target tenant ID (superadmin cross-tenant)');
+    suggestCmd.action(async (description: string, options: SuggestOptions) => {
       const spinner = output.spinner('Getting AI suggestions...').start();
 
       try {
@@ -327,180 +347,180 @@ export function registerAdvisorCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
-  // LLM configuration subcommand
-  const llm = advisor
-    .command('llm')
-    .description('Manage LLM configuration for AI features');
+  // ========== llm subgroup (superadmin-only) ==========
+  if (ctx === 'superadmin') {
+    const llm = advisor
+      .command('llm')
+      .description('Manage LLM configuration for AI features (system-wide)');
 
-  // Configure context-aware help for LLM subcommands
-  configureContextHelp(llm);
+    // Check LLM status
+    llm
+      .command('status')
+      .description('Check LLM configuration status')
+      .option('--json', 'Output as JSON')
+      .action(async (options: { json?: boolean }) => {
+        const spinner = output.spinner('Checking LLM status...').start();
 
-  // Check LLM status
-  llm
-    .command('status')
-    .description('Check LLM configuration status')
-    .option('--json', 'Output as JSON')
-    .action(async (options: { json?: boolean }) => {
-      const spinner = output.spinner('Checking LLM status...').start();
-
-      try {
-        const response = await client.get<{ success: boolean; data: LLMStatus }>('/v1/advisor/llm/status');
-        spinner.stop();
-
-        if (options.json) {
-          output.json(response.data);
-          return;
-        }
-
-        const status = response.data;
-        output.keyValue({
-          'Configured': status.configured ? 'Yes' : 'No',
-          'Enabled': status.enabled ? 'Yes' : 'No',
-          'Provider': status.provider ?? '-',
-          'Model': status.model ?? '-',
-        });
-
-        if (!status.configured) {
-          output.info('\nTo enable AI features, configure LLM with:');
-          output.info('  znvault advisor llm config --api-key <key> --enabled true');
-        }
-      } catch (err) {
-        spinner.fail('Failed to check LLM status');
-        output.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-    });
-
-  // Get LLM config (superadmin only)
-  llm
-    .command('get')
-    .description(superadminDesc('Get LLM configuration'))
-    .option('--json', 'Output as JSON')
-    .action(async (options: { json?: boolean }) => {
-      const spinner = output.spinner('Fetching LLM configuration...').start();
-
-      try {
-        const response = await client.get<{ success: boolean; data: LLMConfig | null }>('/v1/admin/advisor/llm/config');
-        spinner.stop();
-
-        if (options.json) {
-          output.json(response.data);
-          return;
-        }
-
-        const config = response.data;
-        if (!config) {
-          output.info('LLM is not configured');
-          return;
-        }
-
-        output.keyValue({
-          'Provider': config.provider,
-          'API Key': config.apiKeyConfigured ? `${config.apiKeyPrefix ?? ''}...` : 'Not set',
-          'Model': config.model,
-          'Max Tokens': config.maxTokens,
-          'Enabled': config.enabled ? 'Yes' : 'No',
-        });
-      } catch (err) {
-        spinner.fail('Failed to get LLM configuration');
-        output.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-    });
-
-  // Update LLM config (superadmin only)
-  llm
-    .command('config')
-    .description(superadminDesc('Update LLM configuration'))
-    .option('--provider <provider>', 'LLM provider (anthropic)')
-    .option('--api-key <key>', 'API key for the provider')
-    .option('--model <model>', 'Model to use (e.g., claude-3-5-haiku-latest)')
-    .option('--max-tokens <tokens>', 'Maximum tokens for responses')
-    .option('--enabled <bool>', 'Enable or disable LLM features (true/false)')
-    .action(async (options: LLMConfigUpdateOptions) => {
-      const spinner = output.spinner('Updating LLM configuration...').start();
-
-      try {
-        const body: Record<string, unknown> = {};
-        if (options.provider) body.provider = options.provider;
-        if (options.apiKey) body.apiKey = options.apiKey;
-        if (options.model) body.model = options.model;
-        if (options.maxTokens) body.maxTokens = parseInt(options.maxTokens, 10);
-        if (options.enabled !== undefined) body.enabled = options.enabled === 'true';
-
-        if (Object.keys(body).length === 0) {
+        try {
+          const response = await client.get<{ success: boolean; data: LLMStatus }>('/v1/advisor/llm/status');
           spinner.stop();
-          output.error('No configuration options provided');
-          output.info('Use --help to see available options');
-          process.exit(1);
-        }
 
-        const response = await client.put<{ success: boolean; data: LLMConfig }>('/v1/admin/advisor/llm/config', body);
-        spinner.stop();
-
-        output.success('LLM configuration updated');
-        output.keyValue({
-          'Provider': response.data.provider,
-          'API Key': response.data.apiKeyConfigured ? `${response.data.apiKeyPrefix ?? ''}...` : 'Not set',
-          'Model': response.data.model,
-          'Max Tokens': response.data.maxTokens,
-          'Enabled': response.data.enabled ? 'Yes' : 'No',
-        });
-      } catch (err) {
-        spinner.fail('Failed to update LLM configuration');
-        output.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-    });
-
-  // Test LLM connection (superadmin only)
-  llm
-    .command('test')
-    .description(superadminDesc('Test LLM connection'))
-    .action(async () => {
-      const spinner = output.spinner('Testing LLM connection...').start();
-
-      try {
-        const response = await client.post<{ success: boolean; data: { success: boolean; message: string; model?: string } }>(
-          '/v1/admin/advisor/llm/test',
-          {}
-        );
-        spinner.stop();
-
-        const result = response.data;
-        if (result.success) {
-          output.success(result.message);
-          if (result.model) {
-            output.info(`Model: ${result.model}`);
+          if (options.json) {
+            output.json(response.data);
+            return;
           }
-        } else {
-          output.error(result.message);
+
+          const status = response.data;
+          output.keyValue({
+            'Configured': status.configured ? 'Yes' : 'No',
+            'Enabled': status.enabled ? 'Yes' : 'No',
+            'Provider': status.provider ?? '-',
+            'Model': status.model ?? '-',
+          });
+
+          if (!status.configured) {
+            output.info('\nTo enable AI features, configure LLM with:');
+            output.info('  znvault superadmin advisor llm config --api-key <key> --enabled true');
+          }
+        } catch (err) {
+          spinner.fail('Failed to check LLM status');
+          output.error(err instanceof Error ? err.message : String(err));
           process.exit(1);
         }
-      } catch (err) {
-        spinner.fail('Failed to test LLM connection');
-        output.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-    });
+      });
 
-  // Delete LLM config (superadmin only)
-  llm
-    .command('delete')
-    .description(superadminDesc('Delete LLM configuration'))
-    .action(async () => {
-      const spinner = output.spinner('Deleting LLM configuration...').start();
+    // Get LLM config
+    llm
+      .command('get')
+      .description('Get LLM configuration')
+      .option('--json', 'Output as JSON')
+      .action(async (options: { json?: boolean }) => {
+        const spinner = output.spinner('Fetching LLM configuration...').start();
 
-      try {
-        await client.delete('/v1/admin/advisor/llm/config');
-        spinner.stop();
+        try {
+          const response = await client.get<{ success: boolean; data: LLMConfig | null }>('/v1/admin/advisor/llm/config');
+          spinner.stop();
 
-        output.success('LLM configuration deleted');
-      } catch (err) {
-        spinner.fail('Failed to delete LLM configuration');
-        output.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-    });
+          if (options.json) {
+            output.json(response.data);
+            return;
+          }
+
+          const config = response.data;
+          if (!config) {
+            output.info('LLM is not configured');
+            return;
+          }
+
+          output.keyValue({
+            'Provider': config.provider,
+            'API Key': config.apiKeyConfigured ? `${config.apiKeyPrefix ?? ''}...` : 'Not set',
+            'Model': config.model,
+            'Max Tokens': config.maxTokens,
+            'Enabled': config.enabled ? 'Yes' : 'No',
+          });
+        } catch (err) {
+          spinner.fail('Failed to get LLM configuration');
+          output.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
+        }
+      });
+
+    // Update LLM config
+    llm
+      .command('config')
+      .description('Update LLM configuration')
+      .option('--provider <provider>', 'LLM provider (anthropic)')
+      .option('--api-key <key>', 'API key for the provider')
+      .option('--model <model>', 'Model to use (e.g., claude-3-5-haiku-latest)')
+      .option('--max-tokens <tokens>', 'Maximum tokens for responses')
+      .option('--enabled <bool>', 'Enable or disable LLM features (true/false)')
+      .action(async (options: LLMConfigUpdateOptions) => {
+        const spinner = output.spinner('Updating LLM configuration...').start();
+
+        try {
+          const body: Record<string, unknown> = {};
+          if (options.provider) body.provider = options.provider;
+          if (options.apiKey) body.apiKey = options.apiKey;
+          if (options.model) body.model = options.model;
+          if (options.maxTokens) body.maxTokens = parseInt(options.maxTokens, 10);
+          if (options.enabled !== undefined) body.enabled = options.enabled === 'true';
+
+          if (Object.keys(body).length === 0) {
+            spinner.stop();
+            output.error('No configuration options provided');
+            output.info('Use --help to see available options');
+            process.exit(1);
+          }
+
+          const response = await client.put<{ success: boolean; data: LLMConfig }>('/v1/admin/advisor/llm/config', body);
+          spinner.stop();
+
+          output.success('LLM configuration updated');
+          output.keyValue({
+            'Provider': response.data.provider,
+            'API Key': response.data.apiKeyConfigured ? `${response.data.apiKeyPrefix ?? ''}...` : 'Not set',
+            'Model': response.data.model,
+            'Max Tokens': response.data.maxTokens,
+            'Enabled': response.data.enabled ? 'Yes' : 'No',
+          });
+        } catch (err) {
+          spinner.fail('Failed to update LLM configuration');
+          output.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
+        }
+      });
+
+    // Test LLM connection
+    llm
+      .command('test')
+      .description('Test LLM connection')
+      .action(async () => {
+        const spinner = output.spinner('Testing LLM connection...').start();
+
+        try {
+          const response = await client.post<{ success: boolean; data: { success: boolean; message: string; model?: string } }>(
+            '/v1/admin/advisor/llm/test',
+            {}
+          );
+          spinner.stop();
+
+          const result = response.data;
+          if (result.success) {
+            output.success(result.message);
+            if (result.model) {
+              output.info(`Model: ${result.model}`);
+            }
+          } else {
+            output.error(result.message);
+            process.exit(1);
+          }
+        } catch (err) {
+          spinner.fail('Failed to test LLM connection');
+          output.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
+        }
+      });
+
+    // Delete LLM config
+    llm
+      .command('delete')
+      .description('Delete LLM configuration')
+      .action(async () => {
+        const spinner = output.spinner('Deleting LLM configuration...').start();
+
+        try {
+          await client.delete('/v1/admin/advisor/llm/config');
+          spinner.stop();
+
+          output.success('LLM configuration deleted');
+        } catch (err) {
+          spinner.fail('Failed to delete LLM configuration');
+          output.error(err instanceof Error ? err.message : String(err));
+          process.exit(1);
+        }
+      });
+  }
 }

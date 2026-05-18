@@ -106,8 +106,14 @@ describe('role commands', () => {
     program = new Command();
     program.exitOverride();
 
+    const { applyTenantContextPatch } = await import('../../src/lib/command-context.js');
+    applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
+
     const { registerRoleCommands } = await import('../../src/commands/role.js');
     registerRoleCommands(program);
+    // Superadmin namespace (mirrors v4 layout)
+    const superadminGroup = program.command('superadmin').description('Superadmin');
+    registerRoleCommands(superadminGroup, { context: 'superadmin' });
 
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
@@ -127,10 +133,10 @@ describe('role commands', () => {
       expect(client.get).toHaveBeenCalledWith(expect.stringContaining('/v1/roles'));
     });
 
-    it('should filter by tenant', async () => {
+    it('should filter by tenant (superadmin only)', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'role', 'list', '--tenant', 'acme']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'role', 'list', '--tenant', 'acme']);
 
       // --tenant routes via the superadmin surface (server v1.39.0+).
       const calledWith = (client.get as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
@@ -182,11 +188,11 @@ describe('role commands', () => {
       expect(success).toHaveBeenCalledWith('Role created successfully!');
     });
 
-    it('should create role with tenant and description', async () => {
+    it('should create role with tenant and description (superadmin only)', async () => {
       const { client } = await import('../../src/lib/client.js');
 
       await program.parseAsync([
-        'node', 'test', 'role', 'create', 'tenant-role',
+        'node', 'test', 'superadmin', 'role', 'create', 'tenant-role',
         '--tenant', 'acme',
         '--description', 'A custom role for tenant',
         '--permissions', 'secrets:read',

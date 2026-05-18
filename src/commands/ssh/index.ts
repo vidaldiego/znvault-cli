@@ -31,6 +31,11 @@ import { registerSCPCommand } from './scp.js';
 import { registerHostsCommand } from './hosts.js';
 import { registerExecCommand } from './exec.js';
 import type { ConnectOptions } from './types.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../../lib/command-context.js';
 
 // Known subcommands that should NOT be treated as destinations
 const SSH_SUBCOMMANDS = new Set([
@@ -80,8 +85,9 @@ function looksLikeDestination(arg: string): boolean {
   return false;
 }
 
-export function registerSSHCommands(program: Command): void {
-  const ssh = program
+export function registerSSHCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  const ssh = parent
     .command('ssh')
     .description('SSH CA management and quick connect (znvault ssh user@host)')
     .argument('[destination]', 'Host to connect to (user@host or bookmark name)')
@@ -120,17 +126,20 @@ export function registerSSHCommands(program: Command): void {
       }
     });
 
-  // Register all sub-command groups
-  registerCACommands(ssh);
-  registerCertCommands(ssh);
-  registerMappingCommands(ssh);
-  registerServerGroupCommands(ssh);
-  registerConfigCommands(ssh);
-  registerBookmarkCommands(ssh);
-  registerHostsCommand(ssh);
-  registerSCPCommand(ssh);
-  registerConnectCommand(ssh);
-  registerExecCommand(ssh);
+  // Register all sub-command groups under the active context (controls whether
+  // `--tenant` options are accepted; see command-context.applyTenantContextPatch).
+  withRegisterContext(ctx, () => {
+    registerCACommands(ssh);
+    registerCertCommands(ssh);
+    registerMappingCommands(ssh);
+    registerServerGroupCommands(ssh);
+    registerConfigCommands(ssh);
+    registerBookmarkCommands(ssh);
+    registerHostsCommand(ssh);
+    registerSCPCommand(ssh);
+    registerConnectCommand(ssh);
+    registerExecCommand(ssh);
+  });
 }
 
 // Re-export types for external use

@@ -27,18 +27,13 @@ vi.mock('../../src/lib/output.js', () => ({
   formatRelativeTime: vi.fn((date: string) => date),
 }));
 
-// Mock context-help
-vi.mock('../../src/lib/context-help.js', () => ({
-  configureContextHelp: vi.fn(),
-  addTenantOption: vi.fn((cmd) => {
-    cmd.option('--tenant <id>', 'Tenant ID');
-    return cmd;
-  }),
-  superadminDesc: vi.fn((desc: string) => desc),
-}));
-
 import { client } from '../../src/lib/client.js';
 import * as output from '../../src/lib/output.js';
+import { applyTenantContextPatch } from '../../src/lib/command-context.js';
+
+// Apply the global tenant-option patch so the `--tenant` flag is gated by
+// registration context (matches the runtime behavior of src/index.ts).
+applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
 
 describe('Advisor Commands', () => {
   let program: Command;
@@ -49,7 +44,13 @@ describe('Advisor Commands', () => {
     vi.clearAllMocks();
     program = new Command();
     program.exitOverride();
+    // Register at top level as tenant context (no --tenant, no llm) AND under
+    // a synthetic `superadmin` group for the superadmin-only commands.
     registerAdvisorCommands(program);
+    const superadminGroup = program
+      .command('superadmin')
+      .description('Superadmin commands (test harness)');
+    registerAdvisorCommands(superadminGroup, { context: 'superadmin' });
 
     mockExit = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null | undefined): never => {
       throw new Error(`process.exit(${code})`);
@@ -112,7 +113,7 @@ describe('Advisor Commands', () => {
       };
       vi.mocked(client.post).mockResolvedValue({ success: true, data: auditResult });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'audit', '--tenant', 'custom']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'audit', '--tenant', 'custom']);
 
       expect(client.post).toHaveBeenCalledWith('/v1/superadmin/advisor/audit?tenantId=custom', {});
     });
@@ -331,7 +332,7 @@ describe('Advisor Commands', () => {
       const suggestion = { alias: 'test', type: 'credential', tags: [], confidence: 0.8, reasoning: 'Test' };
       vi.mocked(client.post).mockResolvedValue({ success: true, data: suggestion });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'suggest', 'test secret', '--tenant', 'acme']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'suggest', 'test secret', '--tenant', 'acme']);
 
       expect(client.post).toHaveBeenCalledWith('/v1/superadmin/advisor/suggest?tenantId=acme', expect.any(Object));
     });
@@ -364,7 +365,7 @@ describe('Advisor Commands', () => {
       };
       vi.mocked(client.get).mockResolvedValue({ success: true, data: status });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'status']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'status']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/advisor/llm/status');
       expect(output.keyValue).toHaveBeenCalled();
@@ -379,7 +380,7 @@ describe('Advisor Commands', () => {
       };
       vi.mocked(client.get).mockResolvedValue({ success: true, data: status });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'status']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'status']);
 
       expect(output.info).toHaveBeenCalledWith('\nTo enable AI features, configure LLM with:');
     });
@@ -388,7 +389,7 @@ describe('Advisor Commands', () => {
       const status = { configured: true, enabled: true };
       vi.mocked(client.get).mockResolvedValue({ success: true, data: status });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'status', '--json']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'status', '--json']);
 
       expect(output.json).toHaveBeenCalledWith(status);
     });
@@ -396,7 +397,7 @@ describe('Advisor Commands', () => {
     it('should handle errors', async () => {
       vi.mocked(client.get).mockRejectedValue(new Error('Failed to check status'));
 
-      await expect(program.parseAsync(['node', 'test', 'advisor', 'llm', 'status'])).rejects.toThrow('process.exit(1)');
+      await expect(program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'status'])).rejects.toThrow('process.exit(1)');
       expect(output.error).toHaveBeenCalledWith('Failed to check status');
     });
   });
@@ -414,7 +415,7 @@ describe('Advisor Commands', () => {
       };
       vi.mocked(client.get).mockResolvedValue({ success: true, data: config });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'get']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'get']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/admin/advisor/llm/config');
       expect(output.keyValue).toHaveBeenCalled();
@@ -423,7 +424,7 @@ describe('Advisor Commands', () => {
     it('should handle unconfigured LLM', async () => {
       vi.mocked(client.get).mockResolvedValue({ success: true, data: null });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'get']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'get']);
 
       expect(output.info).toHaveBeenCalledWith('LLM is not configured');
     });
@@ -432,7 +433,7 @@ describe('Advisor Commands', () => {
       const config = { provider: 'anthropic', enabled: true };
       vi.mocked(client.get).mockResolvedValue({ success: true, data: config });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'get', '--json']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'get', '--json']);
 
       expect(output.json).toHaveBeenCalledWith(config);
     });
@@ -440,7 +441,7 @@ describe('Advisor Commands', () => {
     it('should handle errors', async () => {
       vi.mocked(client.get).mockRejectedValue(new Error('Access denied'));
 
-      await expect(program.parseAsync(['node', 'test', 'advisor', 'llm', 'get'])).rejects.toThrow('process.exit(1)');
+      await expect(program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'get'])).rejects.toThrow('process.exit(1)');
       expect(output.error).toHaveBeenCalledWith('Access denied');
     });
   });
@@ -459,7 +460,7 @@ describe('Advisor Commands', () => {
       vi.mocked(client.put).mockResolvedValue({ success: true, data: updated });
 
       await program.parseAsync([
-        'node', 'test', 'advisor', 'llm', 'config',
+        'node', 'test', 'superadmin', 'advisor', 'llm', 'config',
         '--provider', 'anthropic',
         '--api-key', 'sk-ant-test-key',
         '--model', 'claude-3-5-haiku-latest',
@@ -481,13 +482,13 @@ describe('Advisor Commands', () => {
       const updated = { provider: 'anthropic', enabled: false };
       vi.mocked(client.put).mockResolvedValue({ success: true, data: updated });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'config', '--enabled', 'false']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'config', '--enabled', 'false']);
 
       expect(client.put).toHaveBeenCalledWith('/v1/admin/advisor/llm/config', { enabled: false });
     });
 
     it('should fail when no options provided', async () => {
-      await expect(program.parseAsync(['node', 'test', 'advisor', 'llm', 'config'])).rejects.toThrow('process.exit(1)');
+      await expect(program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'config'])).rejects.toThrow('process.exit(1)');
       expect(output.error).toHaveBeenCalledWith('No configuration options provided');
     });
 
@@ -495,7 +496,7 @@ describe('Advisor Commands', () => {
       vi.mocked(client.put).mockRejectedValue(new Error('Invalid API key'));
 
       await expect(program.parseAsync([
-        'node', 'test', 'advisor', 'llm', 'config',
+        'node', 'test', 'superadmin', 'advisor', 'llm', 'config',
         '--api-key', 'invalid',
       ])).rejects.toThrow('process.exit(1)');
       expect(output.error).toHaveBeenCalledWith('Invalid API key');
@@ -512,7 +513,7 @@ describe('Advisor Commands', () => {
       };
       vi.mocked(client.post).mockResolvedValue({ success: true, data: result });
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'test']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'test']);
 
       expect(client.post).toHaveBeenCalledWith('/v1/admin/advisor/llm/test', {});
       expect(output.success).toHaveBeenCalledWith('LLM connection successful');
@@ -526,14 +527,14 @@ describe('Advisor Commands', () => {
       };
       vi.mocked(client.post).mockResolvedValue({ success: true, data: result });
 
-      await expect(program.parseAsync(['node', 'test', 'advisor', 'llm', 'test'])).rejects.toThrow('process.exit(1)');
+      await expect(program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'test'])).rejects.toThrow('process.exit(1)');
       expect(output.error).toHaveBeenCalledWith('Invalid API key');
     });
 
     it('should handle errors', async () => {
       vi.mocked(client.post).mockRejectedValue(new Error('Connection failed'));
 
-      await expect(program.parseAsync(['node', 'test', 'advisor', 'llm', 'test'])).rejects.toThrow('process.exit(1)');
+      await expect(program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'test'])).rejects.toThrow('process.exit(1)');
       expect(output.error).toHaveBeenCalledWith('Connection failed');
     });
   });
@@ -543,7 +544,7 @@ describe('Advisor Commands', () => {
     it('should delete LLM configuration', async () => {
       vi.mocked(client.delete).mockResolvedValue(undefined);
 
-      await program.parseAsync(['node', 'test', 'advisor', 'llm', 'delete']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'delete']);
 
       expect(client.delete).toHaveBeenCalledWith('/v1/admin/advisor/llm/config');
       expect(output.success).toHaveBeenCalledWith('LLM configuration deleted');
@@ -552,7 +553,7 @@ describe('Advisor Commands', () => {
     it('should handle errors', async () => {
       vi.mocked(client.delete).mockRejectedValue(new Error('Access denied'));
 
-      await expect(program.parseAsync(['node', 'test', 'advisor', 'llm', 'delete'])).rejects.toThrow('process.exit(1)');
+      await expect(program.parseAsync(['node', 'test', 'superadmin', 'advisor', 'llm', 'delete'])).rejects.toThrow('process.exit(1)');
       expect(output.error).toHaveBeenCalledWith('Access denied');
     });
   });

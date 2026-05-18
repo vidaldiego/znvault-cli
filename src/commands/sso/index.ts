@@ -12,15 +12,22 @@
 import type { Command } from 'commander';
 import { registerCrudCommands } from './crud.js';
 import { registerUserCommands } from './users.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../../lib/command-context.js';
 
-export function registerSSOCommands(program: Command): void {
-  const sso = program
+export function registerSSOCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  const sso = parent
     .command('sso')
     .description('SSO/OAuth2 application management');
 
-  // Register all sub-command groups
-  registerCrudCommands(sso);
-  registerUserCommands(sso);
+  withRegisterContext(ctx, () => {
+    registerCrudCommands(sso);
+    registerUserCommands(sso);
+  });
 }
 
 // Re-export types for external use

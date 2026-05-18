@@ -6,6 +6,11 @@ import { client } from '../lib/client.js';
 import { promptConfirm } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import { formatTtl as formatDuration } from '../lib/format-helpers.js';
+import {
+  resolveContext,
+  withRegisterContext,
+  type RegisterOptions,
+} from '../lib/command-context.js';
 
 interface ListOptions {
   status?: 'active' | 'released' | 'expired';
@@ -47,18 +52,35 @@ function formatBackoffLevel(level: number): string {
   return labels[level] ?? `Level ${level}`;
 }
 
-export function registerQuarantineCommands(program: Command): void {
-  const quarantine = program
+export function registerQuarantineCommands(parent: Command, opts?: RegisterOptions): void {
+  const ctx = resolveContext(opts);
+  withRegisterContext(ctx, () => registerQuarantineCommandsInner(parent, ctx));
+}
+
+function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  // Helper: only register --tenant in superadmin context
+  const t = (cmd: Command, desc: string, shortFlag = true): Command =>
+    ctx === 'superadmin'
+      ? cmd.option(shortFlag ? '-t, --tenant <tenant>' : '--tenant <tenant>', desc)
+      : cmd;
+
+  const quarantine = parent
     .command('quarantine')
-    .description('IP quarantine management commands');
+    .description(
+      ctx === 'superadmin'
+        ? 'IP quarantine management (cross-tenant)'
+        : 'IP quarantine management commands'
+    );
 
   // List quarantined IPs
-  quarantine
-    .command('list')
-    .description('List quarantined IPs')
-    .option('-s, --status <status>', 'Filter by status (active, released, expired)')
-    .option('-t, --tenant <tenant>', 'Filter by tenant ID')
-    .option('--include-expired', 'Include expired quarantines')
+  {
+    const listCmd = quarantine
+      .command('list')
+      .description('List quarantined IPs')
+      .option('-s, --status <status>', 'Filter by status (active, released, expired)');
+    t(listCmd, 'Filter by tenant ID');
+    listCmd
+      .option('--include-expired', 'Include expired quarantines')
     .option('--limit <number>', 'Number of entries to show', '50')
     .option('--json', 'Output as JSON')
     .action(async (options: ListOptions) => {
@@ -103,14 +125,17 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // Get quarantine details
-  quarantine
-    .command('get <id>')
-    .description('Get quarantine details by ID')
-    .option('-t, --tenant <tenant>', 'Tenant ID (superadmin only, cross-tenant)')
-    .option('--json', 'Output as JSON')
-    .action(async (id: string, options: { json?: boolean; tenant?: string }) => {
+  {
+    const getCmd = quarantine
+      .command('get <id>')
+      .description('Get quarantine details by ID');
+    t(getCmd, 'Tenant ID (superadmin only, cross-tenant)');
+    getCmd
+      .option('--json', 'Output as JSON')
+      .action(async (id: string, options: { json?: boolean; tenant?: string }) => {
       const spinner = output.spinner('Fetching quarantine details...').start();
 
       try {
@@ -163,15 +188,18 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // Release a quarantine by ID
-  quarantine
-    .command('release <id> <reason>')
-    .description('Release a quarantine by ID')
-    .option('-t, --tenant <tenant>', 'Tenant ID (superadmin only, cross-tenant)')
-    .option('-y, --yes', 'Skip confirmation')
-    .option('--json', 'Output as JSON')
-    .action(async (id: string, reason: string, options: ReleaseOptions & { tenant?: string }) => {
+  {
+    const releaseCmd = quarantine
+      .command('release <id> <reason>')
+      .description('Release a quarantine by ID');
+    t(releaseCmd, 'Tenant ID (superadmin only, cross-tenant)');
+    releaseCmd
+      .option('-y, --yes', 'Skip confirmation')
+      .option('--json', 'Output as JSON')
+      .action(async (id: string, reason: string, options: ReleaseOptions & { tenant?: string }) => {
       try {
         // Get quarantine info first
         const q = await client.getQuarantine(id, options.tenant);
@@ -207,15 +235,18 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // Release all quarantines for an IP
-  quarantine
-    .command('release-ip <ip> <reason>')
-    .description('Release all quarantines for an IP address')
-    .option('-t, --tenant <tenant>', 'Filter by tenant ID')
-    .option('-y, --yes', 'Skip confirmation')
-    .option('--json', 'Output as JSON')
-    .action(async (ip: string, reason: string, options: ReleaseOptions & { tenant?: string }) => {
+  {
+    const releaseIpCmd = quarantine
+      .command('release-ip <ip> <reason>')
+      .description('Release all quarantines for an IP address');
+    t(releaseIpCmd, 'Filter by tenant ID');
+    releaseIpCmd
+      .option('-y, --yes', 'Skip confirmation')
+      .option('--json', 'Output as JSON')
+      .action(async (ip: string, reason: string, options: ReleaseOptions & { tenant?: string }) => {
       try {
         if (!options.yes) {
           const confirmed = await promptConfirm(
@@ -251,15 +282,18 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // Get failure history for an IP
-  quarantine
-    .command('history <ip>')
-    .description('Get failure history for an IP address')
-    .option('-t, --tenant <tenant>', 'Filter by tenant ID')
-    .option('--limit <number>', 'Number of entries to show', '100')
-    .option('--json', 'Output as JSON')
-    .action(async (ip: string, options: HistoryOptions) => {
+  {
+    const historyCmd = quarantine
+      .command('history <ip>')
+      .description('Get failure history for an IP address');
+    t(historyCmd, 'Filter by tenant ID');
+    historyCmd
+      .option('--limit <number>', 'Number of entries to show', '100')
+      .option('--json', 'Output as JSON')
+      .action(async (ip: string, options: HistoryOptions) => {
       const spinner = output.spinner('Fetching failure history...').start();
 
       try {
@@ -301,14 +335,17 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // Get quarantine statistics
-  quarantine
-    .command('stats')
-    .description('Get quarantine statistics')
-    .option('-t, --tenant <tenant>', 'Filter by tenant ID')
-    .option('--json', 'Output as JSON')
-    .action(async (options: StatsOptions) => {
+  {
+    const statsCmd = quarantine
+      .command('stats')
+      .description('Get quarantine statistics');
+    t(statsCmd, 'Filter by tenant ID');
+    statsCmd
+      .option('--json', 'Output as JSON')
+      .action(async (options: StatsOptions) => {
       const spinner = output.spinner('Fetching statistics...').start();
 
       try {
@@ -344,14 +381,23 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // Get quarantine configuration
-  quarantine
-    .command('config')
-    .description('Get quarantine configuration')
-    .option('-t, --tenant <tenant>', 'Tenant ID (superadmin only)')
-    .option('--json', 'Output as JSON')
-    .action(async (options: ConfigOptions) => {
+  //
+  // Semantics:
+  //   - Tenant context (top-level `quarantine config`): operates on caller's
+  //     own tenant (via JWT).
+  //   - Superadmin context without --tenant: operates on system (null-tenant) config.
+  //   - Superadmin context with --tenant X: operates on tenant X's config.
+  {
+    const configCmd = quarantine
+      .command('config')
+      .description('Get quarantine configuration');
+    t(configCmd, 'Tenant ID (omit for system config)');
+    configCmd
+      .option('--json', 'Output as JSON')
+      .action(async (options: ConfigOptions) => {
       const spinner = output.spinner('Fetching configuration...').start();
 
       try {
@@ -393,25 +439,28 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 
   // Set quarantine configuration
-  quarantine
-    .command('set-config')
-    .description('Update quarantine configuration')
-    .option('-t, --tenant <tenant>', 'Tenant ID (superadmin only)')
-    .option('--enabled <bool>', 'Enable/disable quarantine')
+  {
+    const setConfigCmd = quarantine
+      .command('set-config')
+      .description('Update quarantine configuration');
+    t(setConfigCmd, 'Tenant ID (omit for system config)');
+    setConfigCmd
+      .option('--enabled <bool>', 'Enable/disable quarantine')
     .option('--failures <num>', 'Failures before quarantine')
-    .option('--lockdown-ips <num>', 'Number of IPs to trigger lockdown')
-    .option('--lockdown-window <sec>', 'Lockdown threshold window (seconds)')
-    .option('--level1 <sec>', 'Level 1 backoff (seconds)')
-    .option('--level2 <sec>', 'Level 2 backoff (seconds)')
-    .option('--level3 <sec>', 'Level 3 backoff (seconds)')
-    .option('--level4 <sec>', 'Level 4 backoff (seconds)')
-    .option('--level5 <sec>', 'Level 5 backoff (seconds)')
-    .option('--auto-expire <sec>', 'Auto-expire after (seconds)')
-    .option('-y, --yes', 'Skip confirmation')
-    .option('--json', 'Output as JSON')
-    .action(async (options: SetConfigOptions & Record<string, string | undefined>) => {
+      .option('--lockdown-ips <num>', 'Number of IPs to trigger lockdown')
+      .option('--lockdown-window <sec>', 'Lockdown threshold window (seconds)')
+      .option('--level1 <sec>', 'Level 1 backoff (seconds)')
+      .option('--level2 <sec>', 'Level 2 backoff (seconds)')
+      .option('--level3 <sec>', 'Level 3 backoff (seconds)')
+      .option('--level4 <sec>', 'Level 4 backoff (seconds)')
+      .option('--level5 <sec>', 'Level 5 backoff (seconds)')
+      .option('--auto-expire <sec>', 'Auto-expire after (seconds)')
+      .option('-y, --yes', 'Skip confirmation')
+      .option('--json', 'Output as JSON')
+      .action(async (options: SetConfigOptions & Record<string, string | undefined>) => {
       const updates: Record<string, unknown> = {};
 
       if (options.enabled !== undefined) {
@@ -484,4 +533,5 @@ export function registerQuarantineCommands(program: Command): void {
         process.exit(1);
       }
     });
+  }
 }

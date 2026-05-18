@@ -61,11 +61,16 @@ describe('Policy Commands', () => {
   let program: Command;
   let mockExit: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     program = new Command();
     program.exitOverride();
+    const { applyTenantContextPatch } = await import('../../src/lib/command-context.js');
+    applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
     registerPolicyCommands(program);
+    // Superadmin namespace (mirrors v4 layout)
+    const superadminGroup = program.command('superadmin').description('Superadmin');
+    registerPolicyCommands(superadminGroup, { context: 'superadmin' });
 
     // Reset existsSync to return true by default
     vi.mocked(fs.existsSync).mockReturnValue(true);
@@ -117,7 +122,7 @@ describe('Policy Commands', () => {
         pagination: { total: 0, limit: 50, offset: 0, hasMore: false },
       });
 
-      await program.parseAsync(['node', 'test', 'policy', 'list', '--tenant', 'acme']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'policy', 'list', '--tenant', 'acme']);
 
       expect(client.listPolicies).toHaveBeenCalledWith(
         expect.objectContaining({ tenantId: 'acme' })
@@ -287,7 +292,7 @@ describe('Policy Commands', () => {
       vi.mocked(client.createPolicy).mockResolvedValue(created as any);
 
       await program.parseAsync([
-        'node', 'test', 'policy', 'create',
+        'node', 'test', 'superadmin', 'policy', 'create',
         '--name', 'Full Policy',
         '--effect', 'deny',
         '--actions', 'secret:read,secret:update',
@@ -928,7 +933,7 @@ describe('Policy Commands', () => {
       vi.mocked(fs.readFileSync).mockReturnValue(fileContent);
       vi.mocked(client.createPolicy).mockResolvedValue({ id: 'imported', name: 'Imported Policy', effect: 'allow', isActive: true } as any);
 
-      await program.parseAsync(['node', 'test', 'policy', 'import', '/path/to/policy.json', '--tenant', 'acme']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'policy', 'import', '/path/to/policy.json', '--tenant', 'acme']);
 
       expect(client.createPolicy).toHaveBeenCalledWith(
         expect.objectContaining({ tenantId: 'acme' })
