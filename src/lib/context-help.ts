@@ -56,6 +56,11 @@ export function configureContextHelp(cmd: Command): void {
       const ctx = getAuthContext();
       return cmd.commands.filter((sub) => {
         const desc = sub.description();
+        // Hide the entire `superadmin` group from non-superadmin profiles
+        // (v4 — all cross-tenant and system-level commands live there).
+        if (sub.name() === 'superadmin' && !ctx.isSuperadmin) {
+          return false;
+        }
         // Hide superadmin commands for non-superadmins
         if (isSuperadminOnly(desc) && !ctx.isSuperadmin) {
           return false;

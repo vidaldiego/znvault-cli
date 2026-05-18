@@ -23,6 +23,7 @@ import {
   withRegisterContext,
   type RegisterOptions,
 } from '../../lib/command-context.js';
+import { configureContextHelp } from '../../lib/context-help.js';
 
 import { registerAccountsCommands } from './accounts.js';
 
@@ -53,6 +54,10 @@ export function registerSuperadminCommands(parent: Command, _opts?: RegisterOpti
   const superadmin = parent
     .command('superadmin')
     .description('Cross-tenant and system-level administration (superadmin only)');
+
+  // Propagate context-aware help filtering into the superadmin namespace so
+  // legacy `superadminDesc(...)` markers on nested commands keep working.
+  configureContextHelp(superadmin);
 
   // All sub-registrations run with the superadmin context active so
   // `--tenant` options are accepted on the mirrored groups.
