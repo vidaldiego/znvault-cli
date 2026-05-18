@@ -58,7 +58,7 @@ interface ResetPasswordOptions {
 
 export function registerUserCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => registerUserCommandsInner(parent, ctx));
+  withRegisterContext(ctx, () => { registerUserCommandsInner(parent, ctx); });
 }
 
 function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {

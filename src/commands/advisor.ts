@@ -109,7 +109,7 @@ interface LLMConfigUpdateOptions {
  */
 export function registerAdvisorCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => registerAdvisorCommandsInner(parent, ctx));
+  withRegisterContext(ctx, () => { registerAdvisorCommandsInner(parent, ctx); });
 }
 
 function registerAdvisorCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {

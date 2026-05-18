@@ -61,7 +61,7 @@ describe('superadmin commands', () => {
     program = new Command();
     program.exitOverride();
 
-    const { registerSuperadminCommands } = await import('../../src/commands/superadmin.js');
+    const { registerSuperadminCommands } = await import('../../src/commands/superadmin/index.js');
     registerSuperadminCommands(program);
   });
 
@@ -74,7 +74,7 @@ describe('superadmin commands', () => {
       const mode = await import('../../src/lib/mode.js');
       const { table, info } = await import('../../src/lib/output.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'list']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'list']);
 
       expect(mode.listSuperadmins).toHaveBeenCalled();
       expect(table).toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe('superadmin commands', () => {
     it('should output JSON when --json flag is used', async () => {
       const { json } = await import('../../src/lib/output.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'list', '--json']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'list', '--json']);
 
       expect(json).toHaveBeenCalled();
     });
@@ -94,7 +94,7 @@ describe('superadmin commands', () => {
     it('should create a new superadmin', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'create', 'newsuperadmin', 'password123']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'create', 'newsuperadmin', 'password123']);
 
       expect(client.createSuperadmin).toHaveBeenCalledWith({
         username: 'newsuperadmin',
@@ -106,7 +106,7 @@ describe('superadmin commands', () => {
     it('should create superadmin with email', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'create', 'newsuperadmin', 'password123', '--email', 'new@example.com']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'create', 'newsuperadmin', 'password123', '--email', 'new@example.com']);
 
       expect(client.createSuperadmin).toHaveBeenCalledWith({
         username: 'newsuperadmin',
@@ -120,7 +120,7 @@ describe('superadmin commands', () => {
     it('should reset superadmin password', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'reset-password', 'superadmin', 'newSecretPass123']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'reset-password', 'superadmin', 'newSecretPass123']);
 
       expect(client.resetSuperadminPassword).toHaveBeenCalledWith('superadmin', 'newSecretPass123');
     });
@@ -130,7 +130,7 @@ describe('superadmin commands', () => {
     it('should unlock superadmin', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'unlock', 'backup-admin']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'unlock', 'backup-admin']);
 
       expect(client.unlockSuperadmin).toHaveBeenCalledWith('backup-admin');
     });
@@ -141,7 +141,7 @@ describe('superadmin commands', () => {
       const { client } = await import('../../src/lib/client.js');
       const { promptConfirm } = await import('../../src/lib/prompts.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'disable', 'backup-admin']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'disable', 'backup-admin']);
 
       expect(promptConfirm).toHaveBeenCalled();
       expect(client.disableSuperadmin).toHaveBeenCalledWith('backup-admin');
@@ -151,7 +151,7 @@ describe('superadmin commands', () => {
       const { client } = await import('../../src/lib/client.js');
       const { promptConfirm } = await import('../../src/lib/prompts.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'disable', 'backup-admin', '--yes']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'disable', 'backup-admin', '--yes']);
 
       expect(promptConfirm).not.toHaveBeenCalled();
       expect(client.disableSuperadmin).toHaveBeenCalledWith('backup-admin');
@@ -162,7 +162,7 @@ describe('superadmin commands', () => {
     it('should enable superadmin', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      await program.parseAsync(['node', 'test', 'superadmin', 'enable', 'backup-admin']);
+      await program.parseAsync(['node', 'test', 'superadmin', 'accounts', 'enable', 'backup-admin']);
 
       expect(client.enableSuperadmin).toHaveBeenCalledWith('backup-admin');
     });

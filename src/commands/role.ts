@@ -490,7 +490,7 @@ async function getUserPermissions(userId: string, options: { json?: boolean }): 
 
 export function registerRoleCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => registerRoleCommandsInner(parent, ctx));
+  withRegisterContext(ctx, () => { registerRoleCommandsInner(parent, ctx); });
 }
 
 function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {

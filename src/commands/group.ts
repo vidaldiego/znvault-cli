@@ -80,7 +80,7 @@ interface MembersRemoveOptions {
 
 export function registerGroupCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => registerGroupCommandsInner(parent, ctx));
+  withRegisterContext(ctx, () => { registerGroupCommandsInner(parent, ctx); });
 }
 
 function registerGroupCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {

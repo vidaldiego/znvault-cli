@@ -31,7 +31,7 @@ interface AuditExportOptions {
 
 export function registerAuditCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => registerAuditCommandsInner(parent));
+  withRegisterContext(ctx, () => { registerAuditCommandsInner(parent); });
 }
 
 function registerAuditCommandsInner(parent: Command): void {

@@ -8,11 +8,8 @@ import { registerAuthCommands } from './commands/auth.js';
 // context. Must run before any command registration.
 applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
 import { registerHealthCommands } from './commands/health.js';
-import { registerClusterCommands } from './commands/cluster.js';
-import { registerTenantCommands } from './commands/tenant.js';
 import { registerUserCommands } from './commands/user.js';
-import { registerSuperadminCommands } from './commands/superadmin.js';
-import { registerLockdownCommands } from './commands/lockdown.js';
+import { registerSuperadminCommands } from './commands/superadmin/index.js';
 import { registerQuarantineCommands } from './commands/quarantine.js';
 import { registerAuditCommands } from './commands/audit.js';
 import { registerEmergencyCommands } from './commands/emergency.js';
@@ -25,9 +22,7 @@ import { registerPolicyCommands } from './commands/policy.js';
 import { registerPermissionsCommands } from './commands/permissions.js';
 import { registerSecretCommands } from './commands/secret.js';
 import { registerKmsCommands } from './commands/kms/index.js';
-import { registerLmkCommands } from './commands/lmk.js';
 import { registerRoleCommands } from './commands/role.js';
-import { registerBackupCommands } from './commands/backup/index.js';
 import { registerNotificationCommands } from './commands/notification.js';
 import { registerTuiCommands } from './commands/tui.js';
 import { registerSelfUpdateCommands } from './commands/self-update.js';
@@ -115,14 +110,20 @@ program
     profileIndicator(getActiveProfileName(), config.url);
   });
 
-// Register all command groups
+// Register all top-level command groups (tenant context by default).
+//
+// In v4, the following groups moved entirely under `znvault superadmin <...>`
+// and are no longer registered at the top level:
+//   - tenant, cluster, lockdown, lmk, backup (pure-superadmin)
+//   - superadmin account management → `superadmin accounts <...>`
+//
+// Dual-purpose groups (user, audit, quarantine, advisor, agent, apikey, host,
+// kms, policy, role, sso, ssh, group) are registered here in tenant context
+// (no --tenant flag) AND again under the superadmin namespace with
+// `context: 'superadmin'` (--tenant accepted).
 registerAuthCommands(program);
 registerHealthCommands(program);
-registerClusterCommands(program);
-registerTenantCommands(program);
 registerUserCommands(program);
-registerSuperadminCommands(program);
-registerLockdownCommands(program);
 registerQuarantineCommands(program);
 registerAuditCommands(program);
 registerEmergencyCommands(program);
@@ -135,9 +136,7 @@ registerPolicyCommands(program);
 registerPermissionsCommands(program);
 registerSecretCommands(program);
 registerKmsCommands(program);
-registerLmkCommands(program);
 registerRoleCommands(program);
-registerBackupCommands(program);
 registerNotificationCommands(program);
 registerTuiCommands(program);
 registerSelfUpdateCommands(program);
@@ -152,6 +151,9 @@ registerGroupCommands(program);
 registerDynamicSecretsCommands(program);
 registerSSHCommands(program);
 registerSSHCACommands(program);
+
+// Superadmin namespace (must come last so all referenced groups are loaded).
+registerSuperadminCommands(program);
 
 // Configure context-aware help (hides superadmin-only commands for regular users)
 configureContextHelp(program);

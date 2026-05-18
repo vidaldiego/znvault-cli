@@ -1,9 +1,19 @@
+// Path: src/commands/superadmin/accounts.ts
+
+/**
+ * Superadmin account management — list/create/reset-password/unlock/disable/enable.
+ *
+ * Originally lived directly under `znvault superadmin <…>` (v3). In v4 these
+ * commands moved under `znvault superadmin accounts <…>` to free the
+ * `superadmin` namespace for cross-tenant resource groups.
+ */
+
 import { type Command } from 'commander';
 
-import { client } from '../lib/client.js';
-import * as mode from '../lib/mode.js';
-import { promptConfirm, promptNewPassword } from '../lib/prompts.js';
-import * as output from '../lib/output.js';
+import { client } from '../../lib/client.js';
+import * as mode from '../../lib/mode.js';
+import { promptConfirm, promptNewPassword } from '../../lib/prompts.js';
+import * as output from '../../lib/output.js';
 
 interface ListOptions {
   json?: boolean;
@@ -23,13 +33,13 @@ interface JsonOptions {
   json?: boolean;
 }
 
-export function registerSuperadminCommands(program: Command): void {
-  const superadmin = program
-    .command('superadmin')
-    .description('Superadmin management commands');
+export function registerAccountsCommands(superadmin: Command): void {
+  const accounts = superadmin
+    .command('accounts')
+    .description('Superadmin account management (list/create/reset-password/unlock/disable/enable)');
 
   // List superadmins
-  superadmin
+  accounts
     .command('list')
     .description('List all superadmins')
     .option('--json', 'Output as JSON')
@@ -74,7 +84,7 @@ export function registerSuperadminCommands(program: Command): void {
     });
 
   // Create superadmin (API only)
-  superadmin
+  accounts
     .command('create <username> <password>')
     .description('Create a new superadmin')
     .option('--email <email>', 'Superadmin email')
@@ -115,7 +125,7 @@ export function registerSuperadminCommands(program: Command): void {
     });
 
   // Reset superadmin password (API only - requires authentication)
-  superadmin
+  accounts
     .command('reset-password <username> [newPassword]')
     .description('Reset superadmin password')
     .option('--json', 'Output as JSON')
@@ -149,7 +159,7 @@ export function registerSuperadminCommands(program: Command): void {
     });
 
   // Unlock superadmin (API only)
-  superadmin
+  accounts
     .command('unlock <username>')
     .description('Unlock a locked superadmin account')
     .option('--json', 'Output as JSON')
@@ -178,7 +188,7 @@ export function registerSuperadminCommands(program: Command): void {
     });
 
   // Disable superadmin (API only)
-  superadmin
+  accounts
     .command('disable <username>')
     .description('Disable a superadmin account')
     .option('-y, --yes', 'Skip confirmation')
@@ -222,7 +232,7 @@ export function registerSuperadminCommands(program: Command): void {
     });
 
   // Enable superadmin (API only)
-  superadmin
+  accounts
     .command('enable <username>')
     .description('Enable a disabled superadmin account')
     .option('--json', 'Output as JSON')

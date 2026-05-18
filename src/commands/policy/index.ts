@@ -29,7 +29,7 @@ export * from './types.js';
 
 export function registerPolicyCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => registerPolicyCommandsInner(parent, ctx));
+  withRegisterContext(ctx, () => { registerPolicyCommandsInner(parent, ctx); });
 }
 
 function registerPolicyCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {

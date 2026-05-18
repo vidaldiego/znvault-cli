@@ -54,7 +54,7 @@ function formatBackoffLevel(level: number): string {
 
 export function registerQuarantineCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => registerQuarantineCommandsInner(parent, ctx));
+  withRegisterContext(ctx, () => { registerQuarantineCommandsInner(parent, ctx); });
 }
 
 function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
