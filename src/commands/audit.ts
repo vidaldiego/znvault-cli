@@ -8,6 +8,7 @@ import {
   resolveContext,
   withRegisterContext,
   type RegisterOptions,
+  type CommandContext,
 } from '../lib/command-context.js';
 
 interface AuditListOptions {
@@ -16,6 +17,7 @@ interface AuditListOptions {
   days: string;
   limit: string;
   json?: boolean;
+  tenant?: string;
 }
 
 interface AuditVerifyOptions {
@@ -27,14 +29,16 @@ interface AuditExportOptions {
   days: string;
   output?: string;
   json?: boolean;
+  tenant?: string;
 }
 
 export function registerAuditCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
-  withRegisterContext(ctx, () => { registerAuditCommandsInner(parent); });
+  withRegisterContext(ctx, () => { registerAuditCommandsInner(parent, ctx); });
 }
 
-function registerAuditCommandsInner(parent: Command): void {
+function registerAuditCommandsInner(parent: Command, ctx: CommandContext): void {
+  const asSuperadmin = ctx === 'superadmin';
   const audit = parent
     .command('audit')
     .description('Audit log commands');
@@ -47,6 +51,7 @@ function registerAuditCommandsInner(parent: Command): void {
     .option('--action <action>', 'Filter by action')
     .option('--days <number>', 'Show entries from last N days', '7')
     .option('--limit <number>', 'Number of entries to show', '100')
+    .option('--tenant <id>', 'Tenant ID (superadmin cross-tenant)')
     .option('--json', 'Output as JSON')
     .action(async (options: AuditListOptions) => {
       const spinner = output.spinner('Fetching audit logs...').start();
@@ -61,6 +66,8 @@ function registerAuditCommandsInner(parent: Command): void {
           action: options.action,
           startDate: startDate.toISOString(),
           limit: parseInt(options.limit, 10),
+          tenantId: options.tenant,
+          asSuperadmin,
         });
         spinner.stop();
 
@@ -116,7 +123,7 @@ function registerAuditCommandsInner(parent: Command): void {
       const spinner = output.spinner('Verifying audit chain...').start();
 
       try {
-        const result = await mode.verifyAuditChain();
+        const result = await mode.verifyAuditChain({ asSuperadmin });
         spinner.stop();
 
         if (options.json) {
@@ -156,6 +163,7 @@ function registerAuditCommandsInner(parent: Command): void {
     .option('--format <format>', 'Output format (json|csv)', 'json')
     .option('--days <number>', 'Export entries from last N days', '30')
     .option('--output <file>', 'Output file (default: stdout)')
+    .option('--tenant <id>', 'Tenant ID (superadmin cross-tenant)')
     .option('--json', 'Output result as JSON')
     .action(async (options: AuditExportOptions) => {
       if (mode.getMode() === 'local') {
@@ -174,6 +182,8 @@ function registerAuditCommandsInner(parent: Command): void {
         const data = await client.exportAudit({
           format: options.format,
           startDate: startDate.toISOString(),
+          tenantId: options.tenant,
+          asSuperadmin,
         });
         spinner.stop();
 

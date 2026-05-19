@@ -182,6 +182,7 @@ export async function listUsers(options?: {
   tenantId?: string;
   role?: string;
   status?: string;
+  asSuperadmin?: boolean;
 }): Promise<User[]> {
   if (getMode() === 'local') {
     return getLocalClient().listUsers(options);
@@ -192,12 +193,12 @@ export async function listUsers(options?: {
 /**
  * Get user
  */
-export async function getUser(id: string): Promise<User | null> {
+export async function getUser(id: string, opts?: { asSuperadmin?: boolean }): Promise<User | null> {
   if (getMode() === 'local') {
     return getLocalClient().getUser(id);
   }
   try {
-    return await client.getUser(id);
+    return await client.getUser(id, opts);
   } catch {
     return null;
   }
@@ -248,7 +249,10 @@ export async function getThreats(options?: {
 }
 
 /**
- * List audit entries
+ * List audit entries.
+ *
+ * When `asSuperadmin: true`, route to `/v1/superadmin/audit` (cross-tenant).
+ * Otherwise stay on `/v1/audit` (tenant principal).
  */
 export async function listAudit(options?: {
   user?: string;
@@ -256,6 +260,8 @@ export async function listAudit(options?: {
   startDate?: string;
   endDate?: string;
   limit?: number;
+  tenantId?: string;
+  asSuperadmin?: boolean;
 }): Promise<AuditEntry[]> {
   if (getMode() === 'local') {
     return getLocalClient().listAudit(options);
@@ -264,13 +270,17 @@ export async function listAudit(options?: {
 }
 
 /**
- * Verify audit chain
+ * Verify audit chain.
+ *
+ * Only the tenant surface exposes `/v1/audit/verify`. Callers under the
+ * superadmin namespace should generally pick a tenant via `--tenant` first
+ * (the server then scopes verification accordingly).
  */
-export async function verifyAuditChain(): Promise<AuditVerifyResult> {
+export async function verifyAuditChain(opts?: { asSuperadmin?: boolean }): Promise<AuditVerifyResult> {
   if (getMode() === 'local') {
     return getLocalClient().verifyAuditChain();
   }
-  return client.verifyAuditChain();
+  return client.verifyAuditChain(opts);
 }
 
 /**
