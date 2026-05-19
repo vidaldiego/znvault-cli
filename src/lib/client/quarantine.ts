@@ -3,9 +3,19 @@
 /**
  * IP Quarantine management client
  *
- * Routing: if `tenantId` is provided we hit `/v1/superadmin/quarantine/*`
- * (cross-tenant; requires superadmin role). Otherwise we hit `/v1/quarantine/*`
- * (tenant-scoped; tenant is derived from the JWT).
+ * Routing:
+ *   - `asSuperadmin: true` → `/v1/superadmin/quarantine/*` (cross-tenant;
+ *     used under `znvault superadmin quarantine`). Optional `tenantId`
+ *     filters to a specific tenant; omitting it targets the system
+ *     (null-tenant) scope.
+ *   - otherwise → `/v1/quarantine/*` (tenant-scoped; tenant derived from
+ *     the JWT).
+ *
+ * Pre-v4.0.1 the routing used `tenantId` truthiness as the discriminator;
+ * that broke `znvault superadmin quarantine list` (no `--tenant`) because
+ * the request fell through to `/v1/quarantine`, which the server rejects
+ * for superadmin principals with "Superadmins must use /v1/superadmin/*
+ * routes".
  */
 
 import { HttpClient } from './http.js';
@@ -23,6 +33,7 @@ export interface ListQuarantineOptions {
   includeExpired?: boolean;
   limit?: number;
   offset?: number;
+  asSuperadmin?: boolean;
 }
 
 export interface ReleaseResult {
@@ -31,18 +42,30 @@ export interface ReleaseResult {
   releasedCount?: number;
 }
 
-function adminBase(tenantId: string | undefined): string {
-  return tenantId !== undefined && tenantId !== '' ? '/v1/superadmin/quarantine' : '/v1/quarantine';
+export interface QuarantineScope {
+  asSuperadmin?: boolean;
+  tenantId?: string;
+}
+
+function basePath(asSuperadmin?: boolean): string {
+  return asSuperadmin ? '/v1/superadmin/quarantine' : '/v1/quarantine';
+}
+
+function tenantQuery(scope?: QuarantineScope): { tenantId?: string } | undefined {
+  if (!scope?.asSuperadmin) return undefined;
+  return scope.tenantId !== undefined && scope.tenantId !== ''
+    ? { tenantId: scope.tenantId }
+    : undefined;
 }
 
 export class QuarantineClient extends HttpClient {
   async list(options?: ListQuarantineOptions): Promise<PaginatedResponse<IpQuarantine>> {
     return this.request<PaginatedResponse<IpQuarantine>>({
       method: 'GET',
-      path: adminBase(options?.tenantId),
+      path: basePath(options?.asSuperadmin),
       query: {
         status: options?.status,
-        tenantId: options?.tenantId,
+        tenantId: options?.asSuperadmin ? options.tenantId : undefined,
         includeExpired: options?.includeExpired,
         limit: options?.limit ?? 50,
         offset: options?.offset ?? 0,
@@ -50,70 +73,70 @@ export class QuarantineClient extends HttpClient {
     });
   }
 
-  async getById(id: string, tenantId?: string): Promise<IpQuarantine> {
+  async getById(id: string, scope?: QuarantineScope): Promise<IpQuarantine> {
     return this.request<IpQuarantine>({
       method: 'GET',
-      path: `${adminBase(tenantId)}/${id}`,
-      query: tenantId ? { tenantId } : undefined,
+      path: `${basePath(scope?.asSuperadmin)}/${id}`,
+      query: tenantQuery(scope),
     });
   }
 
-  async release(id: string, reason: string, tenantId?: string): Promise<ReleaseResult> {
+  async release(id: string, reason: string, scope?: QuarantineScope): Promise<ReleaseResult> {
     return this.request<ReleaseResult>({
       method: 'POST',
-      path: `${adminBase(tenantId)}/${id}/release`,
-      query: tenantId ? { tenantId } : undefined,
+      path: `${basePath(scope?.asSuperadmin)}/${id}/release`,
+      query: tenantQuery(scope),
       body: { reason },
     });
   }
 
-  async releaseIp(ip: string, reason: string, tenantId?: string): Promise<ReleaseResult> {
+  async releaseIp(ip: string, reason: string, scope?: QuarantineScope): Promise<ReleaseResult> {
     return this.request<ReleaseResult>({
       method: 'POST',
-      path: `${adminBase(tenantId)}/ip/${encodeURIComponent(ip)}/release`,
-      query: tenantId ? { tenantId } : undefined,
+      path: `${basePath(scope?.asSuperadmin)}/ip/${encodeURIComponent(ip)}/release`,
+      query: tenantQuery(scope),
       body: { reason },
     });
   }
 
   async getHistory(
     ip: string,
-    options?: { limit?: number; tenantId?: string }
+    options?: { limit?: number; tenantId?: string; asSuperadmin?: boolean }
   ): Promise<{ ip: string; failures: IpFailureHistory[] }> {
     return this.request({
       method: 'GET',
-      path: `${adminBase(options?.tenantId)}/ip/${encodeURIComponent(ip)}/history`,
+      path: `${basePath(options?.asSuperadmin)}/ip/${encodeURIComponent(ip)}/history`,
       query: {
         limit: options?.limit ?? 100,
-        tenantId: options?.tenantId,
+        tenantId: options?.asSuperadmin ? options.tenantId : undefined,
       },
     });
   }
 
-  async getStats(tenantId?: string): Promise<IpQuarantineStats> {
+  async getStats(scope?: QuarantineScope): Promise<IpQuarantineStats> {
     return this.request<IpQuarantineStats>({
       method: 'GET',
-      path: `${adminBase(tenantId)}/stats`,
-      query: tenantId ? { tenantId } : undefined,
+      path: `${basePath(scope?.asSuperadmin)}/stats`,
+      query: tenantQuery(scope),
     });
   }
 
-  async getConfig(tenantId?: string): Promise<IpQuarantineConfig> {
+  async getConfig(scope?: QuarantineScope): Promise<IpQuarantineConfig> {
     return this.request<IpQuarantineConfig>({
       method: 'GET',
-      path: `${adminBase(tenantId)}/config`,
-      query: tenantId ? { tenantId } : undefined,
+      path: `${basePath(scope?.asSuperadmin)}/config`,
+      query: tenantQuery(scope),
     });
   }
 
   async updateConfig(
     config: Partial<Omit<IpQuarantineConfig, 'id' | 'tenantId' | 'createdAt' | 'updatedAt'>>,
-    tenantId?: string
+    scope?: QuarantineScope
   ): Promise<{ success: boolean; config: IpQuarantineConfig }> {
     return this.request({
       method: 'PUT',
-      path: `${adminBase(tenantId)}/config`,
-      query: tenantId ? { tenantId } : undefined,
+      path: `${basePath(scope?.asSuperadmin)}/config`,
+      query: tenantQuery(scope),
       body: config,
     });
   }

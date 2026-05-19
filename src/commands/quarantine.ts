@@ -58,11 +58,18 @@ export function registerQuarantineCommands(parent: Command, opts?: RegisterOptio
 }
 
 function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const asSuperadmin = ctx === 'superadmin';
   // Helper: only register --tenant in superadmin context
   const t = (cmd: Command, desc: string, shortFlag = true): Command =>
-    ctx === 'superadmin'
+    asSuperadmin
       ? cmd.option(shortFlag ? '-t, --tenant <tenant>' : '--tenant <tenant>', desc)
       : cmd;
+  // Build the scope object used by every quarantine client call. In tenant
+  // mode this stays `undefined` (routes to `/v1/quarantine/*`). In
+  // superadmin mode it always routes to `/v1/superadmin/quarantine/*`,
+  // optionally narrowed by --tenant.
+  const scope = (tenant?: string): { asSuperadmin: boolean; tenantId?: string } | undefined =>
+    asSuperadmin ? { asSuperadmin: true, tenantId: tenant } : undefined;
 
   const quarantine = parent
     .command('quarantine')
@@ -92,6 +99,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
           tenantId: options.tenant,
           includeExpired: options.includeExpired,
           limit: parseInt(options.limit, 10),
+          asSuperadmin,
         });
         spinner.stop();
 
@@ -139,7 +147,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
       const spinner = output.spinner('Fetching quarantine details...').start();
 
       try {
-        const q = await client.getQuarantine(id, options.tenant);
+        const q = await client.getQuarantine(id, scope(options.tenant));
         spinner.stop();
 
         if (options.json) {
@@ -202,7 +210,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
       .action(async (id: string, reason: string, options: ReleaseOptions & { tenant?: string }) => {
       try {
         // Get quarantine info first
-        const q = await client.getQuarantine(id, options.tenant);
+        const q = await client.getQuarantine(id, scope(options.tenant));
 
         if (!options.yes) {
           const confirmed = await promptConfirm(
@@ -217,7 +225,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
         const spinner = output.spinner('Releasing quarantine...').start();
 
         try {
-          const result = await client.releaseQuarantine(id, reason, options.tenant);
+          const result = await client.releaseQuarantine(id, reason, scope(options.tenant));
           spinner.succeed('Quarantine released');
 
           if (options.json) {
@@ -261,7 +269,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
         const spinner = output.spinner('Releasing IP quarantines...').start();
 
         try {
-          const result = await client.releaseQuarantineIp(ip, reason, options.tenant);
+          const result = await client.releaseQuarantineIp(ip, reason, scope(options.tenant));
           spinner.succeed('Quarantine(s) released');
 
           if (options.json) {
@@ -300,6 +308,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
         const result = await client.getQuarantineHistory(ip, {
           limit: parseInt(options.limit, 10),
           tenantId: options.tenant,
+          asSuperadmin,
         });
         spinner.stop();
 
@@ -349,7 +358,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
       const spinner = output.spinner('Fetching statistics...').start();
 
       try {
-        const stats = await client.getQuarantineStats(options.tenant);
+        const stats = await client.getQuarantineStats(scope(options.tenant));
         spinner.stop();
 
         if (options.json) {
@@ -401,7 +410,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
       const spinner = output.spinner('Fetching configuration...').start();
 
       try {
-        const config = await client.getQuarantineConfig(options.tenant);
+        const config = await client.getQuarantineConfig(scope(options.tenant));
         spinner.stop();
 
         if (options.json) {
@@ -515,7 +524,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
         const spinner = output.spinner('Updating configuration...').start();
 
         try {
-          const result = await client.updateQuarantineConfig(updates, options.tenant);
+          const result = await client.updateQuarantineConfig(updates, scope(options.tenant));
           spinner.succeed('Configuration updated');
 
           if (options.json) {
