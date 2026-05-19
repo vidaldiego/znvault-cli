@@ -126,7 +126,14 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
           ])
         );
 
-        output.info(`Showing ${result.items.length} of ${result.pagination.total} quarantines`);
+        // The server returns {items, total} for quarantine list (legacy shape)
+        // rather than the standard {items, pagination:{total,…}} envelope used
+        // elsewhere. Accept either to stay robust against server-side cleanups.
+        const total =
+          (result as unknown as {pagination?: {total?: number}}).pagination?.total ??
+          (result as unknown as {total?: number}).total ??
+          result.items.length;
+        output.info(`Showing ${result.items.length} of ${total} quarantines`);
       } catch (err) {
         spinner.fail('Failed to list quarantines');
         output.error(err instanceof Error ? err.message : String(err));
