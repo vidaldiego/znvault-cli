@@ -5,6 +5,7 @@
  */
 
 
+import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { shortId, formatActiveStatus } from '../../lib/format-helpers.js';
@@ -14,12 +15,14 @@ import type {
   PolicyUserPoliciesOptions,
   PolicyRolePoliciesOptions,
 } from './types.js';
+import { policyAsSuperadmin } from './helpers.js';
 
-export async function showAttachments(id: string, options: PolicyAttachmentsOptions): Promise<void> {
+export async function showAttachments(id: string, options: PolicyAttachmentsOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Fetching attachments...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    const result = await client.getPolicyAttachments(id, options.tenant);
+    const result = await client.getPolicyAttachments(id, options.tenant, { asSuperadmin });
     spinner.stop();
 
     if (options.json) {
@@ -62,11 +65,12 @@ export async function showAttachments(id: string, options: PolicyAttachmentsOpti
   }
 }
 
-export async function attachPolicyToUser(policyId: string, userId: string, options: PolicyAttachOptions): Promise<void> {
+export async function attachPolicyToUser(policyId: string, userId: string, options: PolicyAttachOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Attaching policy to user...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    await client.attachPolicyToUser(policyId, userId, options.tenant);
+    await client.attachPolicyToUser(policyId, userId, options.tenant, { asSuperadmin });
     spinner.succeed('Policy attached to user successfully');
 
     if (options.json) {
@@ -78,11 +82,12 @@ export async function attachPolicyToUser(policyId: string, userId: string, optio
   }
 }
 
-export async function attachPolicyToRole(policyId: string, roleId: string, options: PolicyAttachOptions): Promise<void> {
+export async function attachPolicyToRole(policyId: string, roleId: string, options: PolicyAttachOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Attaching policy to role...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    await client.attachPolicyToRole(policyId, roleId, options.tenant);
+    await client.attachPolicyToRole(policyId, roleId, options.tenant, { asSuperadmin });
     spinner.succeed('Policy attached to role successfully');
 
     if (options.json) {
@@ -94,11 +99,12 @@ export async function attachPolicyToRole(policyId: string, roleId: string, optio
   }
 }
 
-export async function detachPolicyFromUser(policyId: string, userId: string, options: PolicyAttachOptions): Promise<void> {
+export async function detachPolicyFromUser(policyId: string, userId: string, options: PolicyAttachOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Detaching policy from user...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    await client.detachPolicyFromUser(policyId, userId, options.tenant);
+    await client.detachPolicyFromUser(policyId, userId, options.tenant, { asSuperadmin });
     spinner.succeed('Policy detached from user successfully');
 
     if (options.json) {
@@ -110,11 +116,12 @@ export async function detachPolicyFromUser(policyId: string, userId: string, opt
   }
 }
 
-export async function detachPolicyFromRole(policyId: string, roleId: string, options: PolicyAttachOptions): Promise<void> {
+export async function detachPolicyFromRole(policyId: string, roleId: string, options: PolicyAttachOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Detaching policy from role...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    await client.detachPolicyFromRole(policyId, roleId, options.tenant);
+    await client.detachPolicyFromRole(policyId, roleId, options.tenant, { asSuperadmin });
     spinner.succeed('Policy detached from role successfully');
 
     if (options.json) {

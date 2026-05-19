@@ -5,12 +5,15 @@
  */
 
 
+import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { shortId, formatActiveStatus, formatPaginationInfo } from '../../lib/format-helpers.js';
 import type { PolicyListOptions, PolicyGetOptions } from './types.js';
+import { policyAsSuperadmin } from './helpers.js';
 
-export async function listPolicies(options: PolicyListOptions): Promise<void> {
+export async function listPolicies(options: PolicyListOptions, cmd?: Command): Promise<void> {
+  const asSuperadmin = policyAsSuperadmin(cmd);
   const spinner = output.spinner('Fetching policies...').start();
 
   try {
@@ -19,6 +22,7 @@ export async function listPolicies(options: PolicyListOptions): Promise<void> {
       enabled: options.enabled ? true : options.disabled ? false : undefined,
       effect: options.effect as 'allow' | 'deny' | undefined,
       search: options.search,
+      asSuperadmin,
     });
     spinner.stop();
 
@@ -52,11 +56,12 @@ export async function listPolicies(options: PolicyListOptions): Promise<void> {
   }
 }
 
-export async function getPolicy(id: string, options: PolicyGetOptions): Promise<void> {
+export async function getPolicy(id: string, options: PolicyGetOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Fetching policy...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    const result = await client.getPolicy(id, options.tenant);
+    const result = await client.getPolicy(id, options.tenant, { asSuperadmin });
     spinner.stop();
 
     if (options.json) {

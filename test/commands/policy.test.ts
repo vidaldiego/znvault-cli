@@ -112,6 +112,7 @@ describe('Policy Commands', () => {
         enabled: undefined,
         effect: undefined,
         search: undefined,
+        asSuperadmin: false,
       });
       expect(output.table).toHaveBeenCalled();
     });
@@ -233,7 +234,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'get', 'policy-123']);
 
-      expect(client.getPolicy).toHaveBeenCalledWith('policy-123', undefined);
+      expect(client.getPolicy).toHaveBeenCalledWith('policy-123', undefined, { asSuperadmin: false });
       expect(output.section).toHaveBeenCalledWith('Policy Details');
       expect(output.keyValue).toHaveBeenCalled();
     });
@@ -283,6 +284,7 @@ describe('Policy Commands', () => {
         actions: ['secret:read'],
         priority: 5,
         tenantId: undefined,
+        asSuperadmin: false,
       });
       expect(output.keyValue).toHaveBeenCalled();
     });
@@ -312,6 +314,7 @@ describe('Policy Commands', () => {
         tenantId: 'acme',
         resources: [{ type: 'secret', id: '*' }],
         conditions: [{ type: 'ip', value: ['10.0.0.0/8'] }],
+        asSuperadmin: true,
       });
     });
 
@@ -339,6 +342,7 @@ describe('Policy Commands', () => {
         effect: 'allow',
         actions: ['kms:encrypt'],
         priority: 1,
+        asSuperadmin: false,
       });
     });
 
@@ -378,7 +382,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'update', 'policy-123', '--name', 'Updated Name']);
 
-      expect(client.updatePolicy).toHaveBeenCalledWith('policy-123', { name: 'Updated Name' }, undefined);
+      expect(client.updatePolicy).toHaveBeenCalledWith('policy-123', { name: 'Updated Name' }, undefined, { asSuperadmin: false });
       expect(output.keyValue).toHaveBeenCalled();
     });
 
@@ -399,7 +403,7 @@ describe('Policy Commands', () => {
         effect: 'deny',
         actions: ['secret:delete'],
         priority: 20,
-      }, undefined);
+      }, undefined, { asSuperadmin: false });
     });
 
     it('should update from file', async () => {
@@ -413,7 +417,7 @@ describe('Policy Commands', () => {
       ]);
 
       expect(fs.readFileSync).toHaveBeenCalledWith('/path/to/updates.json', 'utf-8');
-      expect(client.updatePolicy).toHaveBeenCalledWith('policy-123', { name: 'File Updated', priority: 50 }, undefined);
+      expect(client.updatePolicy).toHaveBeenCalledWith('policy-123', { name: 'File Updated', priority: 50 }, undefined, { asSuperadmin: false });
     });
 
     it('should fail when no updates specified', async () => {
@@ -440,7 +444,7 @@ describe('Policy Commands', () => {
       await program.parseAsync(['node', 'test', 'policy', 'delete', 'policy-123']);
 
       expect(promptConfirm).toHaveBeenCalled();
-      expect(client.deletePolicy).toHaveBeenCalledWith('policy-123', undefined);
+      expect(client.deletePolicy).toHaveBeenCalledWith('policy-123', undefined, { asSuperadmin: false });
     });
 
     it('should delete policy with --yes flag', async () => {
@@ -449,7 +453,7 @@ describe('Policy Commands', () => {
       await program.parseAsync(['node', 'test', 'policy', 'delete', 'policy-123', '--yes']);
 
       expect(promptConfirm).not.toHaveBeenCalled();
-      expect(client.deletePolicy).toHaveBeenCalledWith('policy-123', undefined);
+      expect(client.deletePolicy).toHaveBeenCalledWith('policy-123', undefined, { asSuperadmin: false });
     });
 
     it('should cancel delete when not confirmed', async () => {
@@ -479,7 +483,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'enable', 'policy-123']);
 
-      expect(client.togglePolicy).toHaveBeenCalledWith('policy-123', true, undefined);
+      expect(client.togglePolicy).toHaveBeenCalledWith('policy-123', true, undefined, { asSuperadmin: false });
       expect(output.keyValue).toHaveBeenCalled();
     });
 
@@ -499,7 +503,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'disable', 'policy-123']);
 
-      expect(client.togglePolicy).toHaveBeenCalledWith('policy-123', false, undefined);
+      expect(client.togglePolicy).toHaveBeenCalledWith('policy-123', false, undefined, { asSuperadmin: false });
       expect(output.keyValue).toHaveBeenCalled();
     });
 
@@ -586,7 +590,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'attachments', 'policy-123']);
 
-      expect(client.getPolicyAttachments).toHaveBeenCalledWith('policy-123', undefined);
+      expect(client.getPolicyAttachments).toHaveBeenCalledWith('policy-123', undefined, { asSuperadmin: false });
       expect(output.section).toHaveBeenCalledWith('Attached Users');
       expect(output.section).toHaveBeenCalledWith('Attached Roles');
       expect(output.table).toHaveBeenCalledTimes(2);
@@ -617,7 +621,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'attach-user', 'policy-123', 'user-456']);
 
-      expect(client.attachPolicyToUser).toHaveBeenCalledWith('policy-123', 'user-456', undefined);
+      expect(client.attachPolicyToUser).toHaveBeenCalledWith('policy-123', 'user-456', undefined, { asSuperadmin: false });
     });
 
     it('should handle errors', async () => {
@@ -635,7 +639,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'attach-role', 'policy-123', 'role-456']);
 
-      expect(client.attachPolicyToRole).toHaveBeenCalledWith('policy-123', 'role-456', undefined);
+      expect(client.attachPolicyToRole).toHaveBeenCalledWith('policy-123', 'role-456', undefined, { asSuperadmin: false });
     });
 
     it('should handle errors', async () => {
@@ -653,7 +657,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'detach-user', 'policy-123', 'user-456']);
 
-      expect(client.detachPolicyFromUser).toHaveBeenCalledWith('policy-123', 'user-456', undefined);
+      expect(client.detachPolicyFromUser).toHaveBeenCalledWith('policy-123', 'user-456', undefined, { asSuperadmin: false });
     });
 
     it('should handle errors', async () => {
@@ -671,7 +675,7 @@ describe('Policy Commands', () => {
 
       await program.parseAsync(['node', 'test', 'policy', 'detach-role', 'policy-123', 'role-456']);
 
-      expect(client.detachPolicyFromRole).toHaveBeenCalledWith('policy-123', 'role-456', undefined);
+      expect(client.detachPolicyFromRole).toHaveBeenCalledWith('policy-123', 'role-456', undefined, { asSuperadmin: false });
     });
 
     it('should handle errors', async () => {
@@ -859,7 +863,7 @@ describe('Policy Commands', () => {
       await program.parseAsync(['node', 'test', 'policy', 'export', 'policy-123']);
 
       // export does not expose --tenant; call signature is single-arg.
-      expect(client.getPolicy).toHaveBeenCalledWith('policy-123');
+      expect(client.getPolicy).toHaveBeenCalledWith('policy-123', undefined, { asSuperadmin: false });
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });
@@ -919,6 +923,7 @@ describe('Policy Commands', () => {
         effect: 'allow',
         actions: ['secret:read'],
         priority: 5,
+        asSuperadmin: false,
       });
       expect(output.keyValue).toHaveBeenCalled();
     });

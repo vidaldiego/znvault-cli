@@ -9,6 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { EnableDisableOptions } from './types.js';
+import { apiKeyAsSuperadmin } from './helpers.js';
 
 export function registerEnableDisableCommands(apiKeyCmd: Command): void {
   // Enable API key
@@ -16,11 +17,12 @@ export function registerEnableDisableCommands(apiKeyCmd: Command): void {
     .command('enable <id>')
     .description('Enable an API key (allow authentication)')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (id: string, options: EnableDisableOptions) => {
+    .action(async (id: string, options: EnableDisableOptions, cmd: Command) => {
       const spinner = output.spinner('Enabling API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const key = await client.setApiKeyEnabled(id, true, options.tenant);
+        const key = await client.setApiKeyEnabled(id, true, options.tenant, { asSuperadmin });
         spinner.succeed(`API key enabled: ${key.name}`);
         console.log('\nThe key can now be used for authentication.');
       } catch (err) {
@@ -35,11 +37,12 @@ export function registerEnableDisableCommands(apiKeyCmd: Command): void {
     .command('disable <id>')
     .description('Disable an API key (block authentication without deleting)')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (id: string, options: EnableDisableOptions) => {
+    .action(async (id: string, options: EnableDisableOptions, cmd: Command) => {
       const spinner = output.spinner('Disabling API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const key = await client.setApiKeyEnabled(id, false, options.tenant);
+        const key = await client.setApiKeyEnabled(id, false, options.tenant, { asSuperadmin });
         spinner.succeed(`API key disabled: ${key.name}`);
         console.log('\nThe key is now blocked from authentication.');
         console.log('Use "znvault apikey enable" to re-enable it.');

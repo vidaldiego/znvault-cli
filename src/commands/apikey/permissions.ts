@@ -9,6 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { UpdatePermissionsOptions } from './types.js';
+import { apiKeyAsSuperadmin } from './helpers.js';
 
 export function registerPermissionsCommand(apiKeyCmd: Command): void {
   apiKeyCmd
@@ -19,7 +20,8 @@ export function registerPermissionsCommand(apiKeyCmd: Command): void {
     .option('-r, --remove <perms>', 'Remove permissions (comma-separated)')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (id: string, options: UpdatePermissionsOptions) => {
+    .action(async (id: string, options: UpdatePermissionsOptions, cmd: Command) => {
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
       if (!options.set && !options.add && !options.remove) {
         output.error('At least one of --set, --add, or --remove is required');
         output.info('Examples:');
@@ -39,7 +41,7 @@ export function registerPermissionsCommand(apiKeyCmd: Command): void {
           newPermissions = options.set.split(',').map((p) => p.trim());
         } else {
           // Need to get current permissions first
-          const currentKey = await client.getApiKey(id, options.tenant);
+          const currentKey = await client.getApiKey(id, options.tenant, { asSuperadmin });
           newPermissions = [...currentKey.permissions];
 
           if (options.add) {
@@ -63,7 +65,7 @@ export function registerPermissionsCommand(apiKeyCmd: Command): void {
           process.exit(1);
         }
 
-        const key = await client.updateApiKeyPermissions(id, newPermissions, options.tenant);
+        const key = await client.updateApiKeyPermissions(id, newPermissions, options.tenant, { asSuperadmin });
         spinner.succeed('Permissions updated');
 
         if (options.json) {

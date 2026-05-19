@@ -21,7 +21,7 @@ import type {
   DeleteOptions,
   RotateSecretOptions,
 } from './types.js';
-import { formatTtl, buildTenantQuery } from './helpers.js';
+import { formatTtl, buildTenantQuery, ssoAppsBase, withSsoContext } from './helpers.js';
 
 // ============================================================================
 // Command Implementations
@@ -39,7 +39,7 @@ async function listApps(options: ListOptions): Promise<void> {
       ? '?' + new URLSearchParams(query).toString()
       : '';
 
-    const response = await client.get<ListAppsResponse>(`/v1/sso/apps${queryString}`);
+    const response = await client.get<ListAppsResponse>(`${ssoAppsBase()}${queryString}`);
     spinner.stop();
 
     if (options.json) {
@@ -77,7 +77,7 @@ async function getApp(id: string, options: GetOptions): Promise<void> {
 
   try {
     const query = buildTenantQuery(options.tenant);
-    const app = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
+    const app = await client.get<SSOApp>(`${ssoAppsBase()}/${encodeURIComponent(id)}${query}`);
     spinner.stop();
 
     if (options.json) {
@@ -149,7 +149,7 @@ async function createApp(name: string, slug: string, options: CreateOptions): Pr
     };
 
     const query = buildTenantQuery(options.tenant);
-    const response = await client.post<CreateAppResponse>(`/v1/sso/apps${query}`, body);
+    const response = await client.post<CreateAppResponse>(`${ssoAppsBase()}${query}`, body);
     spinner.succeed(`SSO app "${name}" created successfully`);
 
     if (options.json) {
@@ -198,7 +198,7 @@ async function updateApp(id: string, options: UpdateOptions): Promise<void> {
     const query = buildTenantQuery(options.tenant);
 
     // First fetch current app to merge arrays
-    const current = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
+    const current = await client.get<SSOApp>(`${ssoAppsBase()}/${encodeURIComponent(id)}${query}`);
 
     // Build update payload
     const updates: Record<string, unknown> = {};
@@ -256,7 +256,7 @@ async function updateApp(id: string, options: UpdateOptions): Promise<void> {
       process.exit(1);
     }
 
-    const app = await client.patch<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`, updates);
+    const app = await client.patch<SSOApp>(`${ssoAppsBase()}/${encodeURIComponent(id)}${query}`, updates);
     spinner.stop();
     output.success(`SSO app "${app.name}" updated successfully`);
 
@@ -283,7 +283,7 @@ async function deleteApp(id: string, options: DeleteOptions): Promise<void> {
     const query = buildTenantQuery(options.tenant);
 
     // Fetch app name for confirmation
-    const app = await client.get<SSOApp>(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
+    const app = await client.get<SSOApp>(`${ssoAppsBase()}/${encodeURIComponent(id)}${query}`);
 
     if (!options.yes) {
       output.warn(`This will permanently delete the SSO app "${app.name}" and revoke all tokens.`);
@@ -297,7 +297,7 @@ async function deleteApp(id: string, options: DeleteOptions): Promise<void> {
     const spinner = output.spinner('Deleting SSO app...').start();
 
     try {
-      await client.delete(`/v1/sso/apps/${encodeURIComponent(id)}${query}`);
+      await client.delete(`${ssoAppsBase()}/${encodeURIComponent(id)}${query}`);
       spinner.stop();
       output.success(`SSO app "${app.name}" deleted successfully`);
     } catch (err) {
@@ -316,7 +316,7 @@ async function rotateSecret(id: string, options: RotateSecretOptions): Promise<v
   try {
     const query = buildTenantQuery(options.tenant);
     const response = await client.post<RotateSecretResponse>(
-      `/v1/sso/apps/${encodeURIComponent(id)}/rotate-secret${query}`,
+      `${ssoAppsBase()}/${encodeURIComponent(id)}/rotate-secret${query}`,
       {}
     );
     spinner.stop();
@@ -345,7 +345,7 @@ async function rotateSecret(id: string, options: RotateSecretOptions): Promise<v
 // Command Registration
 // ============================================================================
 
-export function registerCrudCommands(parent: Command): void {
+export function registerCrudCommands(parent: Command, asSuperadmin = false): void {
   // List SSO Apps
   parent
     .command('list')
@@ -353,7 +353,7 @@ export function registerCrudCommands(parent: Command): void {
     .option('--tenant <id>', 'Filter by tenant (superadmin only)')
     .option('--status <status>', 'Filter by status (active|inactive)')
     .option('--json', 'Output as JSON')
-    .action(listApps);
+    .action((options: ListOptions) => withSsoContext(asSuperadmin, () => listApps(options)));
 
   // Get SSO App
   parent
@@ -361,7 +361,9 @@ export function registerCrudCommands(parent: Command): void {
     .description('Get SSO app details (by ID or slug)')
     .option('--tenant <id>', 'Tenant ID (superadmin only, required for slug lookup)')
     .option('--json', 'Output as JSON')
-    .action(getApp);
+    .action((id: string, options: GetOptions) =>
+      withSsoContext(asSuperadmin, () => getApp(id, options))
+    );
 
   // Create SSO App
   parent
@@ -380,7 +382,9 @@ export function registerCrudCommands(parent: Command): void {
     .option('--role <role...>', 'Available roles', ['admin', 'user'])
     .option('--default-role <role>', 'Default role for new users', 'user')
     .option('--json', 'Output as JSON')
-    .action(createApp);
+    .action((name: string, slug: string, options: CreateOptions) =>
+      withSsoContext(asSuperadmin, () => createApp(name, slug, options))
+    );
 
   // Update SSO App
   parent
@@ -401,7 +405,9 @@ export function registerCrudCommands(parent: Command): void {
     .option('--no-pkce', 'Do not require PKCE')
     .option('--status <status>', 'Set status (active|inactive)')
     .option('--json', 'Output as JSON')
-    .action(updateApp);
+    .action((id: string, options: UpdateOptions) =>
+      withSsoContext(asSuperadmin, () => updateApp(id, options))
+    );
 
   // Delete SSO App
   parent
@@ -409,7 +415,9 @@ export function registerCrudCommands(parent: Command): void {
     .description('Delete an SSO application')
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('-y, --yes', 'Skip confirmation')
-    .action(deleteApp);
+    .action((id: string, options: DeleteOptions) =>
+      withSsoContext(asSuperadmin, () => deleteApp(id, options))
+    );
 
   // Rotate Client Secret
   parent
@@ -417,5 +425,7 @@ export function registerCrudCommands(parent: Command): void {
     .description('Rotate the client secret for an SSO app')
     .option('--tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(rotateSecret);
+    .action((id: string, options: RotateSecretOptions) =>
+      withSsoContext(asSuperadmin, () => rotateSecret(id, options))
+    );
 }

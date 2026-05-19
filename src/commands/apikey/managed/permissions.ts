@@ -9,6 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedPermissionsOptions } from './types.js';
+import { apiKeyAsSuperadmin } from '../helpers.js';
 
 export function registerManagedPermissionsCommand(managedCmd: Command): void {
   managedCmd
@@ -19,7 +20,8 @@ export function registerManagedPermissionsCommand(managedCmd: Command): void {
     .option('-r, --remove <perms>', 'Remove permissions (comma-separated)')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: ManagedPermissionsOptions) => {
+    .action(async (name: string, options: ManagedPermissionsOptions, cmd: Command) => {
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
       if (!options.set && !options.add && !options.remove) {
         output.error('At least one of --set, --add, or --remove is required');
         output.info('Examples:');
@@ -33,7 +35,7 @@ export function registerManagedPermissionsCommand(managedCmd: Command): void {
 
       try {
         // First, get the managed key to find its ID and current permissions
-        const managedKey = await client.getManagedApiKey(name, options.tenant);
+        const managedKey = await client.getManagedApiKey(name, options.tenant, { asSuperadmin });
 
         let newPermissions: string[];
 
@@ -66,7 +68,7 @@ export function registerManagedPermissionsCommand(managedCmd: Command): void {
         }
 
         // Update using the key ID
-        const updatedKey = await client.updateApiKeyPermissions(managedKey.id, newPermissions, options.tenant);
+        const updatedKey = await client.updateApiKeyPermissions(managedKey.id, newPermissions, options.tenant, { asSuperadmin });
 
         spinner.succeed('Permissions updated');
 

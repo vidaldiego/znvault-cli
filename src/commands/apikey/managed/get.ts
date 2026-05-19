@@ -10,6 +10,7 @@ import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedGetOptions } from './types.js';
 import { displayManagedKeyDetails } from './helpers.js';
+import { apiKeyAsSuperadmin } from '../helpers.js';
 
 export function registerManagedGetCommand(managedCmd: Command): void {
   managedCmd
@@ -18,11 +19,12 @@ export function registerManagedGetCommand(managedCmd: Command): void {
     .description('Show managed API key details')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: ManagedGetOptions) => {
+    .action(async (name: string, options: ManagedGetOptions, cmd: Command) => {
       const spinner = output.spinner('Fetching managed API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const key = await client.getManagedApiKey(name, options.tenant);
+        const key = await client.getManagedApiKey(name, options.tenant, { asSuperadmin });
         spinner.stop();
 
         if (options.json) {

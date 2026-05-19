@@ -10,7 +10,7 @@ import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedConditionsOptions } from './types.js';
 import type { ApiKeyConditions } from '../types.js';
-import { parseConditionsFromOptions } from '../helpers.js';
+import { apiKeyAsSuperadmin, parseConditionsFromOptions } from '../helpers.js';
 
 export function registerManagedConditionsCommand(managedCmd: Command): void {
   managedCmd
@@ -25,7 +25,8 @@ export function registerManagedConditionsCommand(managedCmd: Command): void {
     .option('--clear-all', 'Remove all conditions')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: ManagedConditionsOptions) => {
+    .action(async (name: string, options: ManagedConditionsOptions, cmd: Command) => {
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
       let conditions: ApiKeyConditions = {};
 
       // Handle --clear-all
@@ -46,10 +47,10 @@ export function registerManagedConditionsCommand(managedCmd: Command): void {
 
       try {
         // First, get the managed key to find its ID
-        const managedKey = await client.getManagedApiKey(name, options.tenant);
+        const managedKey = await client.getManagedApiKey(name, options.tenant, { asSuperadmin });
 
         // Update using the key ID
-        const key = await client.updateApiKeyConditions(managedKey.id, conditions, options.tenant);
+        const key = await client.updateApiKeyConditions(managedKey.id, conditions, options.tenant, { asSuperadmin });
         spinner.succeed('Conditions updated');
 
         if (options.json) {

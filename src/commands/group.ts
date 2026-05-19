@@ -84,6 +84,18 @@ export function registerGroupCommands(parent: Command, opts?: RegisterOptions): 
 }
 
 function registerGroupCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const asSuperadmin = ctx === 'superadmin';
+  // The SSO groups server surface splits read vs write between two
+  // namespaces:
+  //   - `/v1/sso/groups`            — tenant-scoped (read + write).
+  //                                    Rejects pure superadmin principals.
+  //   - `/v1/superadmin/sso/groups` — admin read-only (list + get only).
+  // For commands that only need read access we route to the admin namespace
+  // when invoked under `znvault superadmin group`. For write ops the server
+  // doesn't expose an admin equivalent today, so the user will see the
+  // "Superadmins must use /v1/superadmin/* routes" error, which is the
+  // correct signal that the operation is unsupported cross-tenant.
+  const groupsBase = asSuperadmin ? '/v1/superadmin/sso/groups' : '/v1/sso/groups';
   const group = parent
     .command('group')
     .description('SSO group management');
@@ -111,7 +123,7 @@ function registerGroupCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin
 
         const queryString = params.toString() ? `?${params.toString()}` : '';
         const data = await client.get<{ items: SSOGroup[]; pagination: { total: number } }>(
-          `/v1/sso/groups${queryString}`
+          `${groupsBase}${queryString}`
         );
         spinner.stop();
 
@@ -200,7 +212,7 @@ function registerGroupCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin
       const spinner = output.spinner('Fetching group...').start();
 
       try {
-        const data = await client.get<SSOGroup>(`/v1/sso/groups/${id}`);
+        const data = await client.get<SSOGroup>(`${groupsBase}/${id}`);
         spinner.stop();
 
         if (options.json) {
@@ -289,7 +301,7 @@ function registerGroupCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin
     .action(async (id: string, options: DeleteOptions) => {
       try {
         // Get group info for confirmation
-        const groupData = await client.get<SSOGroup>(`/v1/sso/groups/${id}`);
+        const groupData = await client.get<SSOGroup>(`${groupsBase}/${id}`);
 
         if (!options.yes) {
           const confirmed = await promptConfirm(

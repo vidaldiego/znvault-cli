@@ -9,18 +9,19 @@ import type { Command } from 'commander';
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedRotateOptions } from './types.js';
-import { formatDate } from '../helpers.js';
+import { apiKeyAsSuperadmin, formatDate } from '../helpers.js';
 
 export function registerManagedRotateCommand(managedCmd: Command): void {
   managedCmd
     .command('rotate <name>')
     .description('Force immediate rotation of a managed key')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
-    .action(async (name: string, options: ManagedRotateOptions) => {
+    .action(async (name: string, options: ManagedRotateOptions, cmd: Command) => {
       const spinner = output.spinner('Rotating managed API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const result = await client.rotateManagedApiKey(name, options.tenant);
+        const result = await client.rotateManagedApiKey(name, options.tenant, { asSuperadmin });
         spinner.succeed('Managed API key rotated');
 
         console.log(`\n${result.message}`);

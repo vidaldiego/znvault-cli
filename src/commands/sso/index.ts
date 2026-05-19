@@ -20,12 +20,17 @@ import {
 
 export function registerSSOCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
+  const asSuperadmin = ctx === 'superadmin';
   const sso = parent
     .command('sso')
     .description('SSO/OAuth2 application management');
 
   withRegisterContext(ctx, () => {
-    registerCrudCommands(sso);
+    // Crud read paths route to `/v1/superadmin/sso/apps` in admin context;
+    // write paths and `users` subcommands do not have admin equivalents
+    // and will surface the "must use /v1/superadmin/*" error if invoked
+    // by a superadmin (correct: those ops are unsupported cross-tenant).
+    registerCrudCommands(sso, asSuperadmin);
     registerUserCommands(sso);
   });
 }

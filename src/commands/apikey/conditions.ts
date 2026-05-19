@@ -9,7 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { UpdateConditionsOptions, ApiKeyConditions } from './types.js';
-import { displayConditions, parseConditionsFromOptions } from './helpers.js';
+import { apiKeyAsSuperadmin, displayConditions, parseConditionsFromOptions } from './helpers.js';
 
 export function registerConditionsCommand(apiKeyCmd: Command): void {
   apiKeyCmd
@@ -24,7 +24,8 @@ export function registerConditionsCommand(apiKeyCmd: Command): void {
     .option('--clear-all', 'Remove all conditions')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id: string, options: UpdateConditionsOptions) => {
+    .action(async (id: string, options: UpdateConditionsOptions, cmd: Command) => {
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
       let conditions: ApiKeyConditions = {};
 
       // Handle --clear-all
@@ -44,7 +45,7 @@ export function registerConditionsCommand(apiKeyCmd: Command): void {
       const spinner = output.spinner('Updating conditions...').start();
 
       try {
-        const key = await client.updateApiKeyConditions(id, conditions, options.tenant);
+        const key = await client.updateApiKeyConditions(id, conditions, options.tenant, { asSuperadmin });
         spinner.succeed('Conditions updated');
 
         if (options.json) {

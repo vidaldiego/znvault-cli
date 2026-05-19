@@ -11,6 +11,7 @@ import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedListOptions } from './types.js';
 import { formatRotationMode, formatTimeUntil } from './helpers.js';
+import { apiKeyAsSuperadmin } from '../helpers.js';
 
 export function registerManagedListCommand(managedCmd: Command): void {
   managedCmd
@@ -19,11 +20,12 @@ export function registerManagedListCommand(managedCmd: Command): void {
     .description('List all managed API keys')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (options: ManagedListOptions) => {
+    .action(async (options: ManagedListOptions, cmd: Command) => {
       const spinner = output.spinner('Fetching managed API keys...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const result = await client.listManagedApiKeys(options.tenant);
+        const result = await client.listManagedApiKeys(options.tenant, { asSuperadmin });
         spinner.stop();
 
         if (options.json) {

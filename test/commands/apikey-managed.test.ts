@@ -121,7 +121,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'list', '--tenant', 'acme']);
 
-      expect(client.listManagedApiKeys).toHaveBeenCalledWith('acme');
+      expect(client.listManagedApiKeys).toHaveBeenCalledWith('acme', { asSuperadmin: false });
     });
 
     it('should output JSON when --json flag is used', async () => {
@@ -154,6 +154,7 @@ describe('apikey managed commands', () => {
         expiresInDays: 365,
         permissions: ['secret:read'],
         tenantId: undefined,
+        asSuperadmin: false,
         ipAllowlist: undefined,
         managed: {
           rotationMode: 'scheduled',
@@ -181,6 +182,7 @@ describe('apikey managed commands', () => {
         expiresInDays: 365,
         permissions: ['secret:read', 'secret:list'],
         tenantId: undefined,
+        asSuperadmin: false,
         ipAllowlist: undefined,
         managed: {
           rotationMode: 'on-bind',
@@ -245,7 +247,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'get', 'my-managed-key']);
 
-      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
 
     it('should filter by tenant', async () => {
@@ -253,7 +255,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'get', 'my-managed-key', '--tenant', 'acme']);
 
-      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme');
+      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme', { asSuperadmin: false });
     });
 
     it('should output JSON when --json flag is used', async () => {
@@ -271,7 +273,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'bind', 'my-managed-key']);
 
-      expect(client.bindManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.bindManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
 
     it('should filter by tenant', async () => {
@@ -279,7 +281,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'bind', 'my-managed-key', '--tenant', 'acme']);
 
-      expect(client.bindManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme');
+      expect(client.bindManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme', { asSuperadmin: false });
     });
 
     it('should output JSON when --json flag is used', async () => {
@@ -297,7 +299,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'rotate', 'my-managed-key']);
 
-      expect(client.rotateManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.rotateManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
 
     it('should filter by tenant', async () => {
@@ -305,7 +307,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'rotate', 'my-managed-key', '--tenant', 'acme']);
 
-      expect(client.rotateManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme');
+      expect(client.rotateManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme', { asSuperadmin: false });
     });
   });
 
@@ -323,7 +325,8 @@ describe('apikey managed commands', () => {
           notifyBefore: undefined,
           webhookUrl: undefined,
         },
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -340,7 +343,8 @@ describe('apikey managed commands', () => {
           notifyBefore: undefined,
           webhookUrl: undefined,
         },
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -363,7 +367,8 @@ describe('apikey managed commands', () => {
           notifyBefore: '30m',
           webhookUrl: 'https://example.com/webhook',
         },
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -396,7 +401,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'delete', 'my-managed-key']);
 
-      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
 
     it('should filter by tenant', async () => {
@@ -404,7 +409,7 @@ describe('apikey managed commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'delete', 'my-managed-key', '--tenant', 'acme']);
 
-      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme');
+      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', 'acme', { asSuperadmin: false });
     });
 
     it('should skip confirmation with --force flag', async () => {
@@ -414,7 +419,7 @@ describe('apikey managed commands', () => {
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'delete', 'my-managed-key', '--force']);
 
       expect(warn).not.toHaveBeenCalled();
-      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
   });
 });

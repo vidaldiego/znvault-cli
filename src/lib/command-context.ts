@@ -87,6 +87,30 @@ export function isSuperadminContext(): boolean {
 }
 
 /**
+ * Walk up a Commander Command's parent chain to detect whether the
+ * currently-invoked command lives under the `superadmin` namespace. This
+ * is the runtime equivalent of `isSuperadminContext()` (which only returns
+ * the registration-time value).
+ *
+ * Handlers receive `this: Command` or `cmd: Command` from Commander; pass
+ * that in (or `this.parent` from an action callback) and we'll detect by
+ * inspecting the chain of `.name()` values.
+ */
+interface CommandWithChain {
+  name(): string;
+  parent: CommandWithChain | null;
+}
+
+export function isInvokedUnderSuperadmin(cmd: CommandWithChain | null | undefined): boolean {
+  let node: CommandWithChain | null | undefined = cmd;
+  while (node) {
+    if (node.name() === 'superadmin') return true;
+    node = node.parent;
+  }
+  return false;
+}
+
+/**
  * Patch Commander's `Command.prototype.option` once so calls of the form
  *   `.option('--tenant <id>', '...')` or `.option('-t, --tenant <id>', '...')`
  * become no-ops in tenant context. This lets us leave existing option chains

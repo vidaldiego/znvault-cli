@@ -113,6 +113,7 @@ export function registerAdvisorCommands(parent: Command, opts?: RegisterOptions)
 }
 
 function registerAdvisorCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const asSuperadmin = ctx === 'superadmin';
   const advisor = parent
     .command('advisor')
     .description(
@@ -150,8 +151,10 @@ function registerAdvisorCommandsInner(parent: Command, ctx: 'tenant' | 'superadm
           body.includeAiSummary = true;
         }
 
-        const path = options.tenant
-          ? `/v1/superadmin/advisor/audit?tenantId=${encodeURIComponent(options.tenant)}`
+        // Superadmin context (with or without --tenant) must use the
+        // admin surface; the tenant route rejects pure superadmin principals.
+        const path = asSuperadmin
+          ? `/v1/superadmin/advisor/audit${options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : ''}`
           : '/v1/advisor/audit';
         const response = await client.post<{ success: boolean; data: AuditResult }>(path, body);
         spinner.stop();
@@ -291,8 +294,8 @@ function registerAdvisorCommandsInner(parent: Command, ctx: 'tenant' | 'superadm
         if (options.team) hints.team = options.team;
         if (Object.keys(hints).length > 0) body.hints = hints;
 
-        const path = options.tenant
-          ? `/v1/superadmin/advisor/suggest?tenantId=${encodeURIComponent(options.tenant)}`
+        const path = asSuperadmin
+          ? `/v1/superadmin/advisor/suggest${options.tenant ? `?tenantId=${encodeURIComponent(options.tenant)}` : ''}`
           : '/v1/advisor/suggest';
         const response = await client.post<{
           success: boolean;

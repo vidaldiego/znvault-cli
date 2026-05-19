@@ -9,7 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { RotateOptions } from './types.js';
-import { formatDate } from './helpers.js';
+import { apiKeyAsSuperadmin, formatDate } from './helpers.js';
 
 export function registerRotateCommand(apiKeyCmd: Command): void {
   apiKeyCmd
@@ -18,11 +18,12 @@ export function registerRotateCommand(apiKeyCmd: Command): void {
     .option('-n, --name <name>', 'New name for the rotated key')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id: string, options: RotateOptions) => {
+    .action(async (id: string, options: RotateOptions, cmd: Command) => {
       const spinner = output.spinner('Rotating API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const result = await client.rotateApiKey(id, options.name, options.tenant);
+        const result = await client.rotateApiKey(id, options.name, options.tenant, { asSuperadmin });
         spinner.succeed('API key rotated');
 
         if (options.json) {

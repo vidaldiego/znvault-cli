@@ -16,7 +16,7 @@ import type {
   VersionsOptions,
 } from './types.js';
 import { formatDate } from './helpers.js';
-import { kmsKeysPath, kmsKeysQuery } from './routing.js';
+import { kmsKeysPath, kmsKeysQuery, withKmsContext } from './routing.js';
 
 // ============================================================================
 // Command Implementations
@@ -135,14 +135,16 @@ async function listVersions(keyId: string, options: VersionsOptions): Promise<vo
 // Command Registration
 // ============================================================================
 
-export function registerLifecycleCommands(parent: Command): void {
+export function registerLifecycleCommands(parent: Command, asSuperadmin = false): void {
   // Rotate key
   parent
     .command('rotate <keyId>')
     .description('Rotate a KMS key (create new version)')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
-    .action(rotateKey);
+    .action((keyId: string, options: RotateOptions) =>
+      withKmsContext(asSuperadmin, () => rotateKey(keyId, options))
+    );
 
   // Enable key
   parent
@@ -150,7 +152,9 @@ export function registerLifecycleCommands(parent: Command): void {
     .description('Enable a disabled key')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
-    .action(enableKey);
+    .action((keyId: string, options: EnableDisableOptions) =>
+      withKmsContext(asSuperadmin, () => enableKey(keyId, options))
+    );
 
   // Disable key
   parent
@@ -158,12 +162,16 @@ export function registerLifecycleCommands(parent: Command): void {
     .description('Disable a key')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
-    .action(disableKey);
+    .action((keyId: string, options: EnableDisableOptions) =>
+      withKmsContext(asSuperadmin, () => disableKey(keyId, options))
+    );
 
-  // List versions
+  // List versions (tenant-only on server; superadmin has no equivalent endpoint)
   parent
     .command('versions <keyId>')
     .description('List key versions')
     .option('--json', 'Output as JSON')
-    .action(listVersions);
+    .action((keyId: string, options: VersionsOptions) =>
+      withKmsContext(asSuperadmin, () => listVersions(keyId, options))
+    );
 }

@@ -10,7 +10,7 @@ import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { APIKey } from '../../types/index.js';
 import type { ShowOptions, ApiKeyConditions } from './types.js';
-import { formatDate, getDaysUntilExpiry, displayConditions } from './helpers.js';
+import { apiKeyAsSuperadmin, formatDate, getDaysUntilExpiry, displayConditions } from './helpers.js';
 
 export function registerShowCommand(apiKeyCmd: Command): void {
   apiKeyCmd
@@ -18,17 +18,18 @@ export function registerShowCommand(apiKeyCmd: Command): void {
     .description('Show API key details')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id: string, options: ShowOptions) => {
+    .action(async (id: string, options: ShowOptions, cmd: Command) => {
       const spinner = output.spinner('Fetching API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
         // First try to get by ID directly
         let key: APIKey | undefined;
         try {
-          key = await client.getApiKey(id, options.tenant);
+          key = await client.getApiKey(id, options.tenant, { asSuperadmin });
         } catch {
           // Fall back to list and search
-          const result = await client.listApiKeys(options.tenant);
+          const result = await client.listApiKeys(options.tenant, { asSuperadmin });
           key = result.items.find(k => k.id === id || k.prefix === id || k.name === id);
         }
 

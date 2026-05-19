@@ -9,6 +9,31 @@ import type { ApiKeyConditions } from './types.js';
 // Re-export common formatters from centralized location
 export { formatDate, formatSecondsToHuman } from '../../lib/format-helpers.js';
 
+/**
+ * Detect whether the currently-invoked apikey handler lives under the
+ * `superadmin` namespace by walking the Commander parent chain.
+ *
+ * Commander passes the Command instance as the last argument to action
+ * callbacks; handlers call this with that instance (typed loosely to
+ * avoid coupling to commander internals).
+ *
+ * This is the runtime equivalent to `isSuperadminContext()` and avoids
+ * the registration-vs-invocation timing gap that bit kms/sso.
+ */
+interface CommanderLike {
+  name(): string;
+  parent: CommanderLike | null;
+}
+
+export function apiKeyAsSuperadmin(cmd: CommanderLike | null | undefined): boolean {
+  let node: CommanderLike | null | undefined = cmd;
+  while (node) {
+    if (node.name() === 'superadmin') return true;
+    node = node.parent;
+  }
+  return false;
+}
+
 export function getDaysUntilExpiry(expiresAt: string): number {
   const expires = new Date(expiresAt);
   const now = new Date();

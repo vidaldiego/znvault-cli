@@ -9,7 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedConfigOptions } from './types.js';
-import { formatDate } from '../helpers.js';
+import { apiKeyAsSuperadmin, formatDate } from '../helpers.js';
 
 export function registerManagedConfigCommand(managedCmd: Command): void {
   managedCmd
@@ -21,7 +21,8 @@ export function registerManagedConfigCommand(managedCmd: Command): void {
     .option('--webhook-url <url>', 'Webhook URL for rotation notifications')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: ManagedConfigOptions) => {
+    .action(async (name: string, options: ManagedConfigOptions, cmd: Command) => {
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
       // Check if at least one config option is provided
       if (!options.rotationInterval && !options.gracePeriod && !options.notifyBefore && !options.webhookUrl) {
         output.error('At least one configuration option is required');
@@ -37,7 +38,7 @@ export function registerManagedConfigCommand(managedCmd: Command): void {
           gracePeriod: options.gracePeriod,
           notifyBefore: options.notifyBefore,
           webhookUrl: options.webhookUrl,
-        }, options.tenant);
+        }, options.tenant, { asSuperadmin });
 
         spinner.succeed('Configuration updated');
 

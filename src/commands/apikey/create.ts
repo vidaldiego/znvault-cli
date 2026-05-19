@@ -9,7 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { CreateOptions, ApiKeyConditions } from './types.js';
-import { formatDate, displayConditions, parseConditionsFromOptions } from './helpers.js';
+import { apiKeyAsSuperadmin, formatDate, displayConditions, parseConditionsFromOptions } from './helpers.js';
 
 export function registerCreateCommand(apiKeyCmd: Command): void {
   apiKeyCmd
@@ -26,7 +26,8 @@ export function registerCreateCommand(apiKeyCmd: Command): void {
     .option('--tags <tags>', 'Required resource tags: key=value,key2=value2')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: CreateOptions) => {
+    .action(async (name: string, options: CreateOptions, cmd: Command) => {
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
       // Validate permissions
       if (!options.permissions) {
         output.error('--permissions is required. Use comma-separated permission strings.');
@@ -79,6 +80,7 @@ export function registerCreateCommand(apiKeyCmd: Command): void {
           ipAllowlist,
           conditions: Object.keys(conditions).length > 0 ? conditions : undefined,
           tenantId: options.tenant,
+          asSuperadmin,
         });
 
         spinner.succeed('API key created');

@@ -10,7 +10,7 @@ import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedBindOptions } from './types.js';
 import { formatRotationMode, formatTimeUntil } from './helpers.js';
-import { formatDate } from '../helpers.js';
+import { apiKeyAsSuperadmin, formatDate } from '../helpers.js';
 
 export function registerManagedBindCommand(managedCmd: Command): void {
   managedCmd
@@ -18,11 +18,12 @@ export function registerManagedBindCommand(managedCmd: Command): void {
     .description('Bind to a managed key and get the current key value')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: ManagedBindOptions) => {
+    .action(async (name: string, options: ManagedBindOptions, cmd: Command) => {
       const spinner = output.spinner('Binding to managed API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const result = await client.bindManagedApiKey(name, options.tenant);
+        const result = await client.bindManagedApiKey(name, options.tenant, { asSuperadmin });
         spinner.succeed('Bound to managed API key');
 
         if (options.json) {

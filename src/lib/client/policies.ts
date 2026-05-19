@@ -30,8 +30,12 @@ import type {
 const TENANT_BASE = '/v1/policies';
 const ADMIN_BASE = '/v1/superadmin/policies';
 
-function basePath(tenantId?: string): string {
-  return tenantId ? ADMIN_BASE : TENANT_BASE;
+export interface PolicyScope {
+  asSuperadmin?: boolean;
+}
+
+function basePath(tenantId?: string, asSuperadmin?: boolean): string {
+  return tenantId || asSuperadmin ? ADMIN_BASE : TENANT_BASE;
 }
 
 export class PoliciesClient extends HttpClient {
@@ -42,10 +46,11 @@ export class PoliciesClient extends HttpClient {
     search?: string;
     page?: number;
     pageSize?: number;
+    asSuperadmin?: boolean;
   }): Promise<PolicyListResponse> {
     return this.request<PolicyListResponse>({
       method: 'GET',
-      path: basePath(options?.tenantId),
+      path: basePath(options?.tenantId, options?.asSuperadmin),
       query: {
         tenantId: options?.tenantId,
         enabled: options?.enabled,
@@ -57,47 +62,47 @@ export class PoliciesClient extends HttpClient {
     });
   }
 
-  async getById(id: string, tenantId?: string): Promise<Policy> {
+  async getById(id: string, tenantId?: string, opts?: PolicyScope): Promise<Policy> {
     return this.request<Policy>({
       method: 'GET',
-      path: `${basePath(tenantId)}/${id}`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${id}`,
       query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  async create(data: CreatePolicyInput): Promise<Policy> {
+  async create(data: CreatePolicyInput & PolicyScope): Promise<Policy> {
     // Body carries tenantId for tenant-scoped routes (server reads from JWT
     // and ignores body field) and for admin routes we promote it to query.
     const tenantId = (data as { tenantId?: string }).tenantId;
     return this.request<Policy>({
       method: 'POST',
-      path: basePath(tenantId),
+      path: basePath(tenantId, data.asSuperadmin),
       query: tenantId ? { tenantId } : undefined,
       body: data,
     });
   }
 
-  async update(id: string, data: UpdatePolicyInput, tenantId?: string): Promise<Policy> {
+  async update(id: string, data: UpdatePolicyInput, tenantId?: string, opts?: PolicyScope): Promise<Policy> {
     return this.request<Policy>({
       method: 'PATCH',
-      path: `${basePath(tenantId)}/${id}`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${id}`,
       query: tenantId ? { tenantId } : undefined,
       body: data,
     });
   }
 
-  async deleteById(id: string, tenantId?: string): Promise<void> {
+  async deleteById(id: string, tenantId?: string, opts?: PolicyScope): Promise<void> {
     await this.request<unknown>({
       method: 'DELETE',
-      path: `${basePath(tenantId)}/${id}`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${id}`,
       query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  async toggle(id: string, enabled: boolean, tenantId?: string): Promise<Policy> {
+  async toggle(id: string, enabled: boolean, tenantId?: string, opts?: PolicyScope): Promise<Policy> {
     return this.request<Policy>({
       method: 'POST',
-      path: `${basePath(tenantId)}/${id}/toggle`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${id}/toggle`,
       query: tenantId ? { tenantId } : undefined,
       body: { enabled },
     });
@@ -111,44 +116,44 @@ export class PoliciesClient extends HttpClient {
     });
   }
 
-  async getAttachments(policyId: string, tenantId?: string): Promise<PolicyAttachmentsResponse> {
+  async getAttachments(policyId: string, tenantId?: string, opts?: PolicyScope): Promise<PolicyAttachmentsResponse> {
     return this.request<PolicyAttachmentsResponse>({
       method: 'GET',
-      path: `${basePath(tenantId)}/${policyId}/attachments`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${policyId}/attachments`,
       query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  async attachToUser(policyId: string, userId: string, tenantId?: string): Promise<MessageResponse> {
+  async attachToUser(policyId: string, userId: string, tenantId?: string, opts?: PolicyScope): Promise<MessageResponse> {
     return this.request<MessageResponse>({
       method: 'POST',
-      path: `${basePath(tenantId)}/${policyId}/attach/user`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${policyId}/attach/user`,
       query: tenantId ? { tenantId } : undefined,
       body: { userId },
     });
   }
 
-  async attachToRole(policyId: string, roleId: string, tenantId?: string): Promise<MessageResponse> {
+  async attachToRole(policyId: string, roleId: string, tenantId?: string, opts?: PolicyScope): Promise<MessageResponse> {
     return this.request<MessageResponse>({
       method: 'POST',
-      path: `${basePath(tenantId)}/${policyId}/attach/role`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${policyId}/attach/role`,
       query: tenantId ? { tenantId } : undefined,
       body: { roleId },
     });
   }
 
-  async detachFromUser(policyId: string, userId: string, tenantId?: string): Promise<MessageResponse> {
+  async detachFromUser(policyId: string, userId: string, tenantId?: string, opts?: PolicyScope): Promise<MessageResponse> {
     return this.request<MessageResponse>({
       method: 'DELETE',
-      path: `${basePath(tenantId)}/${policyId}/attach/user/${userId}`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${policyId}/attach/user/${userId}`,
       query: tenantId ? { tenantId } : undefined,
     });
   }
 
-  async detachFromRole(policyId: string, roleId: string, tenantId?: string): Promise<MessageResponse> {
+  async detachFromRole(policyId: string, roleId: string, tenantId?: string, opts?: PolicyScope): Promise<MessageResponse> {
     return this.request<MessageResponse>({
       method: 'DELETE',
-      path: `${basePath(tenantId)}/${policyId}/attach/role/${roleId}`,
+      path: `${basePath(tenantId, opts?.asSuperadmin)}/${policyId}/attach/role/${roleId}`,
       query: tenantId ? { tenantId } : undefined,
     });
   }

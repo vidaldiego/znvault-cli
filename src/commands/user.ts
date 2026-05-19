@@ -62,6 +62,7 @@ export function registerUserCommands(parent: Command, opts?: RegisterOptions): v
 }
 
 function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const asSuperadmin = ctx === 'superadmin';
   const user = parent
     .command('user')
     .description('User management commands');
@@ -83,6 +84,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
           tenantId: options.tenant,
           role: options.role,
           status: options.status,
+          asSuperadmin,
         });
         spinner.stop();
 
@@ -145,6 +147,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
           email: options.email,
           tenantId: options.tenant,
           role: options.role,
+          asSuperadmin,
         });
         spinner.succeed('User created successfully');
 
@@ -177,7 +180,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
       const spinner = output.spinner('Fetching user...').start();
 
       try {
-        const result = await mode.getUser(id);
+        const result = await mode.getUser(id, { asSuperadmin });
         spinner.stop();
 
         if (!result) {
@@ -245,7 +248,11 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
       const spinner = output.spinner('Updating user...').start();
 
       try {
-        const result = await client.updateUser(id, updates as Parameters<typeof client.updateUser>[1]);
+        const result = await client.updateUser(
+          id,
+          updates as Parameters<typeof client.updateUser>[1],
+          { asSuperadmin }
+        );
         spinner.succeed('User updated successfully');
 
         if (options.json) {
@@ -291,7 +298,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
         const spinner = output.spinner('Deleting user...').start();
 
         try {
-          await client.deleteUser(id);
+          await client.deleteUser(id, { asSuperadmin });
           spinner.succeed(`User '${id}' deleted successfully`);
         } catch (err) {
           spinner.fail('Failed to delete user');
@@ -329,7 +336,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
           }
         } else {
           // API mode
-          const result = await client.unlockUser(id);
+          const result = await client.unlockUser(id, { asSuperadmin });
           spinner.succeed('User unlocked successfully');
           if (options.json) {
             output.json({ success: true, id, ...result });
@@ -375,8 +382,11 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
           } else {
             // API mode — superadmins must use /v1/superadmin/users/:id/reset-password
             // because the tenant route is JWT-tenant-scoped after v1.41.2.
+            // We prefer the explicit registration context over the dynamic
+            // auth-context check so that a tenant admin who happens to share
+            // a session with another role flag stays on the tenant surface.
             const result = await client.resetUserPassword(id, password, {
-              asSuperadmin: isSuperadmin(),
+              asSuperadmin: asSuperadmin || isSuperadmin(),
             });
             spinner.succeed('Password reset successfully');
             if (options.json) {

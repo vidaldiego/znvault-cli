@@ -127,7 +127,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'list']);
 
-      expect(client.listApiKeys).toHaveBeenCalledWith(undefined);
+      expect(client.listApiKeys).toHaveBeenCalledWith(undefined, { asSuperadmin: false });
     });
 
     it('should filter by tenant', async () => {
@@ -141,7 +141,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'list', '--tenant', 'tenant-1']);
 
-      expect(client.listApiKeys).toHaveBeenCalledWith('tenant-1');
+      expect(client.listApiKeys).toHaveBeenCalledWith('tenant-1', { asSuperadmin: false });
     });
 
     it('should output JSON when --json flag is used', async () => {
@@ -279,7 +279,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'show', 'key-123']);
 
-      expect(client.getApiKey).toHaveBeenCalledWith('key-123', undefined);
+      expect(client.getApiKey).toHaveBeenCalledWith('key-123', undefined, { asSuperadmin: false });
       expect(keyValue).toHaveBeenCalled();
     });
 
@@ -304,7 +304,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'delete', 'key-123', '--force']);
 
-      expect(client.deleteApiKey).toHaveBeenCalledWith('key-123', undefined);
+      expect(client.deleteApiKey).toHaveBeenCalledWith('key-123', undefined, { asSuperadmin: false });
     });
 
     it('should use alias "rm"', async () => {
@@ -314,7 +314,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'rm', 'key-123', '--force']);
 
-      expect(client.deleteApiKey).toHaveBeenCalledWith('key-123', undefined);
+      expect(client.deleteApiKey).toHaveBeenCalledWith('key-123', undefined, { asSuperadmin: false });
     });
   });
 
@@ -330,7 +330,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'rotate', 'key-123']);
 
-      expect(client.rotateApiKey).toHaveBeenCalledWith('key-123', undefined, undefined);
+      expect(client.rotateApiKey).toHaveBeenCalledWith('key-123', undefined, undefined, { asSuperadmin: false });
     });
 
     it('should pass new name option', async () => {
@@ -343,7 +343,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'rotate', 'key-123', '--name', 'rotated-key']);
 
-      expect(client.rotateApiKey).toHaveBeenCalledWith('key-123', 'rotated-key', undefined);
+      expect(client.rotateApiKey).toHaveBeenCalledWith('key-123', 'rotated-key', undefined, { asSuperadmin: false });
     });
   });
 
@@ -356,7 +356,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'enable', 'key-123']);
 
-      expect(client.setApiKeyEnabled).toHaveBeenCalledWith('key-123', true, undefined);
+      expect(client.setApiKeyEnabled).toHaveBeenCalledWith('key-123', true, undefined, { asSuperadmin: false });
     });
   });
 
@@ -369,7 +369,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'disable', 'key-123']);
 
-      expect(client.setApiKeyEnabled).toHaveBeenCalledWith('key-123', false, undefined);
+      expect(client.setApiKeyEnabled).toHaveBeenCalledWith('key-123', false, undefined, { asSuperadmin: false });
     });
   });
 
@@ -391,7 +391,8 @@ describe('apikey commands', () => {
       expect(client.updateApiKeyPermissions).toHaveBeenCalledWith(
         'key-123',
         ['secret:read', 'secret:write'],
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -409,11 +410,12 @@ describe('apikey commands', () => {
         '--add', 'kms:encrypt'
       ]);
 
-      expect(client.getApiKey).toHaveBeenCalledWith('key-123', undefined);
+      expect(client.getApiKey).toHaveBeenCalledWith('key-123', undefined, { asSuperadmin: false });
       expect(client.updateApiKeyPermissions).toHaveBeenCalledWith(
         'key-123',
         ['secret:read', 'secret:list', 'kms:encrypt'],
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -434,7 +436,8 @@ describe('apikey commands', () => {
       expect(client.updateApiKeyPermissions).toHaveBeenCalledWith(
         'key-123',
         ['secret:read'],
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -467,7 +470,8 @@ describe('apikey commands', () => {
       expect(client.updateApiKeyConditions).toHaveBeenCalledWith(
         'key-123',
         { ip: ['192.168.1.0/24'] },
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -484,7 +488,7 @@ describe('apikey commands', () => {
         '--clear-all'
       ]);
 
-      expect(client.updateApiKeyConditions).toHaveBeenCalledWith('key-123', {}, undefined);
+      expect(client.updateApiKeyConditions).toHaveBeenCalledWith('key-123', {}, undefined, { asSuperadmin: false });
     });
   });
 
@@ -501,7 +505,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'list-policies', 'key-123']);
 
-      expect(client.getApiKeyPolicies).toHaveBeenCalledWith('key-123', undefined);
+      expect(client.getApiKeyPolicies).toHaveBeenCalledWith('key-123', undefined, { asSuperadmin: false });
     });
   });
 
@@ -514,7 +518,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'attach-policy', 'key-123', 'policy-1']);
 
-      expect(client.attachApiKeyPolicy).toHaveBeenCalledWith('key-123', 'policy-1', undefined);
+      expect(client.attachApiKeyPolicy).toHaveBeenCalledWith('key-123', 'policy-1', undefined, { asSuperadmin: false });
     });
   });
 
@@ -527,7 +531,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'detach-policy', 'key-123', 'policy-1']);
 
-      expect(client.detachApiKeyPolicy).toHaveBeenCalledWith('key-123', 'policy-1', undefined);
+      expect(client.detachApiKeyPolicy).toHaveBeenCalledWith('key-123', 'policy-1', undefined, { asSuperadmin: false });
     });
   });
 
@@ -579,7 +583,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'list']);
 
-      expect(client.listManagedApiKeys).toHaveBeenCalledWith(undefined);
+      expect(client.listManagedApiKeys).toHaveBeenCalledWith(undefined, { asSuperadmin: false });
     });
 
     it('should output JSON when --json flag is used', async () => {
@@ -675,7 +679,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'get', 'my-managed-key']);
 
-      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
       expect(keyValue).toHaveBeenCalled();
     });
 
@@ -686,7 +690,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'show', 'my-managed-key']);
 
-      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
   });
 
@@ -710,7 +714,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'bind', 'my-managed-key']);
 
-      expect(client.bindManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.bindManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('API Key:'));
     });
   });
@@ -727,7 +731,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'rotate', 'my-managed-key']);
 
-      expect(client.rotateManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.rotateManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
   });
 
@@ -752,7 +756,8 @@ describe('apikey commands', () => {
           notifyBefore: undefined,
           webhookUrl: undefined,
         },
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -776,7 +781,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'delete', 'my-managed-key', '--force']);
 
-      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
 
     it('should use alias "rm"', async () => {
@@ -786,7 +791,7 @@ describe('apikey commands', () => {
 
       await program.parseAsync(['node', 'test', 'apikey', 'managed', 'rm', 'my-managed-key', '--force']);
 
-      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.deleteManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
     });
   });
 
@@ -806,11 +811,12 @@ describe('apikey commands', () => {
         '--set', 'secret:read,secret:write'
       ]);
 
-      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
       expect(client.updateApiKeyPermissions).toHaveBeenCalledWith(
         'managed-key-123',
         ['secret:read', 'secret:write'],
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
 
@@ -841,11 +847,12 @@ describe('apikey commands', () => {
         '--ip', '10.0.0.0/8'
       ]);
 
-      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined);
+      expect(client.getManagedApiKey).toHaveBeenCalledWith('my-managed-key', undefined, { asSuperadmin: false });
       expect(client.updateApiKeyConditions).toHaveBeenCalledWith(
         'managed-key-123',
         { ip: ['10.0.0.0/8'] },
-        undefined
+        undefined,
+        { asSuperadmin: false }
       );
     });
   });

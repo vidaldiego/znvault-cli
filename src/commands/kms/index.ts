@@ -21,6 +21,7 @@ import {
 
 export function registerKmsCommands(parent: Command, opts?: RegisterOptions): void {
   const ctx = resolveContext(opts);
+  const asSuperadmin = ctx === 'superadmin';
   const kms = parent
     .command('kms')
     .description('KMS (Key Management Service) operations');
@@ -28,9 +29,11 @@ export function registerKmsCommands(parent: Command, opts?: RegisterOptions): vo
   // Register all sub-command groups under the active context (controls whether
   // `--tenant` options are accepted; see command-context.applyTenantContextPatch).
   withRegisterContext(ctx, () => {
-    registerCrudCommands(kms);
+    registerCrudCommands(kms, asSuperadmin);
+    // KMS crypto ops have no superadmin counterpart by design (separation
+    // of duties), so they are not threaded with the asSuperadmin flag.
     registerCryptoCommands(kms);
-    registerLifecycleCommands(kms);
+    registerLifecycleCommands(kms, asSuperadmin);
   });
 }
 

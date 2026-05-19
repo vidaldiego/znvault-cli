@@ -21,7 +21,7 @@ import type {
 } from './types.js';
 import { formatDate, formatKeyState, formatPaginationInfo } from './helpers.js';
 
-import { kmsKeysPath, kmsKeysQuery, kmsIsAdminCall } from './routing.js';
+import { kmsKeysPath, kmsKeysQuery, kmsIsAdminCall, withKmsContext } from './routing.js';
 
 // ============================================================================
 // Command Implementations
@@ -255,7 +255,7 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
 // Command Registration
 // ============================================================================
 
-export function registerCrudCommands(parent: Command): void {
+export function registerCrudCommands(parent: Command, asSuperadmin = false): void {
   // List keys
   parent
     .command('list')
@@ -263,7 +263,7 @@ export function registerCrudCommands(parent: Command): void {
     .option('-t, --tenant <id>', 'Filter by tenant')
     .option('--state <state>', 'Filter by state (Enabled, Disabled, PendingDeletion)')
     .option('--json', 'Output as JSON')
-    .action(listKeys);
+    .action((options: ListOptions) => withKmsContext(asSuperadmin, () => listKeys(options)));
 
   // Get key details
   parent
@@ -271,7 +271,9 @@ export function registerCrudCommands(parent: Command): void {
     .description('Get KMS key details')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
-    .action(getKey);
+    .action((keyId: string, options: GetOptions) =>
+      withKmsContext(asSuperadmin, () => getKey(keyId, options))
+    );
 
   // Create key
   parent
@@ -284,7 +286,7 @@ export function registerCrudCommands(parent: Command): void {
     .option('--spec <spec>', 'Key spec (AES_256, AES_128, RSA_2048, RSA_4096)', 'AES_256')
     .option('--tags <tags>', 'Comma-separated tags (key=value,...)')
     .option('--json', 'Output as JSON')
-    .action(createKey);
+    .action((options: CreateOptions) => withKmsContext(asSuperadmin, () => createKey(options)));
 
   // Delete key
   parent
@@ -294,5 +296,7 @@ export function registerCrudCommands(parent: Command): void {
     .option('--days <days>', 'Waiting period in days (7-30)', '30')
     .option('-f, --force', 'Skip confirmation')
     .option('--json', 'Output as JSON')
-    .action(deleteKey);
+    .action((keyId: string, options: DeleteOptions) =>
+      withKmsContext(asSuperadmin, () => deleteKey(keyId, options))
+    );
 }

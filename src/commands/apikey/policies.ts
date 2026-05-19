@@ -10,7 +10,7 @@ import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { ListPoliciesOptions, AttachDetachPolicyOptions } from './types.js';
-import { formatDate } from './helpers.js';
+import { apiKeyAsSuperadmin, formatDate } from './helpers.js';
 
 export function registerPolicyCommands(apiKeyCmd: Command): void {
   // List policies attached to an API key
@@ -19,11 +19,12 @@ export function registerPolicyCommands(apiKeyCmd: Command): void {
     .description('List ABAC policies attached to an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')
-    .action(async (id: string, options: ListPoliciesOptions) => {
+    .action(async (id: string, options: ListPoliciesOptions, cmd: Command) => {
       const spinner = output.spinner('Fetching policies...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const result = await client.getApiKeyPolicies(id, options.tenant);
+        const result = await client.getApiKeyPolicies(id, options.tenant, { asSuperadmin });
         spinner.stop();
 
         if (options.json) {
@@ -63,11 +64,12 @@ export function registerPolicyCommands(apiKeyCmd: Command): void {
     .command('attach-policy <keyId> <policyId>')
     .description('Attach an ABAC policy to an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions) => {
+    .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions, cmd: Command) => {
       const spinner = output.spinner('Attaching policy...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        await client.attachApiKeyPolicy(keyId, policyId, options.tenant);
+        await client.attachApiKeyPolicy(keyId, policyId, options.tenant, { asSuperadmin });
         spinner.succeed(`Policy ${policyId} attached to API key ${keyId}`);
       } catch (err) {
         spinner.fail('Failed to attach policy');
@@ -81,11 +83,12 @@ export function registerPolicyCommands(apiKeyCmd: Command): void {
     .command('detach-policy <keyId> <policyId>')
     .description('Detach an ABAC policy from an API key')
     .option('-t, --tenant <id>', 'Tenant ID')
-    .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions) => {
+    .action(async (keyId: string, policyId: string, options: AttachDetachPolicyOptions, cmd: Command) => {
       const spinner = output.spinner('Detaching policy...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        await client.detachApiKeyPolicy(keyId, policyId, options.tenant);
+        await client.detachApiKeyPolicy(keyId, policyId, options.tenant, { asSuperadmin });
         spinner.succeed(`Policy ${policyId} detached from API key ${keyId}`);
       } catch (err) {
         spinner.fail('Failed to detach policy');

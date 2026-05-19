@@ -10,13 +10,15 @@ import * as output from '../../lib/output.js';
 import { formatActiveStatus } from '../../lib/format-helpers.js';
 import type { CreatePolicyInput } from '../../types/index.js';
 import type { PolicyExportOptions, PolicyImportOptions } from './types.js';
-import { safeReadFile, safeParseJson, safeWriteFile } from './helpers.js';
+import type { Command } from 'commander';
+import { safeReadFile, safeParseJson, safeWriteFile, policyAsSuperadmin } from './helpers.js';
 
-export async function exportPolicy(id: string, options: PolicyExportOptions): Promise<void> {
+export async function exportPolicy(id: string, options: PolicyExportOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Exporting policy...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    const result = await client.getPolicy(id);
+    const result = await client.getPolicy(id, undefined, { asSuperadmin });
     spinner.stop();
 
     const exportData = {
@@ -43,7 +45,7 @@ export async function exportPolicy(id: string, options: PolicyExportOptions): Pr
   }
 }
 
-export async function importPolicy(path: string, options: PolicyImportOptions): Promise<void> {
+export async function importPolicy(path: string, options: PolicyImportOptions, cmd?: Command): Promise<void> {
   try {
     const content = safeReadFile(path);
     const policyData = safeParseJson<CreatePolicyInput>(content, path);
@@ -53,8 +55,9 @@ export async function importPolicy(path: string, options: PolicyImportOptions): 
     }
 
     const spinner = output.spinner('Importing policy...').start();
+    const asSuperadmin = policyAsSuperadmin(cmd);
 
-    const result = await client.createPolicy(policyData);
+    const result = await client.createPolicy({ ...policyData, asSuperadmin });
     spinner.succeed('Policy imported successfully');
 
     if (options.json) {

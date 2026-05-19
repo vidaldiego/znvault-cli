@@ -90,13 +90,34 @@ interface AssignOptions {
 // ============================================================================
 
 /**
+ * Per-handler runtime flag, set by the role command registration. When the
+ * command lives under `znvault superadmin role`, every handler is wrapped
+ * in `withRoleContext(true, ...)` so that even calls without an explicit
+ * `--tenant` route through `/v1/superadmin/roles` (the tenant route
+ * rejects pure superadmin principals).
+ *
+ * See `commands/kms/routing.ts` for the same pattern.
+ */
+let _asSuperadmin = false;
+
+async function withRoleContext<T>(value: boolean, fn: () => Promise<T>): Promise<T> {
+  const prev = _asSuperadmin;
+  _asSuperadmin = value;
+  try {
+    return await fn();
+  } finally {
+    _asSuperadmin = prev;
+  }
+}
+
+/**
  * Choose the right HTTP base path:
- *   - When the caller passes --tenant, target /v1/superadmin/roles (the
- *     cross-tenant superadmin surface) and forward tenantId as ?tenantId=.
+ *   - When the command is invoked under `znvault superadmin role ...` or
+ *     the caller passes `--tenant`, target /v1/superadmin/roles.
  *   - Otherwise target /v1/roles (tenant principal, tenant from JWT).
  */
 function rolesPath(tenantId: string | undefined, suffix = ''): string {
-  const base = tenantId ? '/v1/superadmin/roles' : '/v1/roles';
+  const base = tenantId || _asSuperadmin ? '/v1/superadmin/roles' : '/v1/roles';
   return base + suffix;
 }
 
@@ -494,13 +515,14 @@ export function registerRoleCommands(parent: Command, opts?: RegisterOptions): v
 }
 
 function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'): void {
+  const asSuperadmin = ctx === 'superadmin';
   const role = parent
     .command('role')
     .description('RBAC role management');
 
   // Helper: only register --tenant in superadmin context
   const t = (cmd: Command, desc: string): Command =>
-    ctx === 'superadmin' ? cmd.option('-t, --tenant <id>', desc) : cmd;
+    asSuperadmin ? cmd.option('-t, --tenant <id>', desc) : cmd;
 
   // List roles
   {
@@ -512,7 +534,7 @@ function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
       .option('--include-system', 'Include system roles (default: true)')
       .option('--no-include-system', 'Exclude system roles')
       .option('--json', 'Output as JSON')
-      .action(listRoles);
+      .action((options: ListOptions) => withRoleContext(asSuperadmin, () => listRoles(options)));
   }
 
   // Get role
@@ -523,7 +545,9 @@ function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
     t(getCmd, 'Tenant ID (superadmin only — routes via /v1/superadmin/roles)');
     getCmd
       .option('--json', 'Output as JSON')
-      .action(getRole);
+      .action((roleId: string, options: GetOptions) =>
+        withRoleContext(asSuperadmin, () => getRole(roleId, options))
+      );
   }
 
   // Create role
@@ -536,7 +560,9 @@ function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
       .option('-d, --description <desc>', 'Role description')
       .requiredOption('-p, --permissions <perms>', 'Comma-separated permissions')
       .option('--json', 'Output as JSON')
-      .action(createRole);
+      .action((name: string, options: CreateOptions) =>
+        withRoleContext(asSuperadmin, () => createRole(name, options))
+      );
   }
 
   // Update role
@@ -550,7 +576,9 @@ function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
       .option('-d, --description <desc>', 'New description')
       .option('-p, --permissions <perms>', 'New permissions (comma-separated)')
       .option('--json', 'Output as JSON')
-      .action(updateRole);
+      .action((roleId: string, options: UpdateOptions) =>
+        withRoleContext(asSuperadmin, () => updateRole(roleId, options))
+      );
   }
 
   // Delete role
@@ -562,34 +590,44 @@ function registerRoleCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
     deleteCmd
       .option('-f, --force', 'Skip confirmation')
       .option('--json', 'Output as JSON')
-      .action(deleteRole);
+      .action((roleId: string, options: DeleteOptions) =>
+        withRoleContext(asSuperadmin, () => deleteRole(roleId, options))
+      );
   }
 
-  // Assign role to user
+  // Assign role to user (tenant route only on server)
   role
     .command('assign <roleId> <userId>')
     .description('Assign a role to a user')
     .option('--json', 'Output as JSON')
-    .action(assignRole);
+    .action((roleId: string, userId: string, options: AssignOptions) =>
+      withRoleContext(asSuperadmin, () => assignRole(roleId, userId, options))
+    );
 
-  // Remove role from user
+  // Remove role from user (tenant route only on server)
   role
     .command('remove <roleId> <userId>')
     .description('Remove a role from a user')
     .option('--json', 'Output as JSON')
-    .action(removeRole);
+    .action((roleId: string, userId: string, options: RemoveRoleOptions) =>
+      withRoleContext(asSuperadmin, () => removeRole(roleId, userId, options))
+    );
 
   // Get user's roles
   role
     .command('user-roles <userId>')
     .description('Get all roles assigned to a user')
     .option('--json', 'Output as JSON')
-    .action(getUserRoles);
+    .action((userId: string, options: { json?: boolean }) =>
+      withRoleContext(asSuperadmin, () => getUserRoles(userId, options))
+    );
 
   // Get user's permissions
   role
     .command('user-permissions <userId>')
     .description('Get all effective permissions for a user')
     .option('--json', 'Output as JSON')
-    .action(getUserPermissions);
+    .action((userId: string, options: { json?: boolean }) =>
+      withRoleContext(asSuperadmin, () => getUserPermissions(userId, options))
+    );
 }

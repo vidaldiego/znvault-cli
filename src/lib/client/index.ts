@@ -146,14 +146,18 @@ export class VaultClient extends HttpClient {
     this.usersClient.list(options);
   createUser = (data: Parameters<UsersClient['create']>[0]) =>
     this.usersClient.create(data);
-  getUser = (id: string) =>
-    this.usersClient.getById(id);
-  updateUser = (id: string, data: Parameters<UsersClient['update']>[1]) =>
-    this.usersClient.update(id, data);
-  deleteUser = (id: string) =>
-    this.usersClient.deleteById(id);
-  unlockUser = (id: string) =>
-    this.usersClient.unlock(id);
+  getUser = (id: string, opts?: Parameters<UsersClient['getById']>[1]) =>
+    this.usersClient.getById(id, opts);
+  updateUser = (
+    id: string,
+    data: Parameters<UsersClient['update']>[1],
+    opts?: Parameters<UsersClient['update']>[2]
+  ) =>
+    this.usersClient.update(id, data, opts);
+  deleteUser = (id: string, opts?: Parameters<UsersClient['deleteById']>[1]) =>
+    this.usersClient.deleteById(id, opts);
+  unlockUser = (id: string, opts?: Parameters<UsersClient['unlock']>[1]) =>
+    this.usersClient.unlock(id, opts);
   resetUserPassword = (
     id: string,
     newPassword: string,
@@ -195,35 +199,62 @@ export class VaultClient extends HttpClient {
 
   listAudit = (options?: Parameters<AuditClient['list']>[0]) =>
     this.auditClient.list(options);
-  verifyAuditChain = () =>
-    this.auditClient.verifyChain();
+  verifyAuditChain = (opts?: Parameters<AuditClient['verifyChain']>[0]) =>
+    this.auditClient.verifyChain(opts);
   exportAudit = (options?: Parameters<AuditClient['export']>[0]) =>
     this.auditClient.export(options);
+  getAuditStats = (opts?: Parameters<AuditClient['getStats']>[0]) =>
+    this.auditClient.getStats(opts);
 
   // ============ API Keys ============
 
   createApiKey = (data: Parameters<ApiKeysClient['create']>[0]) =>
     this.apiKeysClient.create(data);
-  listApiKeys = (tenantId?: string) =>
-    this.apiKeysClient.list(tenantId);
-  getApiKey = (id: string, tenantId?: string) =>
-    this.apiKeysClient.getById(id, tenantId);
-  deleteApiKey = (id: string, tenantId?: string) =>
-    this.apiKeysClient.deleteById(id, tenantId);
-  rotateApiKey = (id: string, name?: string, tenantId?: string) =>
-    this.apiKeysClient.rotate(id, name, tenantId);
-  updateApiKeyPermissions = (id: string, permissions: string[], tenantId?: string) =>
-    this.apiKeysClient.updatePermissions(id, permissions, tenantId);
-  updateApiKeyConditions = (id: string, conditions: Record<string, unknown>, tenantId?: string) =>
-    this.apiKeysClient.updateConditions(id, conditions, tenantId);
-  setApiKeyEnabled = (id: string, enabled: boolean, tenantId?: string) =>
-    this.apiKeysClient.setEnabled(id, enabled, tenantId);
-  getApiKeyPolicies = (id: string, tenantId?: string) =>
-    this.apiKeysClient.getPolicies(id, tenantId);
-  attachApiKeyPolicy = (keyId: string, policyId: string, tenantId?: string) =>
-    this.apiKeysClient.attachPolicy(keyId, policyId, tenantId);
-  detachApiKeyPolicy = (keyId: string, policyId: string, tenantId?: string) =>
-    this.apiKeysClient.detachPolicy(keyId, policyId, tenantId);
+  listApiKeys = (tenantId?: string, opts?: Parameters<ApiKeysClient['list']>[1]) =>
+    this.apiKeysClient.list(tenantId, opts);
+  getApiKey = (id: string, tenantId?: string, opts?: Parameters<ApiKeysClient['getById']>[2]) =>
+    this.apiKeysClient.getById(id, tenantId, opts);
+  deleteApiKey = (id: string, tenantId?: string, opts?: Parameters<ApiKeysClient['deleteById']>[2]) =>
+    this.apiKeysClient.deleteById(id, tenantId, opts);
+  rotateApiKey = (id: string, name?: string, tenantId?: string, opts?: Parameters<ApiKeysClient['rotate']>[3]) =>
+    this.apiKeysClient.rotate(id, name, tenantId, opts);
+  updateApiKeyPermissions = (
+    id: string,
+    permissions: string[],
+    tenantId?: string,
+    opts?: Parameters<ApiKeysClient['updatePermissions']>[3]
+  ) =>
+    this.apiKeysClient.updatePermissions(id, permissions, tenantId, opts);
+  updateApiKeyConditions = (
+    id: string,
+    conditions: Record<string, unknown>,
+    tenantId?: string,
+    opts?: Parameters<ApiKeysClient['updateConditions']>[3]
+  ) =>
+    this.apiKeysClient.updateConditions(id, conditions, tenantId, opts);
+  setApiKeyEnabled = (
+    id: string,
+    enabled: boolean,
+    tenantId?: string,
+    opts?: Parameters<ApiKeysClient['setEnabled']>[3]
+  ) =>
+    this.apiKeysClient.setEnabled(id, enabled, tenantId, opts);
+  getApiKeyPolicies = (id: string, tenantId?: string, opts?: Parameters<ApiKeysClient['getPolicies']>[2]) =>
+    this.apiKeysClient.getPolicies(id, tenantId, opts);
+  attachApiKeyPolicy = (
+    keyId: string,
+    policyId: string,
+    tenantId?: string,
+    opts?: Parameters<ApiKeysClient['attachPolicy']>[3]
+  ) =>
+    this.apiKeysClient.attachPolicy(keyId, policyId, tenantId, opts);
+  detachApiKeyPolicy = (
+    keyId: string,
+    policyId: string,
+    tenantId?: string,
+    opts?: Parameters<ApiKeysClient['detachPolicy']>[3]
+  ) =>
+    this.apiKeysClient.detachPolicy(keyId, policyId, tenantId, opts);
   getApiKeySelf = () =>
     this.apiKeysClient.getSelf();
   rotateApiKeySelf = (name?: string) =>
@@ -233,22 +264,23 @@ export class VaultClient extends HttpClient {
 
   createManagedApiKey = (data: Parameters<ManagedKeysClient['create']>[0]) =>
     this.managedKeysClient.create(data);
-  listManagedApiKeys = (tenantId?: string) =>
-    this.managedKeysClient.list(tenantId);
-  getManagedApiKey = (name: string, tenantId?: string) =>
-    this.managedKeysClient.getByName(name, tenantId);
-  bindManagedApiKey = (name: string, tenantId?: string) =>
-    this.managedKeysClient.bind(name, tenantId);
-  rotateManagedApiKey = (name: string, tenantId?: string) =>
-    this.managedKeysClient.rotate(name, tenantId);
+  listManagedApiKeys = (tenantId?: string, opts?: Parameters<ManagedKeysClient['list']>[1]) =>
+    this.managedKeysClient.list(tenantId, opts);
+  getManagedApiKey = (name: string, tenantId?: string, opts?: Parameters<ManagedKeysClient['getByName']>[2]) =>
+    this.managedKeysClient.getByName(name, tenantId, opts);
+  bindManagedApiKey = (name: string, tenantId?: string, opts?: Parameters<ManagedKeysClient['bind']>[2]) =>
+    this.managedKeysClient.bind(name, tenantId, opts);
+  rotateManagedApiKey = (name: string, tenantId?: string, opts?: Parameters<ManagedKeysClient['rotate']>[2]) =>
+    this.managedKeysClient.rotate(name, tenantId, opts);
   updateManagedApiKeyConfig = (
     name: string,
     config: Parameters<ManagedKeysClient['updateConfig']>[1],
-    tenantId?: string
+    tenantId?: string,
+    opts?: Parameters<ManagedKeysClient['updateConfig']>[3]
   ) =>
-    this.managedKeysClient.updateConfig(name, config, tenantId);
-  deleteManagedApiKey = (name: string, tenantId?: string) =>
-    this.managedKeysClient.deleteByName(name, tenantId);
+    this.managedKeysClient.updateConfig(name, config, tenantId, opts);
+  deleteManagedApiKey = (name: string, tenantId?: string, opts?: Parameters<ManagedKeysClient['deleteByName']>[2]) =>
+    this.managedKeysClient.deleteByName(name, tenantId, opts);
 
   // ============ Permissions ============
 
@@ -261,28 +293,62 @@ export class VaultClient extends HttpClient {
 
   listPolicies = (options?: Parameters<PoliciesClient['list']>[0]) =>
     this.policiesClient.list(options);
-  getPolicy = (id: string, tenantId?: string) =>
-    this.policiesClient.getById(id, tenantId);
+  getPolicy = (id: string, tenantId?: string, opts?: Parameters<PoliciesClient['getById']>[2]) =>
+    this.policiesClient.getById(id, tenantId, opts);
   createPolicy = (data: Parameters<PoliciesClient['create']>[0]) =>
     this.policiesClient.create(data);
-  updatePolicy = (id: string, data: Parameters<PoliciesClient['update']>[1], tenantId?: string) =>
-    this.policiesClient.update(id, data, tenantId);
-  deletePolicy = (id: string, tenantId?: string) =>
-    this.policiesClient.deleteById(id, tenantId);
-  togglePolicy = (id: string, enabled: boolean, tenantId?: string) =>
-    this.policiesClient.toggle(id, enabled, tenantId);
+  updatePolicy = (
+    id: string,
+    data: Parameters<PoliciesClient['update']>[1],
+    tenantId?: string,
+    opts?: Parameters<PoliciesClient['update']>[3]
+  ) =>
+    this.policiesClient.update(id, data, tenantId, opts);
+  deletePolicy = (id: string, tenantId?: string, opts?: Parameters<PoliciesClient['deleteById']>[2]) =>
+    this.policiesClient.deleteById(id, tenantId, opts);
+  togglePolicy = (
+    id: string,
+    enabled: boolean,
+    tenantId?: string,
+    opts?: Parameters<PoliciesClient['toggle']>[3]
+  ) =>
+    this.policiesClient.toggle(id, enabled, tenantId, opts);
   validatePolicy = (policy: Parameters<PoliciesClient['validate']>[0]) =>
     this.policiesClient.validate(policy);
-  getPolicyAttachments = (policyId: string, tenantId?: string) =>
-    this.policiesClient.getAttachments(policyId, tenantId);
-  attachPolicyToUser = (policyId: string, userId: string, tenantId?: string) =>
-    this.policiesClient.attachToUser(policyId, userId, tenantId);
-  attachPolicyToRole = (policyId: string, roleId: string, tenantId?: string) =>
-    this.policiesClient.attachToRole(policyId, roleId, tenantId);
-  detachPolicyFromUser = (policyId: string, userId: string, tenantId?: string) =>
-    this.policiesClient.detachFromUser(policyId, userId, tenantId);
-  detachPolicyFromRole = (policyId: string, roleId: string, tenantId?: string) =>
-    this.policiesClient.detachFromRole(policyId, roleId, tenantId);
+  getPolicyAttachments = (
+    policyId: string,
+    tenantId?: string,
+    opts?: Parameters<PoliciesClient['getAttachments']>[2]
+  ) =>
+    this.policiesClient.getAttachments(policyId, tenantId, opts);
+  attachPolicyToUser = (
+    policyId: string,
+    userId: string,
+    tenantId?: string,
+    opts?: Parameters<PoliciesClient['attachToUser']>[3]
+  ) =>
+    this.policiesClient.attachToUser(policyId, userId, tenantId, opts);
+  attachPolicyToRole = (
+    policyId: string,
+    roleId: string,
+    tenantId?: string,
+    opts?: Parameters<PoliciesClient['attachToRole']>[3]
+  ) =>
+    this.policiesClient.attachToRole(policyId, roleId, tenantId, opts);
+  detachPolicyFromUser = (
+    policyId: string,
+    userId: string,
+    tenantId?: string,
+    opts?: Parameters<PoliciesClient['detachFromUser']>[3]
+  ) =>
+    this.policiesClient.detachFromUser(policyId, userId, tenantId, opts);
+  detachPolicyFromRole = (
+    policyId: string,
+    roleId: string,
+    tenantId?: string,
+    opts?: Parameters<PoliciesClient['detachFromRole']>[3]
+  ) =>
+    this.policiesClient.detachFromRole(policyId, roleId, tenantId, opts);
   getUserPolicies = (userId: string) =>
     this.policiesClient.getUserPolicies(userId);
   getRolePolicies = (roleId: string) =>
@@ -294,23 +360,23 @@ export class VaultClient extends HttpClient {
 
   listQuarantines = (options?: Parameters<QuarantineClient['list']>[0]) =>
     this.quarantineClient.list(options);
-  getQuarantine = (id: string, tenantId?: string) =>
-    this.quarantineClient.getById(id, tenantId);
-  releaseQuarantine = (id: string, reason: string, tenantId?: string) =>
-    this.quarantineClient.release(id, reason, tenantId);
-  releaseQuarantineIp = (ip: string, reason: string, tenantId?: string) =>
-    this.quarantineClient.releaseIp(ip, reason, tenantId);
+  getQuarantine = (id: string, scope?: Parameters<QuarantineClient['getById']>[1]) =>
+    this.quarantineClient.getById(id, scope);
+  releaseQuarantine = (id: string, reason: string, scope?: Parameters<QuarantineClient['release']>[2]) =>
+    this.quarantineClient.release(id, reason, scope);
+  releaseQuarantineIp = (ip: string, reason: string, scope?: Parameters<QuarantineClient['releaseIp']>[2]) =>
+    this.quarantineClient.releaseIp(ip, reason, scope);
   getQuarantineHistory = (ip: string, options?: Parameters<QuarantineClient['getHistory']>[1]) =>
     this.quarantineClient.getHistory(ip, options);
-  getQuarantineStats = (tenantId?: string) =>
-    this.quarantineClient.getStats(tenantId);
-  getQuarantineConfig = (tenantId?: string) =>
-    this.quarantineClient.getConfig(tenantId);
+  getQuarantineStats = (scope?: Parameters<QuarantineClient['getStats']>[0]) =>
+    this.quarantineClient.getStats(scope);
+  getQuarantineConfig = (scope?: Parameters<QuarantineClient['getConfig']>[0]) =>
+    this.quarantineClient.getConfig(scope);
   updateQuarantineConfig = (
     config: Parameters<QuarantineClient['updateConfig']>[0],
-    tenantId?: string
+    scope?: Parameters<QuarantineClient['updateConfig']>[1]
   ) =>
-    this.quarantineClient.updateConfig(config, tenantId);
+    this.quarantineClient.updateConfig(config, scope);
 }
 
 // Export singleton instance for backward compatibility

@@ -17,9 +17,11 @@ import type {
   PolicyToggleOptions,
   PolicyValidateOptions,
 } from './types.js';
-import { safeReadFile, safeParseJson } from './helpers.js';
+import type { Command } from 'commander';
+import { safeReadFile, safeParseJson, policyAsSuperadmin } from './helpers.js';
 
-export async function createPolicy(options: PolicyCreateOptions): Promise<void> {
+export async function createPolicy(options: PolicyCreateOptions, cmd?: Command): Promise<void> {
+  const asSuperadmin = policyAsSuperadmin(cmd);
   try {
     let policyData: CreatePolicyInput;
 
@@ -57,7 +59,7 @@ export async function createPolicy(options: PolicyCreateOptions): Promise<void> 
 
     const spinner = output.spinner('Creating policy...').start();
 
-    const result = await client.createPolicy(policyData);
+    const result = await client.createPolicy({ ...policyData, asSuperadmin });
     spinner.succeed('Policy created successfully');
 
     if (options.json) {
@@ -76,7 +78,8 @@ export async function createPolicy(options: PolicyCreateOptions): Promise<void> 
   }
 }
 
-export async function updatePolicy(id: string, options: PolicyUpdateOptions): Promise<void> {
+export async function updatePolicy(id: string, options: PolicyUpdateOptions, cmd?: Command): Promise<void> {
+  const asSuperadmin = policyAsSuperadmin(cmd);
   try {
     let updates: UpdatePolicyInput;
 
@@ -106,7 +109,7 @@ export async function updatePolicy(id: string, options: PolicyUpdateOptions): Pr
 
     const spinner = output.spinner('Updating policy...').start();
 
-    const result = await client.updatePolicy(id, updates, options.tenant);
+    const result = await client.updatePolicy(id, updates, options.tenant, { asSuperadmin });
     spinner.succeed('Policy updated successfully');
 
     if (options.json) {
@@ -124,7 +127,8 @@ export async function updatePolicy(id: string, options: PolicyUpdateOptions): Pr
   }
 }
 
-export async function deletePolicy(id: string, options: PolicyDeleteOptions): Promise<void> {
+export async function deletePolicy(id: string, options: PolicyDeleteOptions, cmd?: Command): Promise<void> {
+  const asSuperadmin = policyAsSuperadmin(cmd);
   try {
     if (!options.yes) {
       const confirmed = await promptConfirm(
@@ -137,7 +141,7 @@ export async function deletePolicy(id: string, options: PolicyDeleteOptions): Pr
     }
 
     const spinner = output.spinner('Deleting policy...').start();
-    await client.deletePolicy(id, options.tenant);
+    await client.deletePolicy(id, options.tenant, { asSuperadmin });
     spinner.succeed(`Policy '${id}' deleted successfully`);
 
     if (options.json) {
@@ -148,11 +152,12 @@ export async function deletePolicy(id: string, options: PolicyDeleteOptions): Pr
   }
 }
 
-export async function enablePolicy(id: string, options: PolicyToggleOptions): Promise<void> {
+export async function enablePolicy(id: string, options: PolicyToggleOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Enabling policy...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    const result = await client.togglePolicy(id, true, options.tenant);
+    const result = await client.togglePolicy(id, true, options.tenant, { asSuperadmin });
     spinner.succeed('Policy enabled successfully');
 
     if (options.json) {
@@ -170,11 +175,12 @@ export async function enablePolicy(id: string, options: PolicyToggleOptions): Pr
   }
 }
 
-export async function disablePolicy(id: string, options: PolicyToggleOptions): Promise<void> {
+export async function disablePolicy(id: string, options: PolicyToggleOptions, cmd?: Command): Promise<void> {
   const spinner = output.spinner('Disabling policy...').start();
+  const asSuperadmin = policyAsSuperadmin(cmd);
 
   try {
-    const result = await client.togglePolicy(id, false, options.tenant);
+    const result = await client.togglePolicy(id, false, options.tenant, { asSuperadmin });
     spinner.succeed('Policy disabled successfully');
 
     if (options.json) {

@@ -11,6 +11,7 @@ import * as output from '../../../lib/output.js';
 import type { RotationMode } from '../../../types/index.js';
 import type { ManagedCreateOptions } from './types.js';
 import { displayManagedKeyDetails } from './helpers.js';
+import { apiKeyAsSuperadmin } from '../helpers.js';
 
 export function registerManagedCreateCommand(managedCmd: Command): void {
   managedCmd
@@ -27,7 +28,8 @@ export function registerManagedCreateCommand(managedCmd: Command): void {
     .option('--ip <ips>', 'Comma-separated IP allowlist (CIDR supported)')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: ManagedCreateOptions) => {
+    .action(async (name: string, options: ManagedCreateOptions, cmd: Command) => {
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
       // Validate required options
       if (!options.permissions) {
         output.error('--permissions is required. Use comma-separated permission strings.');
@@ -68,6 +70,7 @@ export function registerManagedCreateCommand(managedCmd: Command): void {
           expiresInDays,
           permissions,
           tenantId: options.tenant,
+          asSuperadmin,
           ipAllowlist: options.ip?.split(',').map((ip) => ip.trim()),
           managed: {
             rotationMode,

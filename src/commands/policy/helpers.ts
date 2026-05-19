@@ -7,6 +7,30 @@
 import * as fs from 'fs';
 
 /**
+ * Detect whether the currently-invoked policy handler lives under the
+ * `superadmin` namespace by walking the Commander parent chain.
+ *
+ * Mirrors the helper in `commands/apikey/helpers.ts`: handlers call this
+ * with the Commander Command instance (passed by Commander as the last
+ * arg to action callbacks) to decide whether to route through
+ * `/v1/superadmin/policies/*` instead of the tenant-scoped
+ * `/v1/policies/*` (which rejects pure superadmin principals).
+ */
+interface CommanderLike {
+  name(): string;
+  parent: CommanderLike | null;
+}
+
+export function policyAsSuperadmin(cmd: CommanderLike | null | undefined): boolean {
+  let node: CommanderLike | null | undefined = cmd;
+  while (node) {
+    if (node.name() === 'superadmin') return true;
+    node = node.parent;
+  }
+  return false;
+}
+
+/**
  * Safely read a file with proper error handling
  */
 export function safeReadFile(filePath: string): string {

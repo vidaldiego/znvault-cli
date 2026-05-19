@@ -100,7 +100,7 @@ describe('user commands', () => {
 
       await program.parseAsync(['node', 'test', 'user', 'list']);
 
-      expect(mode.listUsers).toHaveBeenCalledWith({ tenantId: undefined, role: undefined, status: undefined });
+      expect(mode.listUsers).toHaveBeenCalledWith({ tenantId: undefined, role: undefined, status: undefined, asSuperadmin: false });
       expect(table).toHaveBeenCalled();
       expect(info).toHaveBeenCalledWith('Total: 2 user(s)');
     });
@@ -110,7 +110,7 @@ describe('user commands', () => {
 
       await program.parseAsync(['node', 'test', 'superadmin', 'user', 'list', '--tenant', 'acme']);
 
-      expect(mode.listUsers).toHaveBeenCalledWith({ tenantId: 'acme', role: undefined, status: undefined });
+      expect(mode.listUsers).toHaveBeenCalledWith({ tenantId: 'acme', role: undefined, status: undefined, asSuperadmin: true });
     });
 
     it('should filter by role', async () => {
@@ -118,7 +118,7 @@ describe('user commands', () => {
 
       await program.parseAsync(['node', 'test', 'user', 'list', '--role', 'admin']);
 
-      expect(mode.listUsers).toHaveBeenCalledWith({ tenantId: undefined, role: 'admin', status: undefined });
+      expect(mode.listUsers).toHaveBeenCalledWith({ tenantId: undefined, role: 'admin', status: undefined, asSuperadmin: false });
     });
   });
 
@@ -134,6 +134,7 @@ describe('user commands', () => {
         tenantId: 'acme',
         email: undefined,
         role: 'user', // defaults to 'user'
+        asSuperadmin: true,
       });
     });
 
@@ -148,6 +149,7 @@ describe('user commands', () => {
         tenantId: 'acme',
         email: 'new@example.com',
         role: 'admin',
+        asSuperadmin: true,
       });
     });
   });
@@ -159,7 +161,7 @@ describe('user commands', () => {
 
       await program.parseAsync(['node', 'test', 'user', 'get', 'user-1']);
 
-      expect(mode.getUser).toHaveBeenCalledWith('user-1');
+      expect(mode.getUser).toHaveBeenCalledWith('user-1', { asSuperadmin: false });
       expect(section).toHaveBeenCalled();
       expect(keyValue).toHaveBeenCalled();
     });
@@ -171,7 +173,7 @@ describe('user commands', () => {
 
       await program.parseAsync(['node', 'test', 'user', 'unlock', 'user-2']);
 
-      expect(client.unlockUser).toHaveBeenCalledWith('user-2');
+      expect(client.unlockUser).toHaveBeenCalledWith('user-2', { asSuperadmin: false });
     });
   });
 

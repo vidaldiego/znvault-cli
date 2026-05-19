@@ -9,6 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../../lib/client.js';
 import * as output from '../../../lib/output.js';
 import type { ManagedDeleteOptions } from './types.js';
+import { apiKeyAsSuperadmin } from '../helpers.js';
 
 export function registerManagedDeleteCommand(managedCmd: Command): void {
   managedCmd
@@ -17,16 +18,17 @@ export function registerManagedDeleteCommand(managedCmd: Command): void {
     .description('Delete a managed API key')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('-f, --force', 'Skip confirmation')
-    .action(async (name: string, options: ManagedDeleteOptions) => {
+    .action(async (name: string, options: ManagedDeleteOptions, cmd: Command) => {
       if (!options.force) {
         output.warn(`This will permanently delete managed API key: ${name}`);
         output.warn('All bound applications will lose access immediately.');
       }
 
       const spinner = output.spinner('Deleting managed API key...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        await client.deleteManagedApiKey(name, options.tenant);
+        await client.deleteManagedApiKey(name, options.tenant, { asSuperadmin });
         spinner.succeed(`Managed API key deleted: ${name}`);
       } catch (err) {
         spinner.fail('Failed to delete managed API key');

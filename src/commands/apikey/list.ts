@@ -11,6 +11,7 @@ import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { ListOptions } from './types.js';
 import {
+  apiKeyAsSuperadmin,
   formatExpiry,
   formatPermissions,
   formatSecondsToHuman,
@@ -24,11 +25,12 @@ export function registerListCommand(apiKeyCmd: Command): void {
     .description('List API keys')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
-    .action(async (options: ListOptions) => {
+    .action(async (options: ListOptions, cmd: Command) => {
       const spinner = output.spinner('Fetching API keys...').start();
+      const asSuperadmin = apiKeyAsSuperadmin(cmd);
 
       try {
-        const result = await client.listApiKeys(options.tenant);
+        const result = await client.listApiKeys(options.tenant, { asSuperadmin });
         spinner.stop();
 
         if (options.json) {
