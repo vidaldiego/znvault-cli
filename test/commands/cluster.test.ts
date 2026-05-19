@@ -11,13 +11,20 @@ vi.mock('../../src/lib/mode.js', () => ({
   getModeDescription: vi.fn().mockReturnValue('API mode - using API key'),
   clusterStatus: vi.fn().mockResolvedValue({
     enabled: true,
-    nodeId: 'vault-1',
-    isLeader: true,
-    leaderNodeId: 'vault-1',
-    nodes: [
-      { nodeId: 'vault-1', host: '192.168.1.10', port: 8443, isLeader: true, isHealthy: true, lastHeartbeat: new Date().toISOString() },
-      { nodeId: 'vault-2', host: '192.168.1.11', port: 8443, isLeader: false, isHealthy: true, lastHeartbeat: new Date().toISOString() },
-    ],
+    thisNode: {
+      nodeId: 'vault-1',
+      isLeader: true,
+      isHealthy: true,
+    },
+    cluster: {
+      totalNodes: 2,
+      healthyNodes: 2,
+      leaderId: 'vault-1',
+      nodes: [
+        { nodeId: 'vault-1', host: '192.168.1.10', port: 8443, isLeader: true, isHealthy: true, lastHeartbeat: new Date().toISOString() },
+        { nodeId: 'vault-2', host: '192.168.1.11', port: 8443, isLeader: false, isHealthy: true, lastHeartbeat: new Date().toISOString() },
+      ],
+    },
   }),
   closeLocalClient: vi.fn().mockResolvedValue(undefined),
 }));

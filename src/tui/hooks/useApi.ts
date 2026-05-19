@@ -19,16 +19,23 @@ interface HealthData {
 
 interface ClusterData {
   enabled: boolean;
-  nodeId: string;
-  isLeader: boolean;
-  leaderNodeId: string | null;
-  nodes: Array<{
+  thisNode: {
     nodeId: string;
-    host: string;
     isLeader: boolean;
     isHealthy: boolean;
-    lastSeen?: string;
-  }>;
+  };
+  cluster: {
+    totalNodes: number;
+    healthyNodes: number;
+    leaderId: string | null;
+    nodes: Array<{
+      nodeId: string;
+      host: string;
+      isLeader: boolean;
+      isHealthy: boolean;
+      lastHeartbeat?: string;
+    }>;
+  };
 }
 
 interface LockdownData {

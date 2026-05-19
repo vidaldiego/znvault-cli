@@ -57,18 +57,69 @@ export interface ClusterNode {
   uptime?: number;
 }
 
+/**
+ * Cluster status as returned by `GET /v1/admin/cluster`.
+ *
+ * Mirrors the server response shape: top-level `thisNode`, `cluster`,
+ * `replication`, `config`, and `infrastructure` sections rather than the
+ * flat shape the CLI used pre-v4.0.1.
+ */
 export interface ClusterStatus {
   enabled: boolean;
-  nodeId: string;
-  /** Operational role of this node (api, worker, or full) */
-  role?: NodeOperationalRole;
-  isLeader: boolean;
-  leaderNodeId: string | null;
-  nodes: ClusterNode[];
+  thisNode: {
+    nodeId: string;
+    /** Operational role of this node (api, worker, or full) */
+    role?: NodeOperationalRole;
+    isLeader: boolean;
+    isHealthy: boolean;
+    isDraining?: boolean;
+    isInMaintenance?: boolean;
+  };
+  cluster: {
+    totalNodes: number;
+    healthyNodes: number;
+    leaderId: string | null;
+    leaderAddress?: string | null;
+    nodes: ClusterNode[];
+  };
+  replication?: {
+    role: string;
+    isReplicating: boolean;
+    lagMs: number | null;
+  };
+  config?: {
+    leaderTtlMs: number;
+    heartbeatIntervalMs: number;
+    heartbeatTimeoutMs: number;
+    hasSentinel: boolean;
+  };
   infrastructure?: {
-    postgres?: { status: string; primary?: string };
-    redis?: { status: string; master?: string };
-    etcd?: { status: string };
+    postgres?: {
+      connected?: boolean;
+      isReplica?: boolean;
+      isPrimary?: boolean;
+      replicationLagBytes?: number | null;
+      replicationLagMs?: number | null;
+      patroniRole?: string | null;
+      walPosition?: string | null;
+      connections?: { active: number; idle: number; max: number };
+      version?: string | null;
+    };
+    redis?: {
+      connected?: boolean;
+      role?: string | null;
+      connectedSlaves?: number;
+      masterHost?: string | null;
+      masterPort?: number | null;
+      sentinelEnabled?: boolean;
+      sentinelMaster?: string | null;
+    };
+    architecture?: {
+      dbType: string;
+      haEnabled: boolean;
+      multiWriter: boolean;
+      patroniManaged: boolean;
+    };
   };
 }
 

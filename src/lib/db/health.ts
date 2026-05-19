@@ -77,13 +77,22 @@ export class HealthOperations extends BaseDBClient {
     }
 
     const leader = nodes.find(n => n.isLeader);
+    const thisNodeRow = nodes.find(n => n.nodeId === nodeId);
+    const healthyNodes = nodes.filter(n => n.isHealthy).length;
 
     return {
       enabled: haEnabled,
-      nodeId,
-      isLeader: leader?.nodeId === nodeId,
-      leaderNodeId: leader?.nodeId ?? null,
-      nodes,
+      thisNode: {
+        nodeId,
+        isLeader: leader?.nodeId === nodeId,
+        isHealthy: thisNodeRow?.isHealthy ?? true,
+      },
+      cluster: {
+        totalNodes: nodes.length,
+        healthyNodes,
+        leaderId: leader?.nodeId ?? null,
+        nodes,
+      },
     };
   }
 

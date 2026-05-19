@@ -143,19 +143,20 @@ export function registerHealthCommands(program: Command): void {
         // Cluster box
         if (cluster.status === 'fulfilled') {
           const c = cluster.value;
-          if (c.enabled && c.nodes.length > 0) {
-            const nodes = c.nodes.map(n => ({
+          const nodes = c.cluster.nodes;
+          if (c.enabled && nodes.length > 0) {
+            const summarizedNodes = nodes.map(n => ({
               id: n.nodeId,
               role: n.isLeader ? 'LEADER' : 'FOLLOWER',
               status: n.isHealthy ? 'healthy' : 'unhealthy',
               isLeader: n.isLeader,
             }));
-            console.log(visual.nodeStatus(nodes));
+            console.log(visual.nodeStatus(summarizedNodes));
           } else {
             console.log(visual.statusBox('CLUSTER', {
               'Enabled': { value: c.enabled ? 'Yes' : 'No', status: c.enabled ? 'success' : 'info' },
-              'Node ID': { value: c.nodeId },
-              'Is Leader': { value: c.isLeader ? 'Yes' : 'No', status: c.isLeader ? 'success' : 'info' },
+              'Node ID': { value: c.thisNode.nodeId },
+              'Is Leader': { value: c.thisNode.isLeader ? 'Yes' : 'No', status: c.thisNode.isLeader ? 'success' : 'info' },
             }));
           }
         } else {

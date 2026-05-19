@@ -21,13 +21,20 @@ vi.mock('../../src/lib/mode.js', () => ({
   }),
   clusterStatus: vi.fn().mockResolvedValue({
     enabled: true,
-    nodeId: 'vault-1',
-    isLeader: true,
-    leaderNodeId: 'vault-1',
-    nodes: [
-      { nodeId: 'vault-1', host: '192.168.1.10', isLeader: true, isHealthy: true },
-      { nodeId: 'vault-2', host: '192.168.1.11', isLeader: false, isHealthy: true },
-    ],
+    thisNode: {
+      nodeId: 'vault-1',
+      isLeader: true,
+      isHealthy: true,
+    },
+    cluster: {
+      totalNodes: 2,
+      healthyNodes: 2,
+      leaderId: 'vault-1',
+      nodes: [
+        { nodeId: 'vault-1', host: '192.168.1.10', isLeader: true, isHealthy: true },
+        { nodeId: 'vault-2', host: '192.168.1.11', isLeader: false, isHealthy: true },
+      ],
+    },
   }),
   getLockdownStatus: vi.fn().mockResolvedValue({
     scope: 'SYSTEM',

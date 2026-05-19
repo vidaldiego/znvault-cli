@@ -38,20 +38,24 @@ export function registerClusterCommands(program: Command): void {
 
         output.section('Cluster Status');
 
+        const thisNode = status.thisNode;
+        const cluster = status.cluster;
+
         output.keyValue({
           'Mode': mode.getModeDescription(),
           'Enabled': status.enabled,
-          'Node ID': status.nodeId,
-          'Node Role': status.role ?? 'full',
-          'Is Leader': status.isLeader,
-          'Leader Node': status.leaderNodeId ?? 'None',
+          'Node ID': thisNode.nodeId,
+          'Node Role': thisNode.role ?? 'full',
+          'Is Leader': thisNode.isLeader,
+          'Leader Node': cluster.leaderId ?? 'None',
+          'Cluster Size': `${cluster.healthyNodes}/${cluster.totalNodes} healthy`,
         });
 
-        if (status.nodes.length > 0) {
+        if (cluster.nodes.length > 0) {
           output.section('Nodes');
           output.table(
             ['Node ID', 'Host', 'Port', 'Role', 'Leader', 'Status', 'Last Heartbeat'],
-            status.nodes.map(node => [
+            cluster.nodes.map(node => [
               node.nodeId,
               node.host,
               node.port,
@@ -65,17 +69,30 @@ export function registerClusterCommands(program: Command): void {
 
         if (status.infrastructure) {
           output.section('Infrastructure');
-          if (status.infrastructure.postgres) {
-            console.log(`  PostgreSQL: ${output.formatStatus(status.infrastructure.postgres.status)}`);
-            if (status.infrastructure.postgres.primary) {
-              console.log(`    Primary: ${status.infrastructure.postgres.primary}`);
+          const pg = status.infrastructure.postgres;
+          if (pg) {
+            const pgStatus = pg.connected ? 'ok' : 'error';
+            console.log(`  PostgreSQL: ${output.formatStatus(pgStatus)}`);
+            if (pg.patroniRole) {
+              console.log(`    Patroni role: ${pg.patroniRole}`);
+            } else if (pg.isPrimary !== undefined) {
+              console.log(`    Role: ${pg.isPrimary ? 'primary' : (pg.isReplica ? 'replica' : 'unknown')}`);
+            }
+            if (pg.replicationLagMs !== undefined && pg.replicationLagMs !== null) {
+              console.log(`    Replication lag: ${pg.replicationLagMs}ms`);
             }
           }
-          if (status.infrastructure.redis) {
-            console.log(`  Redis: ${output.formatStatus(status.infrastructure.redis.status)}`);
+          const redis = status.infrastructure.redis;
+          if (redis) {
+            const redisStatus = redis.connected ? 'ok' : 'error';
+            console.log(`  Redis: ${output.formatStatus(redisStatus)}`);
+            if (redis.masterHost) {
+              console.log(`    Master: ${redis.masterHost}${redis.masterPort ? `:${String(redis.masterPort)}` : ''}`);
+            }
           }
-          if (status.infrastructure.etcd) {
-            console.log(`  etcd: ${output.formatStatus(status.infrastructure.etcd.status)}`);
+          const arch = status.infrastructure.architecture;
+          if (arch) {
+            console.log(`  Architecture: ${arch.dbType}${arch.haEnabled ? ' (HA)' : ''}${arch.patroniManaged ? ' patroni-managed' : ''}`);
           }
         }
 
