@@ -255,20 +255,49 @@ export async function performUpdate(options: {
 }
 
 /**
- * Display update notification using Ink TUI
+ * Display update notification using Ink TUI.
+ *
+ * Always renders to stderr. The CLI is frequently invoked from contexts that
+ * capture or evaluate stdout (shell completion via `source <(znvault completion
+ * zsh)`, `$(znvault profile list)`, pipes, etc.). Writing the update banner to
+ * stdout in those contexts has the shell interpret the box-drawing characters
+ * as commands, producing 'command not found' errors at terminal startup. Stderr
+ * keeps the banner visible to the user without polluting captured output.
  */
 export function showUpdateNotification(latestVersion: string, currentVersion: string): void {
-  // Use Ink to render the update banner
   const { unmount } = render(
     React.createElement(UpdateBanner, {
       currentVersion,
       latestVersion,
       packageName: PACKAGE_NAME,
-    })
+    }),
+    { stdout: process.stderr }
   );
 
   // Unmount immediately after rendering (static output)
   unmount();
+}
+
+/**
+ * True when the CLI is being invoked from a context that captures stdout,
+ * making it unsafe to write the update banner at all (even to stderr, since
+ * users of these contexts don't expect any side-effect output).
+ *
+ * Detected by inspecting argv before Commander parses it.
+ *
+ * Exported for testing.
+ */
+export function isStdoutCapturedContext(): boolean {
+  const argv = process.argv.slice(2);
+  // `znvault completion bash` / `znvault completion zsh` — output is sourced
+  // into the shell. Any extra bytes become 'command not found' errors.
+  if (argv[0] === 'completion') return true;
+  // `znvault profile list --plain` is called by our own zsh completion script
+  // inside `$(…)`. Any banner ends up in the completion result.
+  if (argv[0] === 'profile' && argv.includes('--plain')) return true;
+  // Non-TTY stdout is a strong signal of piping or capture. Stay quiet.
+  if (!process.stdout.isTTY) return true;
+  return false;
 }
 
 /**
@@ -278,6 +307,13 @@ export function showUpdateNotification(latestVersion: string, currentVersion: st
 export function runBackgroundUpdateCheck(): void {
   // Don't check in CI environments or quiet mode
   if (process.env.CI || process.env.ZNVAULT_NO_UPDATE_CHECK || isQuietMode()) {
+    return;
+  }
+
+  // Don't run when the invocation's stdout is captured or evaluated. This
+  // prevents the banner (or any background side-effect output) from leaking
+  // into shell completion scripts, command substitutions, and pipes.
+  if (isStdoutCapturedContext()) {
     return;
   }
 
