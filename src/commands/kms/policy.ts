@@ -103,16 +103,22 @@ async function putPolicy(keyId: string, options: PolicyPutOptions): Promise<void
       throw new Error('--priority must be an integer');
     }
 
+    // One or more comma-separated actions. The route accepts an actions[]
+    // array and stores them joined; the evaluator splits on the way out
+    // (server v1.41.16+), so multi-action policies work end-to-end.
+    const actions = options.actions
+      .split(',')
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0);
+    if (actions.length === 0) {
+      throw new Error('--actions must list at least one KMS action, e.g. kms:Decrypt');
+    }
+
     const body = {
       sid: options.sid,
       effect: options.effect ?? 'ALLOW',
       principal: options.principal,
-      // Send single-element array. The route currently joins actions with
-      // comma into a single string column and the evaluator does strict
-      // equality; multi-action policies via the API don't work today (server
-      // gap). Pass a single action here so the stored row matches at eval
-      // time.
-      actions: [options.action],
+      actions,
       priority,
     };
 
@@ -130,7 +136,7 @@ async function putPolicy(keyId: string, options: PolicyPutOptions): Promise<void
     output.success(`Policy '${options.sid}' applied to key ${keyId}.`);
     console.log(`  Effect:    ${body.effect}`);
     console.log(`  Principal: ${options.principal}`);
-    console.log(`  Action:    ${options.action}`);
+    console.log(`  Actions:   ${actions.join(', ')}`);
     console.log(`  Priority:  ${String(priority)}`);
   } catch (err) {
     spinner.fail('Failed to set policy');
@@ -278,7 +284,10 @@ export function registerPolicyCommands(parent: Command, asSuperadmin = false): v
     .description('Add or update a per-key policy entry (idempotent by sid)')
     .requiredOption('--sid <sid>', 'Statement identifier (unique per key; used as upsert key)')
     .requiredOption('--principal <principal>', 'Principal string, e.g. apikey:key_<hex>, user:<id>, or *')
-    .requiredOption('--action <action>', 'KMS action, e.g. kms:Decrypt, kms:Encrypt, kms:* (case-sensitive)')
+    .requiredOption(
+      '--actions <actions>',
+      'KMS action(s), comma-separated. Single: "kms:Decrypt". Multiple: "kms:Encrypt,kms:Decrypt". Wildcard: "kms:*". Case-sensitive.'
+    )
     .option('--effect <ALLOW|DENY>', 'ALLOW or DENY (default ALLOW; explicit DENY always wins)', 'ALLOW')
     .option('--priority <n>', 'Priority integer (default 100; lower evaluated first, but DENY wins regardless)')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')

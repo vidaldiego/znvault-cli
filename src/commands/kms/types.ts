@@ -180,7 +180,9 @@ export interface PolicyPutOptions {
   sid: string;
   effect?: 'ALLOW' | 'DENY';
   principal: string;
-  action: string; // single action; the route stores it verbatim (multi-action via comma-join is a server-side gap)
+  // One or more KMS actions, comma-separated, e.g. "kms:Decrypt" or
+  // "kms:Encrypt,kms:Decrypt". Whitespace around commas is tolerated.
+  actions: string;
   priority?: string;
   json?: boolean;
 }
