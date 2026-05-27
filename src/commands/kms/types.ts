@@ -192,6 +192,12 @@ export interface PolicyListOptions {
   json?: boolean;
 }
 
+export interface PolicyDeleteOptions {
+  tenant?: string;
+  sid: string;
+  json?: boolean;
+}
+
 export interface GrantCreateOptions {
   tenant?: string;
   grantee: string;

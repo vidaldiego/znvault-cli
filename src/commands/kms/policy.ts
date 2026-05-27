@@ -37,7 +37,6 @@ import Table from 'cli-table3';
 
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
-import { kmsKeysPath, kmsKeysQuery, withKmsContext } from './routing.js';
 import type {
   CreateGrantResponse,
   GrantCreateOptions,
@@ -45,9 +44,20 @@ import type {
   GrantRetireRevokeOptions,
   ListGrantsResponse,
   ListPoliciesResponse,
+  PolicyDeleteOptions,
   PolicyListOptions,
   PolicyPutOptions,
 } from './types.js';
+
+// KMS per-key policy / grant endpoints are TENANT-ONLY by design (separation
+// of duties: cross-tenant superadmin surface deliberately excludes them — see
+// the comment in src/routes/admin/kms-keys.ts). All requests therefore go to
+// /v1/kms/* and do NOT use the routing.ts superadmin-surface helpers.
+const POLICIES_PATH = (keyId: string): string => `/v1/kms/keys/${keyId}/policies`;
+const POLICY_PATH = (keyId: string): string => `/v1/kms/keys/${keyId}/policy`;
+const POLICY_SID_PATH = (keyId: string, sid: string): string =>
+  `/v1/kms/keys/${keyId}/policy/${encodeURIComponent(sid)}`;
+const GRANTS_PATH = (keyId: string): string => `/v1/kms/keys/${keyId}/grants`;
 
 // ============================================================================
 // Policy commands
@@ -57,9 +67,7 @@ async function listPolicies(keyId: string, options: PolicyListOptions): Promise<
   const spinner = output.spinner('Loading key policies...').start();
 
   try {
-    const result = await client.get<ListPoliciesResponse>(
-      kmsKeysPath(options.tenant, `/${keyId}/policies`) + kmsKeysQuery(options.tenant)
-    );
+    const result = await client.get<ListPoliciesResponse>(POLICIES_PATH(keyId));
     spinner.stop();
 
     if (options.json === true) {
@@ -122,10 +130,7 @@ async function putPolicy(keyId: string, options: PolicyPutOptions): Promise<void
       priority,
     };
 
-    await client.put<{ success: boolean }>(
-      kmsKeysPath(options.tenant, `/${keyId}/policy`) + kmsKeysQuery(options.tenant),
-      body
-    );
+    await client.put<{ success: boolean }>(POLICY_PATH(keyId), body);
     spinner.stop();
 
     if (options.json === true) {
@@ -145,6 +150,29 @@ async function putPolicy(keyId: string, options: PolicyPutOptions): Promise<void
   }
 }
 
+async function deletePolicy(keyId: string, options: PolicyDeleteOptions): Promise<void> {
+  const spinner = output.spinner(`Deleting policy '${options.sid}' from ${keyId}...`).start();
+
+  try {
+    // Server returns 204 No Content on success; we don't read a body.
+    await client.delete<unknown>(POLICY_SID_PATH(keyId, options.sid));
+    spinner.stop();
+
+    if (options.json === true) {
+      output.json({ success: true, sid: options.sid, deleted: true });
+      return;
+    }
+
+    output.success(`Policy '${options.sid}' deleted from key ${keyId}.`);
+  } catch (err) {
+    spinner.fail('Failed to delete policy');
+    // 404 ("not found on key") is a real outcome worth showing distinctly so
+    // operators don't misread it as a transient error.
+    output.error((err as Error).message);
+    process.exit(1);
+  }
+}
+
 // ============================================================================
 // Grant commands
 // ============================================================================
@@ -153,9 +181,7 @@ async function listGrants(keyId: string, options: GrantListOptions): Promise<voi
   const spinner = output.spinner('Loading key grants...').start();
 
   try {
-    const result = await client.get<ListGrantsResponse>(
-      kmsKeysPath(options.tenant, `/${keyId}/grants`) + kmsKeysQuery(options.tenant)
-    );
+    const result = await client.get<ListGrantsResponse>(GRANTS_PATH(keyId));
     spinner.stop();
 
     if (options.json === true) {
@@ -264,8 +290,12 @@ async function revokeGrant(grantId: string, options: GrantRetireRevokeOptions): 
 // Registration
 // ============================================================================
 
-export function registerPolicyCommands(parent: Command, asSuperadmin = false): void {
-  // ---- policy <list|put> ----
+// KMS per-key policies + grants are TENANT-SCOPED on the server (no
+// /v1/superadmin/kms/keys/.../policy surface). The CLI mirrors that: these
+// commands are registered without an `asSuperadmin` flag, matching how
+// kms encrypt/decrypt are registered (separation of duties).
+export function registerPolicyCommands(parent: Command): void {
+  // ---- policy <list|put|delete> ----
   const policy = parent
     .command('policy')
     .description('Manage per-key policies (independent of API-key RBAC permissions)');
@@ -273,11 +303,8 @@ export function registerPolicyCommands(parent: Command, asSuperadmin = false): v
   policy
     .command('list <keyId>')
     .description('List per-key policies on a KMS key')
-    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
-    .action((keyId: string, options: PolicyListOptions) =>
-      withKmsContext(asSuperadmin, () => listPolicies(keyId, options))
-    );
+    .action((keyId: string, options: PolicyListOptions) => listPolicies(keyId, options));
 
   policy
     .command('put <keyId>')
@@ -290,11 +317,15 @@ export function registerPolicyCommands(parent: Command, asSuperadmin = false): v
     )
     .option('--effect <ALLOW|DENY>', 'ALLOW or DENY (default ALLOW; explicit DENY always wins)', 'ALLOW')
     .option('--priority <n>', 'Priority integer (default 100; lower evaluated first, but DENY wins regardless)')
-    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
-    .action((keyId: string, options: PolicyPutOptions) =>
-      withKmsContext(asSuperadmin, () => putPolicy(keyId, options))
-    );
+    .action((keyId: string, options: PolicyPutOptions) => putPolicy(keyId, options));
+
+  policy
+    .command('delete <keyId>')
+    .description('Delete a single per-key policy entry by sid (404 if no such sid on the key)')
+    .requiredOption('--sid <sid>', 'Statement identifier of the entry to delete')
+    .option('--json', 'Output as JSON')
+    .action((keyId: string, options: PolicyDeleteOptions) => deletePolicy(keyId, options));
 
   // ---- grant <list|create|retire|revoke> ----
   const grant = parent
@@ -304,11 +335,8 @@ export function registerPolicyCommands(parent: Command, asSuperadmin = false): v
   grant
     .command('list <keyId>')
     .description('List active grants on a KMS key')
-    .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
-    .action((keyId: string, options: GrantListOptions) =>
-      withKmsContext(asSuperadmin, () => listGrants(keyId, options))
-    );
+    .action((keyId: string, options: GrantListOptions) => listGrants(keyId, options));
 
   grant
     .command('create <keyId>')

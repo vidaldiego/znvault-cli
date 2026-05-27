@@ -32,11 +32,16 @@ export function registerKmsCommands(parent: Command, opts?: RegisterOptions): vo
   // `--tenant` options are accepted; see command-context.applyTenantContextPatch).
   withRegisterContext(ctx, () => {
     registerCrudCommands(kms, asSuperadmin);
-    // KMS crypto ops have no superadmin counterpart by design (separation
-    // of duties), so they are not threaded with the asSuperadmin flag.
-    registerCryptoCommands(kms);
+    // KMS crypto ops + policies/grants have no superadmin counterpart by
+    // design (separation of duties — see src/routes/admin/kms-keys.ts in the
+    // server repo). They MUST NOT appear under `znvault superadmin kms ...`
+    // or they would 404 against /v1/superadmin/kms/keys/.../policy. So we
+    // omit them from the superadmin tree entirely.
+    if (!asSuperadmin) {
+      registerCryptoCommands(kms);
+      registerPolicyCommands(kms);
+    }
     registerLifecycleCommands(kms, asSuperadmin);
-    registerPolicyCommands(kms, asSuperadmin);
   });
 }
 
