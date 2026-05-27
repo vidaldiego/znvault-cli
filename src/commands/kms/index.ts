@@ -7,12 +7,14 @@
  * - Key CRUD operations (list, get, create, delete)
  * - Cryptographic operations (encrypt, decrypt, generate-data-key)
  * - Key lifecycle management (rotate, enable, disable, versions)
+ * - Per-key authorization (policy put/list, grant create/list/retire/revoke)
  */
 
 import type { Command } from 'commander';
 import { registerCrudCommands } from './crud.js';
 import { registerCryptoCommands } from './crypto.js';
 import { registerLifecycleCommands } from './lifecycle.js';
+import { registerPolicyCommands } from './policy.js';
 import {
   resolveContext,
   withRegisterContext,
@@ -34,6 +36,7 @@ export function registerKmsCommands(parent: Command, opts?: RegisterOptions): vo
     // of duties), so they are not threaded with the asSuperadmin flag.
     registerCryptoCommands(kms);
     registerLifecycleCommands(kms, asSuperadmin);
+    registerPolicyCommands(kms, asSuperadmin);
   });
 }
 

@@ -130,3 +130,82 @@ export interface GenerateDataKeyOptions {
 export interface VersionsOptions {
   json?: boolean;
 }
+
+// ============================================================================
+// KMS Per-Key Policy & Grant Types
+// ============================================================================
+//
+// These are the *per-key* authorization layer (kms_key_policies /
+// kms_key_grants), distinct from the API-key RBAC permissions surfaced by
+// `znvault api-key permissions`. A caller must clear BOTH layers to use a
+// key: RBAC permits calling the KMS endpoint at all, and the per-key
+// policy/grant on the target key permits this specific principal+action.
+// See docs/compliance/2026-05-25/ for the auth-model summary.
+
+export interface KMSKeyPolicy {
+  sid: string;
+  effect: 'ALLOW' | 'DENY';
+  principal: string;
+  actions: string[];
+  condition?: unknown;
+  priority: number;
+}
+
+export interface ListPoliciesResponse {
+  policies: KMSKeyPolicy[];
+}
+
+export interface KMSKeyGrant {
+  grantId: string;
+  granteePrincipal: string;
+  operations: string[];
+  constraints?: unknown;
+  name?: string;
+  createdAt: string;
+  createdBy: string;
+  expiresAt?: string;
+}
+
+export interface ListGrantsResponse {
+  grants: KMSKeyGrant[];
+}
+
+export interface CreateGrantResponse {
+  grantId: string;
+  grantToken: string;
+}
+
+export interface PolicyPutOptions {
+  tenant?: string;
+  sid: string;
+  effect?: 'ALLOW' | 'DENY';
+  principal: string;
+  action: string; // single action; the route stores it verbatim (multi-action via comma-join is a server-side gap)
+  priority?: string;
+  json?: boolean;
+}
+
+export interface PolicyListOptions {
+  tenant?: string;
+  json?: boolean;
+}
+
+export interface GrantCreateOptions {
+  tenant?: string;
+  grantee: string;
+  operations: string; // comma-separated, e.g. "kms:Decrypt,kms:Encrypt"
+  name?: string;
+  retiringPrincipal?: string;
+  expiresAt?: string;
+  json?: boolean;
+}
+
+export interface GrantListOptions {
+  tenant?: string;
+  json?: boolean;
+}
+
+export interface GrantRetireRevokeOptions {
+  tenant?: string;
+  json?: boolean;
+}
