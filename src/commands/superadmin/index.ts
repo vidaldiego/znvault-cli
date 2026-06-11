@@ -42,6 +42,7 @@ import { registerAuditCommands } from '../audit.js';
 import { registerGroupCommands } from '../group.js';
 import { registerHostCommands } from '../host/index.js';
 import { registerKmsCommands } from '../kms/index.js';
+import { registerKmipSuperadminCommands } from '../kmip/index.js';
 import { registerPolicyCommands } from '../policy/index.js';
 import { registerQuarantineCommands } from '../quarantine.js';
 import { registerRoleCommands } from '../role.js';
@@ -80,6 +81,7 @@ export function registerSuperadminCommands(parent: Command, _opts?: RegisterOpti
     registerGroupCommands(superadmin, { context: 'superadmin' });
     registerHostCommands(superadmin, { context: 'superadmin' });
     registerKmsCommands(superadmin, { context: 'superadmin' });
+    registerKmipSuperadminCommands(superadmin);
     registerPolicyCommands(superadmin, { context: 'superadmin' });
     registerQuarantineCommands(superadmin, { context: 'superadmin' });
     registerRoleCommands(superadmin, { context: 'superadmin' });
