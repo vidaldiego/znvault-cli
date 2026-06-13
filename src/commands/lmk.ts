@@ -110,6 +110,27 @@ interface RootCAUpgradeResponse {
   result: 'upgraded' | 'already-v2' | 'no-root-ca';
 }
 
+interface RootCAReissueResponse {
+  applied: boolean;
+  plan: {
+    oldRoot: { id: string; fingerprint: string; unrecoverable: boolean };
+    newRoot: { subjectDn: string; keyType: string; validityYears: number };
+    intermediates: {
+      caId: string;
+      tenantId: string;
+      oldFingerprint: string;
+      newFingerprint: string;
+      chainVerified: boolean;
+    }[];
+  };
+}
+
+interface ReissueOptions extends JsonOption {
+  apply?: boolean;
+  force?: boolean;
+  fingerprint?: string;
+}
+
 export function registerLmkCommands(program: Command): void {
   const lmk = program
     .command('lmk')
@@ -377,6 +398,76 @@ export function registerLmkCommands(program: Command): void {
         }
       } catch (err) {
         spinner.fail('Failed to upgrade root CA key envelope');
+        throw err;
+      }
+    });
+
+  // -------------------------------------------------------------------------
+  // lmk reissue-root-ca (INC-2026-06-13-01 recovery)
+  // -------------------------------------------------------------------------
+  lmk
+    .command('reissue-root-ca')
+    .description(
+      'Reissue the Vault Root CA: mint a NEW root, archive the old (ROTATED), ' +
+      'and re-sign active intermediates under the new root. Use when the current ' +
+      'root private key is unrecoverable. Defaults to a DRY-RUN plan; pass --apply ' +
+      'to execute. --force reissues a healthy root (new trust anchor — disruptive).'
+    )
+    .option('--apply', 'Execute the reissue (default is a dry-run plan)')
+    .option('--force', 'Reissue even if the current root key is still healthy')
+    .option('--fingerprint <fp>', 'Current active root fingerprint (auto-fetched if omitted)')
+    .option('--json', 'Output as JSON')
+    .action(async (options: ReissueOptions) => {
+      // Resolve the current active root fingerprint (auto-fetch unless provided).
+      let fingerprint = options.fingerprint;
+      if (fingerprint === undefined || fingerprint === '') {
+        const info = await client.get<{ fingerprintSha256?: string }>('/v1/pki/root-ca/info');
+        fingerprint = info.fingerprintSha256;
+        if (fingerprint === undefined || fingerprint === '') {
+          output.error('Could not determine the active root CA fingerprint; pass --fingerprint.');
+          return;
+        }
+      }
+
+      const apply = options.apply === true;
+      const spinner = output
+        .spinner(apply ? 'Reissuing root CA...' : 'Planning root CA reissue (dry-run)...')
+        .start();
+      try {
+        const result = await client.post<RootCAReissueResponse>('/v1/superadmin/root-ca/reissue', {
+          dryRun: !apply,
+          confirmFingerprint: fingerprint,
+          confirm: 'REISSUE-ROOT-CA',
+          force: options.force === true,
+        });
+        spinner.stop();
+
+        if (options.json === true) {
+          output.json(result);
+          return;
+        }
+
+        output.section(result.applied ? 'Root CA Reissued' : 'Root CA Reissue Plan (dry-run)');
+        output.keyValue({
+          'Old root fingerprint': result.plan.oldRoot.fingerprint,
+          'Old root unrecoverable': String(result.plan.oldRoot.unrecoverable),
+          'New root subject': result.plan.newRoot.subjectDn,
+          'New root key type': result.plan.newRoot.keyType,
+          'Intermediates re-signed': result.plan.intermediates.length,
+        });
+        for (const im of result.plan.intermediates) {
+          output.info(`  ${im.caId} (tenant ${im.tenantId}) chainVerified=${String(im.chainVerified)}`);
+        }
+        if (result.applied) {
+          output.success(
+            'Reissue applied. Re-distribute the new root cert (GET /v1/pki/root-ca/cert) ' +
+            'to any external trust stores. LMK rotation is now permitted.'
+          );
+        } else {
+          output.info('Dry-run only — nothing was written. Re-run with --apply to execute.');
+        }
+      } catch (err) {
+        spinner.fail('Root CA reissue failed');
         throw err;
       }
     });
