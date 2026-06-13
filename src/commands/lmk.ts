@@ -106,6 +106,10 @@ interface CancelResponse {
   message: string;
 }
 
+interface RootCAUpgradeResponse {
+  result: 'upgraded' | 'already-v2' | 'no-root-ca';
+}
+
 export function registerLmkCommands(program: Command): void {
   const lmk = program
     .command('lmk')
@@ -329,6 +333,52 @@ export function registerLmkCommands(program: Command): void {
       }
 
       output.success(result.message);
+    });
+
+  // -------------------------------------------------------------------------
+  // lmk upgrade-root-ca (R-LMK-005)
+  // -------------------------------------------------------------------------
+  lmk
+    .command('upgrade-root-ca')
+    .description(
+      'Upgrade the Vault Root CA private key from the legacy raw-LMK envelope ' +
+      'to the rotation-safe system-DEK (v2) envelope (R-LMK-005). Run ONCE, ' +
+      'after the whole fleet is on >= v1.45.3. Idempotent. An LMK rotation is ' +
+      'refused until this has run.'
+    )
+    .option('--json', 'Output as JSON')
+    .action(async (options: JsonOption) => {
+      const spinner = output.spinner('Upgrading root CA key envelope...').start();
+      try {
+        const result = await client.post<RootCAUpgradeResponse>(
+          '/v1/admin/root-ca/upgrade-key-envelope',
+          {}
+        );
+        spinner.stop();
+
+        if (options.json === true) {
+          output.json(result);
+          return;
+        }
+
+        switch (result.result) {
+          case 'upgraded':
+            output.success(
+              'Root CA private key upgraded to the rotation-safe system-DEK (v2) ' +
+              'envelope. LMK rotation is now permitted.'
+            );
+            break;
+          case 'already-v2':
+            output.info('Root CA is already on the v2 envelope — nothing to do.');
+            break;
+          case 'no-root-ca':
+            output.warn('No active root CA found — nothing to upgrade.');
+            break;
+        }
+      } catch (err) {
+        spinner.fail('Failed to upgrade root CA key envelope');
+        throw err;
+      }
     });
 }
 
