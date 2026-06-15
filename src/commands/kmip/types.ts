@@ -14,6 +14,7 @@ export interface KmipClient {
   revokedAt: string | null;
   lastSeenAt: string | null;
   lastSeenIp: string | null;
+  allowedSourceCidrs?: string[];
 }
 
 export interface KmipClientBundle {

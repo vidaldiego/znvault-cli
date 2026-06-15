@@ -2,7 +2,7 @@
 // `znvault kmip` command registration.
 
 import { type Command } from 'commander';
-import { createClient, listClients, revokeClient } from './clients.js';
+import { createClient, listClients, revokeClient, setSourceCidrs } from './clients.js';
 import { listObjects, getStatus } from './objects.js';
 import { enableKmip, reissueServerCert } from './admin.js';
 
@@ -40,9 +40,18 @@ Examples:
     .description('Create a KMIP client and download its certificate bundle')
     .option('--description <text>', 'Optional description')
     .option('--output-dir <dir>', 'Directory to write client.key/client.crt/ca.crt (default: kmip-<name>)')
+    .option(
+      '--allowed-cidrs <cidrs>',
+      'Comma-separated source-IP allowlist (e.g. "192.168.50.4/32"). Defense-in-depth on top of mTLS; empty = no restriction'
+    )
     .option('--json', 'Output as JSON (includes the private key)')
     .action(createClient);
   clientCmd.command('list').description('List KMIP clients').option('--json', 'Output as JSON').action(listClients);
+  clientCmd
+    .command('set-cidrs <id> <cidrs>')
+    .description('Set a client source-IP allowlist (comma-separated CIDRs; empty string clears it)')
+    .option('--json', 'Output as JSON')
+    .action(setSourceCidrs);
   clientCmd
     .command('revoke <id>')
     .description('Revoke a KMIP client')

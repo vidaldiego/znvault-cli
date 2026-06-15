@@ -10,15 +10,27 @@ import type { KmipClient, KmipClientCreateResponse, PaginatedResponse } from './
 interface CreateOptions {
   description?: string;
   outputDir?: string;
+  allowedCidrs?: string;
   json?: boolean;
+}
+
+/** Parse a comma-separated CIDR list into a trimmed string[] (empty if unset). */
+function parseCidrList(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 export async function createClient(name: string, options: CreateOptions): Promise<void> {
   const spinner = output.spinner(`Creating KMIP client '${name}'...`).start();
   try {
+    const allowedSourceCidrs = parseCidrList(options.allowedCidrs);
     const response = await client.post<KmipClientCreateResponse>('/v1/kmip/clients', {
       name,
       description: options.description,
+      ...(allowedSourceCidrs.length > 0 ? { allowedSourceCidrs } : {}),
     });
     spinner.stop();
 
@@ -75,6 +87,35 @@ export async function listClients(options: { json?: boolean }): Promise<void> {
     );
   } catch (err) {
     spinner.fail('Failed to list KMIP clients');
+    output.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+export async function setSourceCidrs(
+  id: string,
+  cidrs: string,
+  options: { json?: boolean }
+): Promise<void> {
+  const allowedSourceCidrs = parseCidrList(cidrs);
+  const verb = allowedSourceCidrs.length > 0 ? 'Setting' : 'Clearing';
+  const spinner = output.spinner(`${verb} source-IP allowlist for KMIP client ${id}...`).start();
+  try {
+    const response = await client.put<KmipClient>(`/v1/kmip/clients/${id}/source-cidrs`, {
+      allowedSourceCidrs,
+    });
+    spinner.stop();
+    if (options.json) {
+      output.json(response);
+      return;
+    }
+    if (allowedSourceCidrs.length > 0) {
+      output.success(`Source-IP allowlist set for '${response.name ?? id}': ${allowedSourceCidrs.join(', ')}`);
+    } else {
+      output.success(`Source-IP allowlist cleared for '${response.name ?? id}' (no restriction)`);
+    }
+  } catch (err) {
+    spinner.fail('Failed to set KMIP client source-IP allowlist');
     output.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
