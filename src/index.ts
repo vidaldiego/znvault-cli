@@ -112,6 +112,16 @@ program
       return;
     }
 
+    // Skip profile indicator for `ssh forward --print-port` — its stdout is a
+    // machine channel (JSON contract line) consumed by the deploy tunnel manager.
+    if (
+      cmdPath === 'forward' &&
+      parentName === 'ssh' &&
+      actionCommand.opts().printPort === true
+    ) {
+      return;
+    }
+
     // Show current profile indicator
     const config = getConfig();
     profileIndicator(getActiveProfileName(), config.url);
