@@ -15,6 +15,7 @@ import * as net from 'node:net';
 import * as output from '../../lib/output.js';
 import type { ConnectOptions } from './types.js';
 import { ensureSignedSshBase } from './connect.js';
+import type { SignedSshBase } from './connect.js';
 
 /**
  * Ask the OS for a free TCP port by binding :0 then releasing it.
@@ -36,4 +37,30 @@ export function pickFreePort(): Promise<number> {
       }
     });
   });
+}
+
+/** A local-forward specification: bind 127.0.0.1:lport → rhost:rport over the ssh channel. */
+export interface ForwardSpec {
+  bindHost: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+}
+
+/**
+ * Build the `ssh -N -L ...` argv from a signed base and a forward spec.
+ * Uses BatchMode + ConnectTimeout to match the codebase idiom (haproxy.ts).
+ */
+export function buildForwardArgs(
+  base: SignedSshBase,
+  spec: ForwardSpec,
+  connectTimeoutSeconds: number
+): string[] {
+  const args = [...base.baseSshArgs];
+  args.push('-o', 'BatchMode=yes');
+  args.push('-o', `ConnectTimeout=${connectTimeoutSeconds}`);
+  args.push('-N');
+  args.push('-L', `${spec.bindHost}:${spec.localPort}:${spec.remoteHost}:${spec.remotePort}`);
+  args.push(base.user ? `${base.user}@${base.host}` : base.host);
+  return args;
 }

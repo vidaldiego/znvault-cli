@@ -82,3 +82,33 @@ describe('pickFreePort', () => {
     expect(p).toBeLessThan(65536);
   });
 });
+
+describe('buildForwardArgs', () => {
+  it('builds ssh -N -L argv from a signed base', async () => {
+    const { buildForwardArgs } = await import('../../src/commands/ssh/forward.js');
+    const args = buildForwardArgs(
+      { keyPath: '/k', certPath: '/c', user: 'sysadmin', host: '1.2.3.4', port: '22',
+        baseSshArgs: ['-i', '/k', '-o', 'CertificateFile=/c'] },
+      { bindHost: '127.0.0.1', localPort: 54321, remoteHost: '127.0.0.1', remotePort: 9100 },
+      8
+    );
+    expect(args).toEqual([
+      '-i', '/k', '-o', 'CertificateFile=/c',
+      '-o', 'BatchMode=yes',
+      '-o', 'ConnectTimeout=8',
+      '-N',
+      '-L', '127.0.0.1:54321:127.0.0.1:9100',
+      'sysadmin@1.2.3.4',
+    ]);
+  });
+
+  it('omits user@ when no user is set', async () => {
+    const { buildForwardArgs } = await import('../../src/commands/ssh/forward.js');
+    const args = buildForwardArgs(
+      { keyPath: '/k', certPath: '/c', user: undefined, host: 'h', port: '22', baseSshArgs: ['-i', '/k'] },
+      { bindHost: '127.0.0.1', localPort: 1, remoteHost: '127.0.0.1', remotePort: 9100 },
+      10
+    );
+    expect(args[args.length - 1]).toBe('h');
+  });
+});
