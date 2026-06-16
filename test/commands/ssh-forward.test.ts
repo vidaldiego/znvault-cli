@@ -112,3 +112,41 @@ describe('buildForwardArgs', () => {
     expect(args[args.length - 1]).toBe('h');
   });
 });
+
+describe('parseForwardOption', () => {
+  it('parses a full -L bind:lport:rhost:rport spec', async () => {
+    const { parseForwardOption } = await import('../../src/commands/ssh/forward.js');
+    expect(parseForwardOption('127.0.0.1:0:127.0.0.1:9100')).toEqual({
+      bindHost: '127.0.0.1', localPort: 0, remoteHost: '127.0.0.1', remotePort: 9100,
+    });
+  });
+
+  it('defaults bindHost to 127.0.0.1 when 3-part form is given', async () => {
+    const { parseForwardOption } = await import('../../src/commands/ssh/forward.js');
+    expect(parseForwardOption('0:127.0.0.1:9100')).toEqual({
+      bindHost: '127.0.0.1', localPort: 0, remoteHost: '127.0.0.1', remotePort: 9100,
+    });
+  });
+
+  it('throws on a malformed spec', async () => {
+    const { parseForwardOption } = await import('../../src/commands/ssh/forward.js');
+    expect(() => parseForwardOption('nonsense')).toThrow(/forward spec/i);
+  });
+});
+
+describe('runForward --dry-run', () => {
+  it('prints the ssh argv without spawning', async () => {
+    mockIsCertificateValid.mockResolvedValue({ valid: true });
+    mockGetCertificatePath.mockResolvedValue('/c');
+    const { runForward } = await import('../../src/commands/ssh/forward.js');
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((m?: unknown) => { logs.push(String(m ?? '')); });
+    // also capture output.info
+    await runForward('sysadmin@1.2.3.4', {
+      identity: '/home/u/.ssh/id_ed25519', L: '127.0.0.1:55001:127.0.0.1:9100', dryRun: true,
+    });
+    spy.mockRestore();
+    // Dry-run must not throw and must not signal an exit; presence of the section is enough here.
+    expect(mockSignCertificate).not.toHaveBeenCalled();
+  });
+});

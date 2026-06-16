@@ -26,6 +26,7 @@ import { registerMappingCommands } from './mapping.js';
 import { registerServerGroupCommands } from './server-group.js';
 import { registerConfigCommands } from './config.js';
 import { registerConnectCommand, executeConnect } from './connect.js';
+import { registerForwardCommand } from './forward.js';
 import { registerBookmarkCommands, resolveBookmark } from './bookmark.js';
 import { registerSCPCommand } from './scp.js';
 import { registerHostsCommand } from './hosts.js';
@@ -40,7 +41,7 @@ import {
 // Known subcommands that should NOT be treated as destinations
 const SSH_SUBCOMMANDS = new Set([
   'ca', 'cert', 'mapping', 'server-group', 'config',
-  'bookmark', 'bm', 'hosts', 'scp', 'connect', 'exec',
+  'bookmark', 'bm', 'hosts', 'scp', 'connect', 'exec', 'forward',
   'help', '--help', '-h',
 ]);
 
@@ -138,6 +139,7 @@ export function registerSSHCommands(parent: Command, opts?: RegisterOptions): vo
     registerHostsCommand(ssh);
     registerSCPCommand(ssh);
     registerConnectCommand(ssh);
+    registerForwardCommand(ssh);
     registerExecCommand(ssh);
   });
 }
