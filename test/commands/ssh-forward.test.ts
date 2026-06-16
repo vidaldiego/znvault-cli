@@ -58,4 +58,17 @@ describe('ensureSignedSshBase', () => {
     expect(base.baseSshArgs).toContain('-p');
     expect(base.baseSshArgs).toContain('2222');
   });
+
+  it('re-signs when forceSign is set even if the cert is valid', async () => {
+    mockIsCertificateValid.mockResolvedValue({ valid: true });
+    mockSignCertificate.mockResolvedValue(undefined);
+    await ensureSignedSshBase('sysadmin@1.2.3.4', { identity: '/home/u/.ssh/id_ed25519', forceSign: true });
+    expect(mockSignCertificate).toHaveBeenCalledOnce();
+  });
+
+  it('throws when no SSH key can be resolved', async () => {
+    mockIsCertificateValid.mockResolvedValue({ valid: true });
+    mockGetDefaultKeyPath.mockResolvedValue(null);
+    await expect(ensureSignedSshBase('sysadmin@1.2.3.4', {})).rejects.toThrow(/No SSH key/i);
+  });
 });
