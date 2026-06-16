@@ -72,3 +72,13 @@ describe('ensureSignedSshBase', () => {
     await expect(ensureSignedSshBase('sysadmin@1.2.3.4', {})).rejects.toThrow(/No SSH key/i);
   });
 });
+
+describe('pickFreePort', () => {
+  it('returns a usable TCP port number', async () => {
+    const { pickFreePort } = await import('../../src/commands/ssh/forward.js');
+    const p = await pickFreePort();
+    expect(typeof p).toBe('number');
+    expect(p).toBeGreaterThan(0);
+    expect(p).toBeLessThan(65536);
+  });
+});
