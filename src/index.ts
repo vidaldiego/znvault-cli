@@ -69,6 +69,12 @@ const program = new Command();
 program
   .name('znvault')
   .description('ZnVault Administration CLI')
+  // Enable positional options on the root program so that options appearing after
+  // a subcommand name are parsed relative to position. Commander requires this on
+  // ancestor commands for nested positional parsing to reach grandchild commands
+  // (e.g. `znvault ssh connect --dry-run`), where the `ssh` parent also declares
+  // its own options for the `ssh user@host` shortcut. See src/commands/ssh/index.ts.
+  .enablePositionalOptions()
   .version(getVersion())
   .option('--url <url>', 'Vault server URL')
   .option('--insecure', 'Skip TLS certificate verification')

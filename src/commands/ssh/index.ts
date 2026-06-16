@@ -91,6 +91,12 @@ export function registerSSHCommands(parent: Command, opts?: RegisterOptions): vo
   const ssh = parent
     .command('ssh')
     .description('SSH CA management and quick connect (znvault ssh user@host)')
+    // Parse options relative to position: options that appear AFTER a subcommand
+    // name (e.g. `ssh connect --dry-run ...`) are handed to the subcommand rather
+    // than being swallowed by this parent (which also declares --dry-run/--ttl/-i
+    // for the `ssh user@host` shortcut). Without this, Commander attributes those
+    // options to the parent and the subcommand's action sees them as undefined.
+    .enablePositionalOptions()
     .argument('[destination]', 'Host to connect to (user@host or bookmark name)')
     .argument('[command...]', 'Remote command to execute')
     .option('-i, --identity <file>', 'Path to SSH private key')
