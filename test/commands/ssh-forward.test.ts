@@ -1,5 +1,6 @@
 // Path: test/commands/ssh-forward.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the helpers that hit the vault / filesystem
 const mockGetDefaultKeyPath = vi.fn();
@@ -22,6 +23,45 @@ vi.mock('../../src/commands/ssh/bookmark.js', () => ({
 vi.mock('fs', () => ({
   existsSync: () => true,
 }));
+
+// Mock output so we can capture the structured output calls (output.info etc.)
+// instead of asserting on raw console.log. forward.ts and connect.ts both do
+// `import * as output from '../../lib/output.js'`, so every function they touch
+// (info/success/error/section/keyValue) must be present here.
+const mockOutputInfo = vi.fn();
+const mockOutputSuccess = vi.fn();
+const mockOutputError = vi.fn();
+const mockOutputSection = vi.fn();
+const mockOutputKeyValue = vi.fn();
+vi.mock('../../src/lib/output.js', () => ({
+  info: (...a: unknown[]) => mockOutputInfo(...a),
+  success: (...a: unknown[]) => mockOutputSuccess(...a),
+  error: (...a: unknown[]) => mockOutputError(...a),
+  section: (...a: unknown[]) => mockOutputSection(...a),
+  keyValue: (...a: unknown[]) => mockOutputKeyValue(...a),
+}));
+
+// Mock child_process so --print-port never spawns a real ssh. forward.ts uses
+// `await import('child_process')` (the bare specifier), so that's what we mock.
+// The fake child emits NOTHING ('close'/'error' never fire), so runForward
+// proceeds straight to the print step and then holds.
+const mockSpawn = vi.fn();
+vi.mock('child_process', () => ({
+  spawn: (...a: unknown[]) => mockSpawn(...a),
+}));
+
+/** A minimal child_process.ChildProcess stand-in for spawn(). */
+interface FakeChild extends EventEmitter {
+  pid: number;
+  kill: ReturnType<typeof vi.fn>;
+}
+
+function makeFakeChild(pid: number): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.pid = pid;
+  child.kill = vi.fn();
+  return child;
+}
 
 const { ensureSignedSshBase } = await import('../../src/commands/ssh/connect.js');
 
@@ -135,18 +175,93 @@ describe('parseForwardOption', () => {
 });
 
 describe('runForward --dry-run', () => {
-  it('prints the ssh argv without spawning', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('emits the would-execute ssh argv without spawning or signing', async () => {
     mockIsCertificateValid.mockResolvedValue({ valid: true });
     mockGetCertificatePath.mockResolvedValue('/c');
     const { runForward } = await import('../../src/commands/ssh/forward.js');
-    const logs: string[] = [];
-    const spy = vi.spyOn(console, 'log').mockImplementation((m?: unknown) => { logs.push(String(m ?? '')); });
-    // also capture output.info
+
     await runForward('sysadmin@1.2.3.4', {
       identity: '/home/u/.ssh/id_ed25519', L: '127.0.0.1:55001:127.0.0.1:9100', dryRun: true,
     });
-    spy.mockRestore();
-    // Dry-run must not throw and must not signal an exit; presence of the section is enough here.
+
+    // Dry-run must not sign and must not spawn.
     expect(mockSignCertificate).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
+
+    // The dry-run must actually report the ssh command it would run. That line
+    // goes through output.info (not raw console.log), so assert on the captured
+    // output.info calls.
+    const infoMessages = mockOutputInfo.mock.calls.map((c) => String(c[0]));
+    const wouldExecute = infoMessages.find((m) => m.startsWith('Would execute: ssh'));
+    expect(wouldExecute).toBeDefined();
+    expect(wouldExecute).toContain('-N');
+    expect(wouldExecute).toContain('-L 127.0.0.1:55001:127.0.0.1:9100');
+    expect(wouldExecute).toContain('sysadmin@1.2.3.4');
+  });
+});
+
+describe('runForward --print-port', () => {
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+  const sigListeners = { SIGINT: 0, SIGTERM: 0 };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sigListeners.SIGINT = process.listenerCount('SIGINT');
+    sigListeners.SIGTERM = process.listenerCount('SIGTERM');
+    // Guard the runner: a stray process.exit (e.g. from an unexpected child
+    // event) must not kill the test process. No throw — runForward keeps going.
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((): never => undefined as never));
+    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    exitSpy.mockRestore();
+    // Drop the SIGINT/SIGTERM handlers runForward registered so they don't leak
+    // across tests or fire on real signals during the run.
+    const trim = (sig: 'SIGINT' | 'SIGTERM'): void => {
+      const listeners = process.listeners(sig);
+      for (let i = sigListeners[sig]; i < listeners.length; i++) {
+        process.removeListener(sig, listeners[i] as (...args: unknown[]) => void);
+      }
+    };
+    trim('SIGINT');
+    trim('SIGTERM');
+  });
+
+  it('writes exactly one JSON contract line {localPort,pid,forwardUp} to stdout', async () => {
+    mockIsCertificateValid.mockResolvedValue({ valid: true });
+    mockGetCertificatePath.mockResolvedValue('/c');
+    // -L pins lport=55005, so pickFreePort is NOT used and localPort is deterministic.
+    const fakeChild = makeFakeChild(4242);
+    mockSpawn.mockReturnValue(fakeChild);
+
+    const { runForward } = await import('../../src/commands/ssh/forward.js');
+
+    // runForward holds in print mode (never resolves), so don't await it. Kick
+    // it off, then wait past the internal 300ms establish delay before asserting.
+    void runForward('sysadmin@1.2.3.4', {
+      identity: '/home/u/.ssh/id_ed25519', L: '127.0.0.1:55005:127.0.0.1:9100', printPort: true,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+
+    expect(mockSpawn).toHaveBeenCalledOnce();
+    expect(mockSpawn).toHaveBeenCalledWith('ssh', expect.any(Array), expect.any(Object));
+
+    // Exactly one stdout write, and it must be the JSON contract line a separate
+    // plugin parses. forwardUp + the pinned port + the fake child's pid.
+    const lines = stdoutSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines).toHaveLength(1);
+    expect(lines[0].endsWith('\n')).toBe(true);
+    const parsed: unknown = JSON.parse(lines[0]);
+    expect(parsed).toEqual({ localPort: 55005, pid: 4242, forwardUp: true });
+
+    // Never exited; the held tunnel is still "running" from runForward's view.
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });
