@@ -18,6 +18,7 @@ import {
   triggerPluginUpdate,
   waitForAgentRestart,
 } from '../helpers.js';
+import { withAgentConnection } from '../../../lib/ssh-tunnel.js';
 
 interface AgentUpdateInfo {
   agent: RemoteAgent;
@@ -38,6 +39,7 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
     .option('--dry-run', 'Show what would be updated without making changes')
     .option('-y, --yes', 'Skip confirmation')
     .option('--json', 'Output as JSON')
+    .option('--no-tunnel', 'Connect directly to each host instead of via an SSH-CA tunnel')
     .action(async (options: UpdateAllOptions) => {
       const spinner = output.spinner('Fetching online agents...').start();
 
@@ -81,12 +83,15 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
         const checkSpinner = output.spinner(`Checking ${reachableAgents.length} agent(s)...`).start();
         const agentInfo: AgentUpdateInfo[] = [];
 
+        const useTunnel = options.tunnel !== false;
         for (const { agent, ip } of reachableAgents) {
 
           try {
             if (options.plugins) {
-              // Check plugin versions
-              const pluginInfo = await fetchPluginVersions(ip, DEFAULT_AGENT_PORT);
+              // Check plugin versions (through an SSH-CA tunnel by default).
+              const pluginInfo = await withAgentConnection(ip, DEFAULT_AGENT_PORT, { tunnel: useTunnel }, (h, p) =>
+                fetchPluginVersions(h, p),
+              );
               const updatesNeeded = pluginInfo.versions.filter(v => v.updateAvailable).length;
               agentInfo.push({
                 agent,
@@ -97,8 +102,10 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
                 pluginUpdates: updatesNeeded,
               });
             } else {
-              // Check agent version
-              const versionInfo = await fetchAgentVersion(ip, DEFAULT_AGENT_PORT);
+              // Check agent version (through an SSH-CA tunnel by default).
+              const versionInfo = await withAgentConnection(ip, DEFAULT_AGENT_PORT, { tunnel: useTunnel }, (h, p) =>
+                fetchAgentVersion(h, p),
+              );
               agentInfo.push({
                 agent,
                 ip,
@@ -209,7 +216,9 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
 
           try {
             if (options.plugins) {
-              const response = await triggerPluginUpdate(info.ip, DEFAULT_AGENT_PORT);
+              const response = await withAgentConnection(info.ip, DEFAULT_AGENT_PORT, { tunnel: useTunnel }, (h, p) =>
+                triggerPluginUpdate(h, p),
+              );
               results.push({
                 hostname: info.agent.hostname,
                 success: response.updated > 0,
@@ -219,7 +228,9 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
                 console.log(`\x1b[32m✓\x1b[0m Updated ${response.updated} plugin(s)`);
               }
             } else {
-              const response = await triggerAgentUpdate(info.ip, DEFAULT_AGENT_PORT);
+              const response = await withAgentConnection(info.ip, DEFAULT_AGENT_PORT, { tunnel: useTunnel }, (h, p) =>
+                triggerAgentUpdate(h, p),
+              );
               results.push({
                 hostname: info.agent.hostname,
                 success: response.success,

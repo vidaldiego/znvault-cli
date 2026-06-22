@@ -9,12 +9,14 @@ import type { Command } from 'commander';
 import * as output from '../../../lib/output.js';
 import type { DirectCommandOptions } from '../types.js';
 import { resolveHostPort, fetchAgentHealth, formatUptime } from '../helpers.js';
+import { withAgentConnection } from '../../../lib/ssh-tunnel.js';
 
 export function registerPingCommand(parentCmd: Command): void {
   parentCmd
     .command('ping [hostPort]')
     .description('Check agent health directly via HTTP (format: host:port or host, or select from list)')
     .option('--json', 'Output as JSON')
+    .option('--no-tunnel', 'Connect directly to host:port instead of via an SSH-CA tunnel')
     .action(async (hostPort: string | undefined, options: DirectCommandOptions) => {
       const resolved = await resolveHostPort(hostPort);
       if (!resolved) {
@@ -24,7 +26,9 @@ export function registerPingCommand(parentCmd: Command): void {
       const spinner = output.spinner(`Checking agent at ${host}:${port}...`).start();
 
       try {
-        const health = await fetchAgentHealth(host, port);
+        const health = await withAgentConnection(host, port, { tunnel: options.tunnel !== false }, (h, p) =>
+          fetchAgentHealth(h, p),
+        );
         spinner.stop();
 
         if (options.json) {

@@ -230,15 +230,21 @@ export interface UpdateAllOptions {
   dryRun?: boolean;
   yes?: boolean;
   json?: boolean;
+  /** Commander sets `tunnel: false` when `--no-tunnel` is passed; default true. */
+  tunnel?: boolean;
 }
 
 export interface DirectCommandOptions {
   json?: boolean;
+  /** Commander sets `tunnel: false` when `--no-tunnel` is passed; default true. */
+  tunnel?: boolean;
 }
 
 export interface UpdateCommandOptions {
   yes?: boolean;
   json?: boolean;
+  /** Commander sets `tunnel: false` when `--no-tunnel` is passed; default true. */
+  tunnel?: boolean;
 }
 
 // ============================================================================

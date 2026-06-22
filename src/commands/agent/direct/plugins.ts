@@ -9,12 +9,14 @@ import type { Command } from 'commander';
 import * as output from '../../../lib/output.js';
 import type { DirectCommandOptions } from '../types.js';
 import { resolveHostPort, fetchPluginVersions } from '../helpers.js';
+import { withAgentConnection } from '../../../lib/ssh-tunnel.js';
 
 export function registerPluginsCommand(parentCmd: Command): void {
   parentCmd
     .command('plugins [hostPort]')
     .description('Check plugin versions on an agent (format: host:port or host, or select from list)')
     .option('--json', 'Output as JSON')
+    .option('--no-tunnel', 'Connect directly to host:port instead of via an SSH-CA tunnel')
     .action(async (hostPort: string | undefined, options: DirectCommandOptions) => {
       const resolved = await resolveHostPort(hostPort);
       if (!resolved) {
@@ -24,7 +26,9 @@ export function registerPluginsCommand(parentCmd: Command): void {
       const spinner = output.spinner(`Checking plugins at ${host}:${port}...`).start();
 
       try {
-        const response = await fetchPluginVersions(host, port);
+        const response = await withAgentConnection(host, port, { tunnel: options.tunnel !== false }, (h, p) =>
+          fetchPluginVersions(h, p),
+        );
         spinner.stop();
 
         if (options.json) {

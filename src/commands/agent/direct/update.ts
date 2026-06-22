@@ -15,6 +15,7 @@ import {
   confirmAction,
   waitForAgentRestart,
 } from '../helpers.js';
+import { withAgentConnection } from '../../../lib/ssh-tunnel.js';
 
 export function registerUpdateCommand(parentCmd: Command): void {
   parentCmd
@@ -22,6 +23,7 @@ export function registerUpdateCommand(parentCmd: Command): void {
     .description('Trigger agent self-update (format: host:port or host, or select from list)')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('--json', 'Output as JSON')
+    .option('--no-tunnel', 'Connect directly to host:port instead of via an SSH-CA tunnel')
     .action(async (hostPort: string | undefined, options: UpdateCommandOptions) => {
       const resolved = await resolveHostPort(hostPort);
       if (!resolved) {
@@ -29,81 +31,89 @@ export function registerUpdateCommand(parentCmd: Command): void {
       }
       const { host, port } = resolved;
 
-      // First check what version is available
-      const checkSpinner = output.spinner(`Checking agent version at ${host}:${port}...`).start();
-
-      let versionInfo;
+      // All HTTP calls (version check → trigger → wait-for-restart) share ONE
+      // SSH-CA tunnel so the agent's loopback-only :9100 is reachable throughout.
       try {
-        versionInfo = await fetchAgentVersion(host, port);
-        checkSpinner.stop();
+        await withAgentConnection(host, port, { tunnel: options.tunnel !== false }, async (h, p) => {
+          // First check what version is available.
+          const checkSpinner = output.spinner(`Checking agent version at ${host}:${port}...`).start();
+          let versionInfo;
+          try {
+            versionInfo = await fetchAgentVersion(h, p);
+            checkSpinner.stop();
+          } catch (err) {
+            checkSpinner.fail(`Failed to check agent version at ${host}:${port}`);
+            output.error(err instanceof Error ? err.message : String(err));
+            process.exit(1);
+          }
+
+          if (!versionInfo.updateAvailable) {
+            if (options.json) {
+              output.json({ updated: false, message: 'Agent is already at latest version', current: versionInfo.current });
+            } else {
+              console.log(`\x1b[32m✓\x1b[0m Agent is already at latest version (v${versionInfo.current})`);
+            }
+            return;
+          }
+
+          if (!versionInfo.autoUpdateEnabled) {
+            if (options.json) {
+              output.json({ updated: false, message: 'Auto-update is disabled on this agent', current: versionInfo.current });
+            } else {
+              console.log(`\x1b[33m⚠\x1b[0m Auto-update is disabled on this agent`);
+              console.log('  Enable with AUTO_UPDATE=true environment variable');
+            }
+            return;
+          }
+
+          // Show what will be updated.
+          if (!options.json) {
+            console.log();
+            console.log('Agent update:');
+            console.log(`  ${versionInfo.current} → \x1b[32m${versionInfo.latest}\x1b[0m`);
+            console.log();
+          }
+
+          // Confirm.
+          if (!options.yes && !options.json) {
+            const confirmed = await confirmAction('Proceed with update? Agent will restart.');
+            if (!confirmed) {
+              console.log('Cancelled');
+              return;
+            }
+          }
+
+          // Trigger update.
+          const updateSpinner = output.spinner('Updating agent...').start();
+          try {
+            const response = await triggerAgentUpdate(h, p);
+            updateSpinner.stop();
+
+            if (options.json) {
+              output.json(response);
+              return;
+            }
+
+            if (!response.success) {
+              console.log(`\x1b[31m✗\x1b[0m Update failed: ${response.message}`);
+              process.exit(1);
+            }
+
+            console.log(`\x1b[32m✓\x1b[0m ${response.message}`);
+            console.log(`  ${response.previousVersion} → ${response.newVersion}`);
+
+            if (response.willRestart) {
+              console.log();
+              // Poll the agent through the same connection until it answers again.
+              await waitForAgentRestart(h, p);
+            }
+          } catch (err) {
+            updateSpinner.fail('Failed to update agent');
+            output.error(err instanceof Error ? err.message : String(err));
+            process.exit(1);
+          }
+        });
       } catch (err) {
-        checkSpinner.fail(`Failed to check agent version at ${host}:${port}`);
-        output.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
-      }
-
-      if (!versionInfo.updateAvailable) {
-        if (options.json) {
-          output.json({ updated: false, message: 'Agent is already at latest version', current: versionInfo.current });
-        } else {
-          console.log(`\x1b[32m✓\x1b[0m Agent is already at latest version (v${versionInfo.current})`);
-        }
-        return;
-      }
-
-      if (!versionInfo.autoUpdateEnabled) {
-        if (options.json) {
-          output.json({ updated: false, message: 'Auto-update is disabled on this agent', current: versionInfo.current });
-        } else {
-          console.log(`\x1b[33m⚠\x1b[0m Auto-update is disabled on this agent`);
-          console.log('  Enable with AUTO_UPDATE=true environment variable');
-        }
-        return;
-      }
-
-      // Show what will be updated
-      if (!options.json) {
-        console.log();
-        console.log('Agent update:');
-        console.log(`  ${versionInfo.current} → \x1b[32m${versionInfo.latest}\x1b[0m`);
-        console.log();
-      }
-
-      // Confirm
-      if (!options.yes && !options.json) {
-        const confirmed = await confirmAction('Proceed with update? Agent will restart.');
-        if (!confirmed) {
-          console.log('Cancelled');
-          return;
-        }
-      }
-
-      // Trigger update
-      const updateSpinner = output.spinner('Updating agent...').start();
-
-      try {
-        const response = await triggerAgentUpdate(host, port);
-        updateSpinner.stop();
-
-        if (options.json) {
-          output.json(response);
-          return;
-        }
-
-        if (!response.success) {
-          console.log(`\x1b[31m✗\x1b[0m Update failed: ${response.message}`);
-          process.exit(1);
-        }
-
-        console.log(`\x1b[32m✓\x1b[0m ${response.message}`);
-        console.log(`  ${response.previousVersion} → ${response.newVersion}`);
-
-        if (response.willRestart) {
-          console.log();
-          await waitForAgentRestart(host, port);
-        }
-      } catch (err) {
-        updateSpinner.fail('Failed to update agent');
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
       }

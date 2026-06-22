@@ -166,6 +166,9 @@ export async function triggerPluginUpdate(host: string, port: number): Promise<P
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    // A JSON content-type with an empty body makes the agent's Fastify reject
+    // with FST_ERR_CTP_EMPTY_JSON_BODY (HTTP 400). Send an explicit body.
+    body: '{}',
     signal: AbortSignal.timeout(AGENT_PLUGIN_UPDATE_TIMEOUT_MS),
   });
 
@@ -197,11 +200,15 @@ export async function fetchAgentVersion(host: string, port: number): Promise<Age
 /**
  * Trigger agent self-update via direct HTTP
  */
-export async function triggerAgentUpdate(host: string, port: number): Promise<AgentUpdateResponse> {
+export async function triggerAgentUpdate(host: string, port: number, force = false): Promise<AgentUpdateResponse> {
   const url = `http://${host}:${port}/agent/update`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    // A JSON content-type with an empty body makes the agent's Fastify reject
+    // with FST_ERR_CTP_EMPTY_JSON_BODY (HTTP 400). The agent's handler reads an
+    // optional { force } — send it explicitly.
+    body: JSON.stringify({ force }),
     signal: AbortSignal.timeout(AGENT_UPDATE_TIMEOUT_MS),
   });
 
