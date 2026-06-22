@@ -4,6 +4,27 @@
 import type { HostConfig, HostStatus, HostListItem } from './types.js';
 
 /**
+ * Produce a clarifying hint for host-command failures that are really a
+ * profile/permission mismatch rather than a missing resource.
+ *
+ * Host configs are tenant-scoped (`/v1/hosts/*`, JWT tenant from the token). A
+ * superadmin profile has no tenant context, so these routes return 404 "Not
+ * Found" — which reads as "host doesn't exist" but actually means "this profile
+ * can't see tenant host configs". Returns a hint string for 403/404, else ''.
+ */
+export function hostPermissionHint(err: unknown): string {
+  const statusCode = (err as { statusCode?: number } | null)?.statusCode;
+  if (statusCode === 404 || statusCode === 403) {
+    return (
+      'Note: host configs are tenant-scoped. If you are on a superadmin profile, ' +
+      'it has no tenant context — switch to a tenant profile (e.g. `--profile <tenant>`) ' +
+      'to manage host configs.'
+    );
+  }
+  return '';
+}
+
+/**
  * ANSI color codes
  */
 const COLORS = {

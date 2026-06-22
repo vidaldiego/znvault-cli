@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { GetOptions, HostConfig, OutdatedAgentsResponse } from './types.js';
-import { printHostDetails, formatRelativeTime } from './helpers.js';
+import { printHostDetails, formatRelativeTime, hostPermissionHint } from './helpers.js';
 
 /**
  * Register the get command
@@ -35,6 +35,8 @@ export function registerGetCommand(parentCmd: Command): void {
       } catch (err) {
         spinner.fail('Failed to get host configuration');
         output.error(err instanceof Error ? err.message : String(err));
+        const hint = hostPermissionHint(err);
+        if (hint) output.info(hint);
         process.exit(1);
       } finally {
         await mode.closeLocalClient();

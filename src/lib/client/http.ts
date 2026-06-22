@@ -271,9 +271,13 @@ export class HttpClient {
               }
               if (isApiErrorLike(parsed)) {
                 const errorMessage = parsed.message ?? parsed.error ?? `Request failed with status ${statusCode}`;
-                reject(new Error(errorMessage));
+                const e = new Error(errorMessage);
+                (e as Error & { statusCode?: number }).statusCode = statusCode;
+                reject(e);
               } else {
-                reject(new Error(`HTTP ${statusCode}: ${JSON.stringify(parsed).slice(0, 200)}`));
+                const e = new Error(`HTTP ${statusCode}: ${JSON.stringify(parsed).slice(0, 200)}`);
+                (e as Error & { statusCode?: number }).statusCode = statusCode;
+                reject(e);
               }
             } else {
               // Validate response shape before returning

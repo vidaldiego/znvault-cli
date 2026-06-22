@@ -10,7 +10,7 @@ import type { Command } from 'commander';
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { ConfigOptions, HostConfig } from './types.js';
-import { formatConfigYaml } from './helpers.js';
+import { formatConfigYaml, hostPermissionHint } from './helpers.js';
 
 /**
  * Open editor and return the edited content
@@ -161,6 +161,8 @@ export function registerConfigCommand(parentCmd: Command): void {
       } catch (err) {
         spinner.fail('Failed to get host configuration');
         output.error(err instanceof Error ? err.message : String(err));
+        const hint = hostPermissionHint(err);
+        if (hint) output.info(hint);
         process.exit(1);
       } finally {
         await mode.closeLocalClient();
