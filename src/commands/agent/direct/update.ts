@@ -17,6 +17,13 @@ import {
 } from '../helpers.js';
 import { withAgentConnection } from '../../../lib/ssh-tunnel.js';
 
+/**
+ * Thrown inside the withAgentConnection callback when the failure has ALREADY
+ * been reported to the user. It lets the callback unwind (running the tunnel
+ * teardown in `finally`) without the outer catch logging the error twice.
+ */
+class AlreadyReportedError extends Error {}
+
 export function registerUpdateCommand(parentCmd: Command): void {
   parentCmd
     .command('update [hostPort]')
@@ -44,7 +51,8 @@ export function registerUpdateCommand(parentCmd: Command): void {
           } catch (err) {
             checkSpinner.fail(`Failed to check agent version at ${host}:${port}`);
             output.error(err instanceof Error ? err.message : String(err));
-            process.exit(1);
+            // Already reported — unwind so the tunnel tears down, then exit.
+            throw new AlreadyReportedError();
           }
 
           if (!versionInfo.updateAvailable) {
@@ -96,7 +104,7 @@ export function registerUpdateCommand(parentCmd: Command): void {
 
             if (!response.success) {
               console.log(`\x1b[31m✗\x1b[0m Update failed: ${response.message}`);
-              process.exit(1);
+              throw new AlreadyReportedError();
             }
 
             console.log(`\x1b[32m✓\x1b[0m ${response.message}`);
@@ -108,13 +116,18 @@ export function registerUpdateCommand(parentCmd: Command): void {
               await waitForAgentRestart(h, p);
             }
           } catch (err) {
+            if (err instanceof AlreadyReportedError) throw err;
             updateSpinner.fail('Failed to update agent');
             output.error(err instanceof Error ? err.message : String(err));
-            process.exit(1);
+            throw new AlreadyReportedError();
           }
         });
       } catch (err) {
-        output.error(err instanceof Error ? err.message : String(err));
+        // AlreadyReportedError: message printed inside the callback; just exit
+        // (the tunnel has been torn down by withAgentConnection's finally).
+        if (!(err instanceof AlreadyReportedError)) {
+          output.error(err instanceof Error ? err.message : String(err));
+        }
         process.exit(1);
       }
     });

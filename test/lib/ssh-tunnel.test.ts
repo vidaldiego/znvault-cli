@@ -38,6 +38,17 @@ describe('withAgentConnection', () => {
     // Loopback short-circuits the tunnel: original host/port passed through.
     expect(seen).toEqual([{ host: '127.0.0.1', port: 56120 }]);
   });
+
+  it('propagates a throw from fn (so callers can unwind to teardown)', async () => {
+    // On the direct/loopback path there is no tunnel, but the contract is that
+    // a throw inside fn propagates (the tunneling path relies on this to reach
+    // its finally{} teardown). Verify the throw is not swallowed.
+    await expect(
+      withAgentConnection('127.0.0.1', 9100, { tunnel: true }, async () => {
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+  });
 });
 
 describe('agent update triggers send a non-empty JSON body', () => {

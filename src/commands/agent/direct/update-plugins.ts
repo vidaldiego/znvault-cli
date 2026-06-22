@@ -17,6 +17,13 @@ import {
 } from '../helpers.js';
 import { withAgentConnection } from '../../../lib/ssh-tunnel.js';
 
+/**
+ * Thrown inside the withAgentConnection callback when the failure has ALREADY
+ * been reported. Lets the callback unwind (running the tunnel teardown in
+ * `finally`) without the outer catch logging the error twice.
+ */
+class AlreadyReportedError extends Error {}
+
 export function registerUpdatePluginsCommand(parentCmd: Command): void {
   parentCmd
     .command('update-plugins [hostPort]')
@@ -44,7 +51,8 @@ export function registerUpdatePluginsCommand(parentCmd: Command): void {
           } catch (err) {
             checkSpinner.fail(`Failed to check plugins at ${host}:${port}`);
             output.error(err instanceof Error ? err.message : String(err));
-            process.exit(1);
+            // Already reported — unwind so the tunnel tears down, then exit.
+            throw new AlreadyReportedError();
           }
 
           if (!versions.hasUpdates) {
@@ -107,13 +115,18 @@ export function registerUpdatePluginsCommand(parentCmd: Command): void {
               await waitForAgentRestart(h, p);
             }
           } catch (err) {
+            if (err instanceof AlreadyReportedError) throw err;
             updateSpinner.fail('Failed to update plugins');
             output.error(err instanceof Error ? err.message : String(err));
-            process.exit(1);
+            throw new AlreadyReportedError();
           }
         });
       } catch (err) {
-        output.error(err instanceof Error ? err.message : String(err));
+        // AlreadyReportedError: message printed inside the callback; just exit
+        // (the tunnel has been torn down by withAgentConnection's finally).
+        if (!(err instanceof AlreadyReportedError)) {
+          output.error(err instanceof Error ? err.message : String(err));
+        }
         process.exit(1);
       }
     });
