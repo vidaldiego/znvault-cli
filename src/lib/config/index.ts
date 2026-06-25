@@ -46,6 +46,12 @@ export {
   isTokenExpired,
   hasEnvCredentials,
   getEnvCredentials,
+  // refresh-token-race-fix §A.1 additions:
+  decodeRefreshJti,
+  writePendingRefreshMarker,
+  decidePendingRefresh,
+  logPendingRefreshRecovery,
+  type MarkerDecision,
 } from './credentials.js';
 
 // API key

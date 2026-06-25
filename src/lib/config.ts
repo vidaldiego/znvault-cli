@@ -51,6 +51,11 @@ export {
   isTokenExpired,
   hasEnvCredentials,
   getEnvCredentials,
+  decodeRefreshJti,
+  writePendingRefreshMarker,
+  decidePendingRefresh,
+  logPendingRefreshRecovery,
+  type MarkerDecision,
 
   // API key
   hasApiKey,
