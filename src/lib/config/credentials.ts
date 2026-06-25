@@ -12,9 +12,10 @@ import { debug } from '../debug.js';
 /**
  * Store credentials after login/refresh.
  *
- * The whole credentials object is replaced in ONE profile write, so omitting
- * `pendingRefresh` clears any existing marker atomically (design §A.1) — the
- * marker is never cleared in a separate, crash-exposed write.
+ * Whole-object replacement: the entire credentials object is replaced in ONE
+ * profile write. NOTE: callers that spread `...credentials` must explicitly set
+ * `pendingRefresh: undefined` to clear a marker — omission alone does not strip
+ * a spread key.
  */
 export function storeCredentials(credentials: StoredCredentials): void {
   const profileName = getActiveProfileName();

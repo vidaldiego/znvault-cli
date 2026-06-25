@@ -134,6 +134,17 @@ describe('auth commands', () => {
 
       expect(json).toHaveBeenCalled();
     });
+
+    it('labels the access-token expiry as accessTokenExpires, not sessionExpires', async () => {
+      const { json } = await import('../../src/lib/output.js');
+
+      await program.parseAsync(['node', 'test', 'whoami', '--json']);
+
+      expect(json).toHaveBeenCalled();
+      const callArgs = (json as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+      expect(callArgs).toHaveProperty('accessTokenExpires');
+      expect(callArgs).not.toHaveProperty('sessionExpires');
+    });
   });
 
   describe('config', () => {

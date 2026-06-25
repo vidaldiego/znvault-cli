@@ -240,7 +240,8 @@ export function registerAuthCommands(program: Command): void {
         username: credentials.username,
         role: credentials.role,
         tenantId: credentials.tenantId ?? 'None',
-        sessionExpires: new Date(credentials.expiresAt).toLocaleString(),
+        accessTokenExpires: new Date(credentials.expiresAt).toLocaleString(),
+        note: 'Access token auto-refreshes; your login session (refresh token) lasts ~7 days.',
       };
 
       if (options.json) {
