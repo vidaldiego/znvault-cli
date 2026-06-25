@@ -16,13 +16,41 @@ import {
   isTokenExpired,
   getEnvCredentials,
   hasEnvCredentials,
+  writePendingRefreshMarker,
+  decidePendingRefresh,
+  decodeRefreshJti,
+  logPendingRefreshRecovery,
+  getActiveProfileName,
 } from '../config.js';
+import { acquireRefreshLock, computeLockKey } from './refresh-lock.js';
 import * as output from '../output.js';
 import type { RequestOptions, ClientConfig } from './types.js';
-import type { LoginResponse } from '../../types/index.js';
+import type { LoginResponse, StoredCredentials } from '../../types/index.js';
 
 /** Track if insecure warning has been shown (show only once per session) */
 let insecureWarningShown = false;
+
+/**
+ * Terminal: a second consecutive 409 / orphaned past-TTL marker — caller must
+ * `znvault login`; no token is re-presented (design §A.1, finding C1).
+ */
+export class RefreshHardReauthError extends Error {
+  constructor() {
+    super('Refresh in progress on another process or recovery needed; please run: znvault login');
+    this.name = 'RefreshHardReauthError';
+  }
+}
+
+/**
+ * C1: the server returns 409 `refresh_in_progress` on a within-window same-family
+ * race, but `request()` attaches `.statusCode` to the thrown Error and DISCARDS
+ * the body — so detect via `statusCode === 409` (with a message-text fallback).
+ * NB: there is no `.body` on the thrown error; a `.body.error` check would be DEAD.
+ */
+function isConflict(err: unknown): boolean {
+  const e = err as { statusCode?: number; message?: string } | undefined;
+  return e?.statusCode === 409 || (typeof e?.message === 'string' && e.message.includes('refresh_in_progress'));
+}
 
 /**
  * Type guard to check if a value looks like an API error response
@@ -102,6 +130,15 @@ export class HttpClient {
     // Check token validity - if not expired, we're done
     if (!isTokenExpired()) return;
 
+    // §A.1 gate: never start a proactive refresh on a past-TTL marked token.
+    // The marked token must NEVER be presented; trigger a non-revoking hard
+    // re-auth instead and emit the recovery observability event (A3).
+    const decision = decidePendingRefresh();
+    if (decision.action === 'clean-relogin') {
+      logPendingRefreshRecovery(decision.reason);
+      throw new RefreshHardReauthError();
+    }
+
     // Double-check pattern: After confirming token is expired, check again
     // if another caller started a refresh while we were checking
     if (this.refreshPromise) {
@@ -118,26 +155,108 @@ export class HttpClient {
   }
 
   /**
-   * Refresh the access token
+   * Refresh the access token.
+   *
+   * Wraps the refresh in a cross-PROCESS lock (on top of the in-process
+   * `refreshPromise` mutex), re-reads credentials after acquire (so a peer that
+   * already rotated short-circuits the network), performs the TOCTOU
+   * release-and-reacquire when the re-read token rekeys the lock (A1), writes the
+   * §A.1 write-ahead marker with the REAL jti before POSTing, clears it
+   * atomically with the new tokens on success, retries once on a 409 with a
+   * DIFFERENT token, and keeps the marker on an ambiguous failure.
    */
-  async refreshToken(): Promise<void> {
+  async refreshToken(opts?: { skipIfLive?: boolean }): Promise<void> {
+    // `skipIfLive` (default true) lets the proactive path no-op when the token
+    // is already live (a peer rotated in the window since `ensureValidToken`
+    // checked). The 401-replay path passes `false`: there the token is often
+    // still clock-VALID but server-REJECTED (JTI gone after a restart, the
+    // v3.3.0 fix), so it MUST force a real refresh and never short-circuit.
+    const skipIfLive = opts?.skipIfLive ?? true;
     const credentials = getCredentials();
     if (!credentials?.refreshToken) {
       throw new Error('No refresh token available');
     }
+    // Gate: a marked token past TTL must NEVER be presented (design §A.1).
+    const decision = decidePendingRefresh();
+    if (decision.action === 'clean-relogin') {
+      logPendingRefreshRecovery(decision.reason);     // A3 observability
+      throw new RefreshHardReauthError();
+    }
 
-    const response = await this.request<LoginResponse>({
-      method: 'POST',
-      path: '/auth/refresh',
-      body: { refreshToken: credentials.refreshToken },
-      skipAuth: true,
-    });
+    // Entry-level fast path: if the token is already live (e.g. a peer rotated
+    // before we even reached here), there is nothing to refresh — skip the lock
+    // and the network entirely. Disabled for the 401-replay (see above).
+    if (skipIfLive && !isTokenExpired()) {
+      return;
+    }
 
+    const profile = getActiveProfileName();
+    let lockKey = computeLockKey(credentials.refreshToken, profile);
+    let lock = await acquireRefreshLock(lockKey); // null on 5s timeout -> best-effort
+
+    try {
+      // Re-read after acquire: a peer may have rotated while we waited.
+      let fresh = getCredentials();
+      if (skipIfLive && fresh && !isTokenExpired()) {
+        return; // peer rotated to a live token -> nothing to do (skip network)
+      }
+      // TOCTOU reacquire (A1, closes finding C): if the re-read token's HMAC
+      // differs from the key we acquired, we hold the WRONG lock. Release and
+      // reacquire ONCE under the new key before proceeding.
+      if (lock && fresh?.refreshToken) {
+        const reKey = computeLockKey(fresh.refreshToken, profile);
+        if (reKey !== lock.lockKey) {
+          await lock.release();
+          lockKey = reKey;
+          lock = await acquireRefreshLock(lockKey);
+          fresh = getCredentials();
+          if (skipIfLive && fresh && !isTokenExpired()) {
+            return; // peer finished while we re-acquired
+          }
+        }
+      }
+
+      await this.postRefreshWithRetry(fresh ?? credentials, 0);
+    } finally {
+      await lock?.release();
+    }
+  }
+
+  /** One POST; on 409 a single retry with a DIFFERENT token; second 409 is terminal. */
+  private async postRefreshWithRetry(credentials: StoredCredentials, attempt: number): Promise<void> {
+    // Marker stores the REAL jti claim (C2), not a token slice.
+    const presentedJti = decodeRefreshJti(credentials.refreshToken) ?? credentials.refreshToken.slice(0, 16);
+    writePendingRefreshMarker(presentedJti); // write-ahead intent before POST
+    let response: LoginResponse;
+    try {
+      response = await this.request<LoginResponse>({
+        method: 'POST',
+        path: '/auth/refresh',
+        body: { refreshToken: credentials.refreshToken },
+        skipAuth: true,
+      });
+    } catch (err) {
+      if (isConflict(err)) {
+        // 409 refresh_in_progress: at most ONE retry, only with a DIFFERENT token.
+        if (attempt >= 1) throw new RefreshHardReauthError();
+        const reread = getCredentials();
+        if (!reread?.refreshToken || reread.refreshToken === credentials.refreshToken) {
+          // No different token available -> terminal, never re-present the same JTI.
+          throw new RefreshHardReauthError();
+        }
+        await this.postRefreshWithRetry(reread, attempt + 1);
+        return;
+      }
+      // Ambiguous (network/5xx): KEEP the marker, do not clear, do not assume "not rotated".
+      throw err;
+    }
+    // Success: write new tokens AND clear the marker in the SAME write.
     storeCredentials({
       ...credentials,
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       expiresAt: Date.now() + response.expiresIn * 1000,
+      // pendingRefresh intentionally omitted -> cleared atomically
     });
   }
 
@@ -254,8 +373,14 @@ export class HttpClient {
                 !options._retriedAfter401Refresh
               ) {
                 const credentials = getCredentials();
-                if (credentials?.refreshToken) {
-                  this.refreshToken()
+                // §A.1 gate: the 401-replay path is the SECOND refresh entry
+                // point (it bypasses the in-process refreshPromise mutex). It
+                // must also refuse to present a past-TTL marked token.
+                const replayDecision = decidePendingRefresh();
+                if (credentials?.refreshToken && replayDecision.action !== 'clean-relogin') {
+                  // skipIfLive=false: the token is clock-valid but server-rejected
+                  // here (v3.3.0 fix), so force a real refresh — never short-circuit.
+                  this.refreshToken({ skipIfLive: false })
                     .then(() => {
                       // Recurse with the retry flag set, using the
                       // freshly-stored credentials.
@@ -267,6 +392,9 @@ export class HttpClient {
                     .then(resolve)
                     .catch(reject);
                   return;
+                }
+                if (replayDecision.action === 'clean-relogin') {
+                  logPendingRefreshRecovery(replayDecision.reason); // A3 observability
                 }
               }
               if (isApiErrorLike(parsed)) {
