@@ -14,6 +14,14 @@ export interface StoredCredentials {
   username: string;
   role: string;
   tenantId: string | null;
+  /**
+   * Write-ahead crash-recovery marker (design §A.1). Present only while a
+   * refresh POST is in flight or its outcome is unresolved. `presentedJti` is
+   * the real JWT `jti` claim of the in-flight refresh token (decoded, not a
+   * token slice). A marked token is NEVER presented; the marker is cleared
+   * atomically by the next successful credential write (refresh or login).
+   */
+  pendingRefresh?: { presentedJti: string; startedAt: number };
 }
 
 export interface FullConfig extends CLIConfig {

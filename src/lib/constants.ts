@@ -15,6 +15,13 @@ export const DEFAULT_TIMEOUT_MS = 30000;
 /** Token refresh buffer - refresh token this many ms before expiry */
 export const TOKEN_REFRESH_BUFFER_MS = 60000;
 
+/**
+ * Crash-recovery marker TTL. A `pendingRefresh` marker older than this with no
+ * fresh token written triggers a clean re-login (the marked token is never
+ * presented). See refresh-token-race-fix design §A.1.
+ */
+export const PENDING_REFRESH_TTL = 60000;
+
 /** Update check interval in milliseconds (24 hours) */
 export const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
