@@ -35,8 +35,14 @@ export function getLocalHmacKey(): Buffer {
   mkdirSync(dir, { recursive: true });
   const keyPath = join(dir, K_LOCAL_FILE);
   if (existsSync(keyPath)) {
-    cachedKey = readFileSync(keyPath);
-    return cachedKey;
+    const existing = readFileSync(keyPath);
+    // Guard against a truncated/empty/oversized key file (interrupted write,
+    // corruption): a wrong-length key would silently weaken the HMAC keying.
+    // Only accept a key of exactly the expected length; otherwise regenerate.
+    if (existing.length === K_LOCAL_BYTES) {
+      cachedKey = existing;
+      return cachedKey;
+    }
   }
   const key = randomBytes(K_LOCAL_BYTES);
   writeFileSync(keyPath, key, { mode: 0o600 });

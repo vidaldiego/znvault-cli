@@ -43,4 +43,28 @@ describe('refresh-lock key derivation', () => {
     const { computeLockKey } = await import('../../src/lib/client/refresh-lock.js');
     expect(computeLockKey(undefined, 'prod')).toBe('profile:prod');
   });
+
+  it('regenerates K_local if the on-disk key is not exactly 32 bytes', async () => {
+    const { getLocalHmacKey } = await import('../../src/lib/client/refresh-lock.js');
+    const fs = await import('node:fs');
+    const keyPath = join(configDir, 'lock-hmac.key');
+
+    // Write a deliberately corrupt key file (truncated to 5 bytes)
+    fs.writeFileSync(keyPath, Buffer.alloc(5), { mode: 0o600 });
+
+    // Reset modules so the cache is cleared and the read path runs
+    vi.resetModules();
+
+    // Re-import and call getLocalHmacKey — should detect the truncated file
+    // and regenerate it
+    const { getLocalHmacKey: refetch } = await import('../../src/lib/client/refresh-lock.js');
+    const k = refetch();
+
+    // Assert the returned buffer is exactly 32 bytes
+    expect(k.length).toBe(32);
+
+    // Assert the on-disk file is also exactly 32 bytes (regenerated)
+    const onDisk = fs.readFileSync(keyPath);
+    expect(onDisk.length).toBe(32);
+  });
 });
