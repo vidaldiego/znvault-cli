@@ -21,6 +21,7 @@ import {
   decodeRefreshJti,
   logPendingRefreshRecovery,
   getActiveProfileName,
+  invalidateProfileCache,
 } from '../config.js';
 import { acquireRefreshLock, computeLockKey } from './refresh-lock.js';
 import * as output from '../output.js';
@@ -195,6 +196,10 @@ export class HttpClient {
     let lock = await acquireRefreshLock(lockKey); // null on 5s timeout -> best-effort
 
     try {
+      // The 5s profile cache from the pre-acquire getCredentials() can mask a peer's
+      // rotation that happened DURING the lock wait. Invalidate so the re-reads below
+      // hit disk — that's the whole point of re-reading after acquiring the lock.
+      invalidateProfileCache(profile);
       // Re-read after acquire: a peer may have rotated while we waited.
       let fresh = getCredentials();
       if (skipIfLive && fresh && !isTokenExpired()) {
@@ -209,6 +214,9 @@ export class HttpClient {
           await lock.release();
           lockKey = reKey;
           lock = await acquireRefreshLock(lockKey);
+          // Same staleness applies after the reacquire wait — invalidate again so
+          // this re-read hits disk and can observe a peer's rotation.
+          invalidateProfileCache(profile);
           fresh = getCredentials();
           if (skipIfLive && fresh && !isTokenExpired()) {
             return; // peer finished while we re-acquired

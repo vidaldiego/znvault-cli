@@ -28,6 +28,7 @@ vi.mock('../../src/lib/config.js', () => ({
   getConfig: vi.fn(() => ({ url: process.env.ZNVAULT_URL, insecure: false, timeout: 30000 })),
   getEffectiveUrl: vi.fn(() => process.env.ZNVAULT_URL),
   getActiveProfileName: vi.fn(() => 'default'),
+  invalidateProfileCache: vi.fn(),
 }));
 
 vi.mock('../../src/lib/client/refresh-lock.js', () => ({
