@@ -251,12 +251,15 @@ export class HttpClient {
       throw err;
     }
     // Success: write new tokens AND clear the marker in the SAME write.
+    // (Spreading ...credentials carries a pre-existing marker forward, so we must
+    //  explicitly set pendingRefresh: undefined to clear it — omission alone does NOT
+    //  strip a spread key. decidePendingRefresh treats undefined as "no marker".)
     storeCredentials({
       ...credentials,
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       expiresAt: Date.now() + response.expiresIn * 1000,
-      // pendingRefresh intentionally omitted -> cleared atomically
+      pendingRefresh: undefined, // explicit clear (overrides the spread)
     });
   }
 
