@@ -22,6 +22,7 @@ import { execSync } from 'node:child_process';
 import {
   assertMysqlOnPath,
   buildMysqlInvocation,
+  buildChildStdio,
 } from '../../../src/commands/mysql/run.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,23 +132,24 @@ describe('assertMysqlOnPath', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('buildMysqlInvocation', () => {
-  const CNF_PATH = '/dev/shm/znvault-test-abc123/my.cnf';
+  // The cnf is now passed to mysql as /dev/fd/<fd> (spec F1 — see mycnf.ts).
+  const CNF_PATH = '/dev/fd/11';
 
   // ── Security-critical: flag order and secrets ────────────────────────────
 
-  it('puts --defaults-extra-file=<cnfPath> as the FIRST argument', () => {
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+  it('puts --defaults-extra-file=<fdPath> as the FIRST argument', () => {
+    const { args } = buildMysqlInvocation({ fdPath: CNF_PATH });
     expect(args[0]).toBe(`--defaults-extra-file=${CNF_PATH}`);
   });
 
   it('sets MYSQL_HISTFILE=/dev/null in the child environment (spec F4)', () => {
-    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+    const { env } = buildMysqlInvocation({ fdPath: CNF_PATH });
     expect(env.MYSQL_HISTFILE).toBe('/dev/null');
   });
 
   it('does NOT put any password or user in argv', () => {
     const { args } = buildMysqlInvocation({
-      cnfPath: CNF_PATH,
+      fdPath: CNF_PATH,
       database: 'mydb',
       passthrough: ['--verbose'],
     });
@@ -158,14 +160,14 @@ describe('buildMysqlInvocation', () => {
   });
 
   it('does NOT put any password or user in env (beyond what process.env already contains)', () => {
-    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+    const { env } = buildMysqlInvocation({ fdPath: CNF_PATH });
     // MYSQL_PWD must not be added by buildMysqlInvocation.
     expect(env.MYSQL_PWD).toBeUndefined();
   });
 
   it('does NOT add --host or --port flags (connection params come from cnf — spec F2)', () => {
     const { args } = buildMysqlInvocation({
-      cnfPath: CNF_PATH,
+      fdPath: CNF_PATH,
     });
     const argsStr = args.join(' ');
     expect(argsStr).not.toMatch(/--host|--port|-h\s|-P\s/);
@@ -174,7 +176,7 @@ describe('buildMysqlInvocation', () => {
   // ── Database positional arg (spec F8) ────────────────────────────────────
 
   it('appends database as a positional arg AFTER the flags, when provided', () => {
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, database: 'appdb' });
+    const { args } = buildMysqlInvocation({ fdPath: CNF_PATH, database: 'appdb' });
     // First arg = --defaults-extra-file; database must appear after all flags.
     expect(args[0]).toBe(`--defaults-extra-file=${CNF_PATH}`);
     expect(args).toContain('appdb');
@@ -184,7 +186,7 @@ describe('buildMysqlInvocation', () => {
   });
 
   it('omits the database positional arg when not provided', () => {
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+    const { args } = buildMysqlInvocation({ fdPath: CNF_PATH });
     // No bare word that looks like a database name should appear.
     // The only flag-like arg should be --defaults-extra-file.
     const nonFlagArgs = args.filter((a) => !a.startsWith('-'));
@@ -195,7 +197,7 @@ describe('buildMysqlInvocation', () => {
 
   it('appends passthrough args verbatim at the end of argv', () => {
     const passthrough = ['--verbose', '--column-names'];
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough });
+    const { args } = buildMysqlInvocation({ fdPath: CNF_PATH, passthrough });
     const lastTwo = args.slice(-2);
     expect(lastTwo).toEqual(passthrough);
   });
@@ -203,7 +205,7 @@ describe('buildMysqlInvocation', () => {
   it('appends passthrough args AFTER the database positional when both are present', () => {
     const passthrough = ['--verbose'];
     const { args } = buildMysqlInvocation({
-      cnfPath: CNF_PATH,
+      fdPath: CNF_PATH,
       database: 'appdb',
       passthrough,
     });
@@ -218,7 +220,7 @@ describe('buildMysqlInvocation', () => {
 
   it('returns mode-agnostic args (mode removed from builder — stdin wiring is done by caller)', () => {
     // buildMysqlInvocation has no mode param; args are always mode-agnostic.
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+    const { args } = buildMysqlInvocation({ fdPath: CNF_PATH });
     expect(args[0]).toBe(`--defaults-extra-file=${CNF_PATH}`);
     expect(args).toHaveLength(1);
   });
@@ -227,7 +229,7 @@ describe('buildMysqlInvocation', () => {
 
   it('preserves existing process.env variables in the returned env', () => {
     const prev = process.env.HOME;
-    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+    const { env } = buildMysqlInvocation({ fdPath: CNF_PATH });
     if (prev !== undefined) {
       expect(env.HOME).toBe(prev);
     }
@@ -237,7 +239,7 @@ describe('buildMysqlInvocation', () => {
     const prevHistfile = process.env.MYSQL_HISTFILE;
     process.env.MYSQL_HISTFILE = '/tmp/sneaky_history';
     try {
-      const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+      const { env } = buildMysqlInvocation({ fdPath: CNF_PATH });
       expect(env.MYSQL_HISTFILE).toBe('/dev/null');
     } finally {
       if (prevHistfile === undefined) {
@@ -256,7 +258,7 @@ describe('buildMysqlInvocation', () => {
     const prev = process.env.MYSQL_PWD;
     process.env.MYSQL_PWD = 'supersecret';
     try {
-      const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+      const { env } = buildMysqlInvocation({ fdPath: CNF_PATH });
       // MYSQL_PWD must be absent — the password must come ONLY from the cnf.
       expect(env.MYSQL_PWD).toBeUndefined();
     } finally {
@@ -285,7 +287,7 @@ describe('buildMysqlInvocation', () => {
     ['--password', 'x'],
   ])('rejects a "%s <value>" passthrough with the F2 error', (flag, value) => {
     expect(() =>
-      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: [flag, value] }),
+      buildMysqlInvocation({ fdPath: CNF_PATH, passthrough: [flag, value] }),
     ).toThrow(/is not allowed.*host\/port come from the leased connection.*F2/s);
   });
 
@@ -299,7 +301,7 @@ describe('buildMysqlInvocation', () => {
     '--no-defaults',
   ])('rejects the inline "%s" passthrough form with the F2 error', (token) => {
     expect(() =>
-      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: [token] }),
+      buildMysqlInvocation({ fdPath: CNF_PATH, passthrough: [token] }),
     ).toThrow(/is not allowed.*F2/s);
   });
 
@@ -309,19 +311,19 @@ describe('buildMysqlInvocation', () => {
     ['-p', 'x'],
   ])('rejects the short "%s" passthrough flag with the F2 error', (flag, value) => {
     expect(() =>
-      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: [flag, value] }),
+      buildMysqlInvocation({ fdPath: CNF_PATH, passthrough: [flag, value] }),
     ).toThrow(/is not allowed.*F2/s);
   });
 
   it('names the offending flag in the rejection error', () => {
     expect(() =>
-      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: ['--host', 'evil'] }),
+      buildMysqlInvocation({ fdPath: CNF_PATH, passthrough: ['--host', 'evil'] }),
     ).toThrow(/Passthrough flag '--host' is not allowed/);
   });
 
   it('allows benign passthrough flags through unchanged', () => {
     const { args } = buildMysqlInvocation({
-      cnfPath: CNF_PATH,
+      fdPath: CNF_PATH,
       passthrough: ['--batch', '--silent'],
     });
     // Benign flags survive appended at the end.
@@ -332,7 +334,7 @@ describe('buildMysqlInvocation', () => {
     // --hostname / --port-something are NOT in the forbidden set; only exact
     // flag names (with optional =value) must be rejected.
     const { args } = buildMysqlInvocation({
-      cnfPath: CNF_PATH,
+      fdPath: CNF_PATH,
       passthrough: ['--hostgroup=1', '--port-something'],
     });
     expect(args).toContain('--hostgroup=1');
@@ -349,11 +351,62 @@ describe('runMysql — forbidden passthrough rejection (I-1)', () => {
     const { runMysql } = await import('../../../src/commands/mysql/run.js');
     await expect(
       runMysql({
-        cnfPath: '/dev/shm/x/my.cnf',
+        fd: 11,
+        fdPath: '/dev/fd/11',
         mode: 'exec',
         sql: 'SELECT 1',
         passthrough: ['--host', 'evil'],
       }),
     ).rejects.toThrow(/Passthrough flag '--host' is not allowed.*F2/s);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildChildStdio: the cnf fd MUST be inherited by the child at the SAME number
+// so --defaults-extra-file=/dev/fd/<fd> resolves inside the child (spec F1).
+describe('buildChildStdio', () => {
+  it('places the cnf fd at its own numeric index (stdio[fd] === fd)', () => {
+    const fd = 17;
+    const stdio = buildChildStdio(fd, 'pipe');
+    // The defining invariant: index fd inherits the parent fd `fd`.
+    expect(stdio[fd]).toBe(fd);
+  });
+
+  it('wires stdin per the requested disposition; stdout/stderr always inherit', () => {
+    const pipeStdio = buildChildStdio(12, 'pipe');
+    expect(pipeStdio[0]).toBe('pipe');
+    expect(pipeStdio[1]).toBe('inherit');
+    expect(pipeStdio[2]).toBe('inherit');
+
+    const inheritStdio = buildChildStdio(12, 'inherit');
+    expect(inheritStdio[0]).toBe('inherit');
+    expect(inheritStdio[1]).toBe('inherit');
+    expect(inheritStdio[2]).toBe('inherit');
+  });
+
+  it('fills the gap between stderr and the cnf fd with "ignore"', () => {
+    const fd = 7;
+    const stdio = buildChildStdio(fd, 'pipe');
+    // indices 3..fd-1 must be 'ignore' (the array must be dense for spawn).
+    for (let i = 3; i < fd; i++) {
+      expect(stdio[i]).toBe('ignore');
+    }
+    expect(stdio[fd]).toBe(fd);
+    // Array length is exactly fd+1 (no trailing holes).
+    expect(stdio).toHaveLength(fd + 1);
+  });
+
+  it('the cnf fd index never collides with 0/1/2', () => {
+    const stdio = buildChildStdio(3, 'pipe'); // smallest legal cnf fd
+    expect(stdio[3]).toBe(3);
+    expect(stdio[0]).toBe('pipe');
+    expect(stdio[1]).toBe('inherit');
+    expect(stdio[2]).toBe('inherit');
+  });
+
+  it('throws if the cnf fd would collide with a standard stream (< 3)', () => {
+    for (const bad of [0, 1, 2]) {
+      expect(() => buildChildStdio(bad, 'pipe')).toThrow(/collides with a standard stream/);
+    }
   });
 });

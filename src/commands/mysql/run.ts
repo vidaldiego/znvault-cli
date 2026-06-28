@@ -4,10 +4,21 @@
  * Spawn the system `mysql` client for `znvault mysql exec/connect`.
  *
  * Security guarantees (spec F1–F12):
- *   - Password lives only in the 0600 my.cnf file written by B2 (mycnf.ts).
+ *   - Password lives only in the 0600 my.cnf inode written by B2 (mycnf.ts).
  *     It is NEVER added to argv, env, or any file opened by this module.
- *   - `--defaults-extra-file=<cnfPath>` is ALWAYS the first argument (mysql
+ *   - The cnf is passed to mysql as an OPEN FILE DESCRIPTOR via /dev/fd/<fd>
+ *     (spec F1). createMyCnf opens the file, writes the credentials, and unlinks
+ *     the directory entry IMMEDIATELY — so there is no plaintext name on disk for
+ *     the lifetime of the run. The inode is kept alive solely by the inherited
+ *     fd; closing it (cleanup) reclaims the bytes. This removes the old
+ *     "spawn-then-unlink" race: spawn() returns when the child is forked but
+ *     BEFORE it exec's mysql and reads --defaults-extra-file, so unlinking after
+ *     spawn could win the race and crash mysql with
+ *     "Failed to open required defaults file".
+ *   - `--defaults-extra-file=/dev/fd/<fd>` is ALWAYS the first argument (mysql
  *     rejects it in any other position).
+ *   - The child INHERITS the fd at the SAME number N, so `/dev/fd/N` resolves to
+ *     the same inode inside the child (see buildChildStdio).
  *   - `MYSQL_HISTFILE=/dev/null` is injected into the child env so executed
  *     SQL is not persisted to ~/.mysql_history (spec F4).
  *   - No --host / --port flags are added; connection coordinates come from the
@@ -15,7 +26,9 @@
  *     is scrubbed of any host/port/defaults/password override flag, since mysql
  *     CLI flags override option-file values (last-wins) and would otherwise
  *     re-point the leased credential at an arbitrary server (F2 bypass).
- *   - This module never opens cnfPath itself; mysql reads it directly.
+ *   - This module never re-opens the cnf path itself; mysql reads it via the
+ *     inherited fd. The parent's own copy of the fd is released by cleanup()
+ *     once the child has exited (spec F3 hygiene).
  */
 
 import * as fs from 'node:fs';
@@ -131,8 +144,11 @@ export function assertPassthroughAllowed(passthrough: readonly string[]): void {
  * is handled by runMysql, not by this pure builder.
  */
 export interface BuildMysqlInvocationOpts {
-  /** Path to the 0600 my.cnf file written by mycnf.ts. */
-  cnfPath: string;
+  /**
+   * Value for `--defaults-extra-file`. This is the `/dev/fd/<fd>` path returned
+   * by createMyCnf (B2) — mysql re-opens the inherited fd through it.
+   */
+  fdPath: string;
   /** Optional default schema to select (positional arg — spec F8). */
   database?: string;
   /** Extra arguments appended verbatim to the mysql argv. */
@@ -147,7 +163,7 @@ export interface BuildMysqlInvocationOpts {
  * without spawning real mysql.
  *
  * Security invariants:
- *   - `--defaults-extra-file=<cnfPath>` is args[0].
+ *   - `--defaults-extra-file=<fdPath>` is args[0].
  *   - No --user / -u / --password / -p / MYSQL_PWD in args or env.
  *   - No --host / --port / -h / -P flags (connection coords from cnf).
  *   - Forbidden override flags in `passthrough` are rejected (spec F2).
@@ -160,13 +176,13 @@ export function buildMysqlInvocation(opts: BuildMysqlInvocationOpts): {
   args: string[];
   env: NodeJS.ProcessEnv;
 } {
-  const { cnfPath, database, passthrough = [] } = opts;
+  const { fdPath, database, passthrough = [] } = opts;
 
   // F2: reject host/port/defaults/password overrides BEFORE they reach argv.
   assertPassthroughAllowed(passthrough);
 
   // --defaults-extra-file MUST be first (mysql enforces this).
-  const args: string[] = [`--defaults-extra-file=${cnfPath}`];
+  const args: string[] = [`--defaults-extra-file=${fdPath}`];
 
   // database as a positional arg (spec F8 — narrows the default schema only).
   if (database) {
@@ -193,6 +209,62 @@ export function buildMysqlInvocation(opts: BuildMysqlInvocationOpts): {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// stdio array construction (fd inheritance at the SAME number)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A single entry of a child_process `stdio` array. A NUMBER means "inherit THIS
+ * parent fd at this child index"; the strings are the usual stdio dispositions.
+ */
+type StdioEntry = 'pipe' | 'inherit' | 'ignore' | number;
+
+/**
+ * Build the `stdio` array for spawning mysql so that the cnf fd is inherited by
+ * the child at the SAME numeric index `fd`. This is what makes
+ * `--defaults-extra-file=/dev/fd/<fd>` resolve correctly in the child: the
+ * child must have an fd open at exactly `fd`.
+ *
+ * Layout:
+ *   - index 0 (stdin):  `stdin0` — 'pipe' for exec (we feed SQL), 'inherit' for
+ *     connect (interactive terminal).
+ *   - index 1 (stdout): 'inherit'.
+ *   - index 2 (stderr): 'inherit'.
+ *   - indices 3 .. fd-1: 'ignore' (gaps the array must fill; the child does not
+ *     use them).
+ *   - index fd:         `fd` (a number → inherit the parent fd at this index).
+ *
+ * `fd` is always >= 3 in practice (0/1/2 are taken by the std streams of the
+ * Node process), so it never collides with stdin/stdout/stderr. We assert this
+ * defensively.
+ *
+ * @param fd     The parent fd to inherit at the same number in the child.
+ * @param stdin0 Disposition for the child's stdin (index 0).
+ * @returns A stdio array of length max(3, fd+1).
+ * @throws If `fd` is < 3 (would collide with std streams — never expected).
+ */
+export function buildChildStdio(fd: number, stdin0: 'pipe' | 'inherit'): StdioEntry[] {
+  if (!Number.isInteger(fd) || fd < 3) {
+    // 0/1/2 are reserved for stdin/stdout/stderr; the cnf fd must be a higher
+    // descriptor. This would only happen if std streams were closed — bail
+    // loudly rather than silently mis-wiring the credential fd.
+    throw new Error(
+      `Refusing to spawn mysql: cnf fd ${String(fd)} collides with a standard ` +
+      `stream (must be >= 3). This indicates a closed stdin/stdout/stderr.`,
+    );
+  }
+
+  const stdio: StdioEntry[] = new Array<StdioEntry>(Math.max(3, fd + 1));
+  for (let i = 0; i < stdio.length; i++) {
+    if (i === 0) stdio[i] = stdin0;
+    else if (i === 1 || i === 2) stdio[i] = 'inherit';
+    else stdio[i] = 'ignore';
+  }
+  // Place the credential fd at its own number so /dev/fd/<fd> resolves.
+  stdio[fd] = fd;
+  return stdio;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Runner
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -200,8 +272,18 @@ export function buildMysqlInvocation(opts: BuildMysqlInvocationOpts): {
  * Options for runMysql.
  */
 export interface RunMysqlOpts {
-  /** Path to the 0600 my.cnf file. Must already exist; this module never opens it. */
-  cnfPath: string;
+  /**
+   * The `/dev/fd/<fd>` path returned by createMyCnf — passed to mysql as
+   * --defaults-extra-file. This module never re-opens it; mysql reads the
+   * inherited fd through it.
+   */
+  fdPath: string;
+  /**
+   * The numeric fd backing `fdPath`. The child INHERITS this fd at the SAME
+   * number so `/dev/fd/<fd>` resolves inside it. The parent does NOT close it
+   * here — createMyCnf's cleanup() owns the close (after the child exits).
+   */
+  fd: number;
   /** Default schema to select (positional arg — spec F8). */
   database?: string;
   /** 'connect' → interactive (stdio: inherit); 'exec' → non-interactive. */
@@ -221,51 +303,31 @@ export interface RunMysqlOpts {
 }
 
 /**
- * Best-effort unlink of the cnf directory entry (spec F1).
- *
- * Called IMMEDIATELY after the child mysql has been spawned. mysql reads the
- * `--defaults-extra-file` at startup (before doing anything else), so removing
- * the directory entry right after spawn is safe — the child has already been
- * exec'd and will open/read the file. Removing the entry now means:
- *   - no plaintext directory entry persists for the lifetime of the run, and
- *   - a `kill -9` of either process leaves nothing on disk.
- *
- * Idempotent and never throws (the broker's cleanup() also unlinks; whichever
- * runs first wins, and the loser is a no-op).
- *
- * Residual micro-race (documented): because the unlink happens after the spawn
- * call returns rather than after mysql has provably finished reading the file,
- * there is a vanishingly small window in which the entry exists post-spawn. The
- * fully race-free alternative (open the file, pass the OPEN FD to mysql via
- * /dev/fd/N) requires preserving the fd NUMBER across spawn, which is fragile
- * and non-portable with Node's stdio-array fd mapping. spawn-then-unlink is the
- * pragmatic, portable (Linux + macOS) improvement chosen here.
- */
-function unlinkCnfBestEffort(cnfPath: string): void {
-  try {
-    fs.unlinkSync(cnfPath);
-  } catch {
-    // Already gone (broker cleanup beat us, or it never existed) — ignore.
-  }
-}
-
-/**
  * Spawn the system `mysql` client and wait for it to exit.
  *
  * - Resolves with the child's numeric exit code (caller/CI relies on non-zero).
- * - 'connect' mode: stdio is fully inherited (interactive terminal).
- * - 'exec' mode: stdin is wired as:
+ * - The cnf fd (`opts.fd`) is inherited by the child at the SAME number so
+ *   `--defaults-extra-file=/dev/fd/<fd>` resolves in the child (spec F1). The
+ *   directory entry was already unlinked in createMyCnf — there is NOTHING to
+ *   unlink here, and NO post-spawn unlink race.
+ * - 'connect' mode: stdin/stdout/stderr are inherited (interactive terminal);
+ *   the cnf fd is additionally inherited at index `fd`.
+ * - 'exec' mode: stdin (index 0) is wired as:
  *     1. files (concatenated, in order) → stdin pipe
  *     2. sql (string) → stdin pipe
- *     3. parent stdin (if not a TTY) → piped through
+ *     3. parent stdin (if not a TTY) → piped through (inherit)
  *     4. parent stdin is a TTY and neither files nor sql provided → Error
- *   stdout/stderr are inherited for both modes.
+ *   stdout/stderr are inherited; the cnf fd is inherited at index `fd`.
  *
- * F1: in every spawn path, the cnf directory entry is unlinked IMMEDIATELY
- * after spawn (see unlinkCnfBestEffort) so no plaintext file survives the run.
+ * The parent's own copy of `opts.fd` is intentionally NOT closed here — the
+ * child holds its own dup (created by spawn's file actions), and createMyCnf's
+ * cleanup() closes the parent's copy after this resolves. (Closing here would be
+ * safe too, since the child already has its dup, but leaving the single owner —
+ * cleanup() — avoids double-close races.)
  *
  * @throws If the `mysql` binary is not on PATH (via assertMysqlOnPath).
  * @throws If `passthrough` contains a forbidden override flag (via the builder).
+ * @throws If the cnf fd collides with a standard stream (via buildChildStdio).
  * @throws If exec mode is requested but no SQL source is available.
  */
 export async function runMysql(opts: RunMysqlOpts): Promise<number> {
@@ -273,16 +335,15 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
 
   const mysqlBin = assertMysqlOnPath();
   const { args, env } = buildMysqlInvocation({
-    cnfPath: opts.cnfPath,
+    fdPath: opts.fdPath,
     database: opts.database,
     passthrough: opts.passthrough,
   });
 
   if (opts.mode === 'connect') {
-    // Interactive: inherit all stdio so the terminal works end-to-end.
-    const child = spawn(mysqlBin, args, { stdio: 'inherit', env });
-    // F1: drop the directory entry now that mysql has been exec'd.
-    unlinkCnfBestEffort(opts.cnfPath);
+    // Interactive: inherit std streams + the cnf fd at its own number.
+    const stdio = buildChildStdio(opts.fd, 'inherit');
+    const child = spawn(mysqlBin, args, { stdio, env });
     return new Promise<number>((resolve, reject) => {
       child.on('error', (err) => { reject(err); });
       child.on('close', (code) => { resolve(code ?? 1); });
@@ -290,7 +351,9 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
   }
 
   // ── exec mode ──────────────────────────────────────────────────────────────
-  // Determine the stdin source.
+  // stdin (index 0) is 'pipe' when we feed SQL ourselves (files / sql), and
+  // 'inherit' when we pass the parent's piped stdin through. The cnf fd (>= 3)
+  // is a separate, higher index — no collision with stdin.
 
   if (opts.files && opts.files.length > 0) {
     // Read + concatenate files in order, pipe the result.
@@ -298,9 +361,8 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
     const chunks: Buffer[] = opts.files.map((f) => fsModule.readFileSync(f));
     const sqlBuf = Buffer.concat(chunks);
 
-    const child = spawn(mysqlBin, args, { stdio: ['pipe', 'inherit', 'inherit'], env });
-    // F1: drop the directory entry now that mysql has been exec'd.
-    unlinkCnfBestEffort(opts.cnfPath);
+    const stdio = buildChildStdio(opts.fd, 'pipe');
+    const child = spawn(mysqlBin, args, { stdio, env });
     return new Promise<number>((resolve, reject) => {
       child.on('error', (err) => { reject(err); });
       child.on('close', (code) => { resolve(code ?? 1); });
@@ -313,9 +375,8 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
   if (opts.sql !== undefined) {
     // Inline SQL string piped to stdin.
     const sqlBuf = Buffer.from(opts.sql);
-    const child = spawn(mysqlBin, args, { stdio: ['pipe', 'inherit', 'inherit'], env });
-    // F1: drop the directory entry now that mysql has been exec'd.
-    unlinkCnfBestEffort(opts.cnfPath);
+    const stdio = buildChildStdio(opts.fd, 'pipe');
+    const child = spawn(mysqlBin, args, { stdio, env });
     return new Promise<number>((resolve, reject) => {
       child.on('error', (err) => { reject(err); });
       child.on('close', (code) => { resolve(code ?? 1); });
@@ -332,10 +393,10 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
     );
   }
 
-  // Parent stdin is piped — pass it through.
-  const child = spawn(mysqlBin, args, { stdio: ['inherit', 'inherit', 'inherit'], env });
-  // F1: drop the directory entry now that mysql has been exec'd.
-  unlinkCnfBestEffort(opts.cnfPath);
+  // Parent stdin is piped — pass it through (inherit) while still inheriting
+  // the cnf fd at its own number.
+  const stdio = buildChildStdio(opts.fd, 'inherit');
+  const child = spawn(mysqlBin, args, { stdio, env });
   return new Promise<number>((resolve, reject) => {
     child.on('error', (err) => { reject(err); });
     child.on('close', (code) => { resolve(code ?? 1); });

@@ -7,7 +7,8 @@
  *   - client.post is mocked via vi.mock('../../../src/lib/client.js') and programmed
  *     per-URL in each test to distinguish generate vs. revoke calls.
  *   - createMyCnf is mocked via vi.mock('../../../src/commands/mysql/mycnf.js') to
- *     avoid real fs operations; the mock returns a stable cnfPath and a cleanup spy.
+ *     avoid real fs operations; the mock returns a stable { fd, fdPath } and a
+ *     cleanup spy (the new F1 fd-inheritance contract).
  *   - Backoff delays are zeroed out via vi.useFakeTimers() + vi.runAllTimersAsync() so
  *     retry tests don't sleep for real seconds.
  */
@@ -42,7 +43,9 @@ const CREDENTIAL = {
   renewalCount: 0,
 };
 
-const CNF_PATH = '/dev/shm/znvault-test/my.cnf';
+// The broker now hands the child an OPEN FD + its /dev/fd path (spec F1).
+const CNF_FD = 11;
+const CNF_FD_PATH = `/dev/fd/${CNF_FD.toString()}`;
 
 /** Program client.post to return CREDENTIAL for the credentials URL and resolve for revoke. */
 function setupHappyPath(): void {
@@ -60,7 +63,7 @@ function setupHappyPath(): void {
 beforeEach(() => {
   vi.clearAllMocks();
   // Restore default createMyCnf behaviour after each clearAllMocks()
-  mockCreateMyCnf.mockResolvedValue({ path: CNF_PATH, cleanup: mockMyCnfCleanup });
+  mockCreateMyCnf.mockResolvedValue({ fd: CNF_FD, fdPath: CNF_FD_PATH, cleanup: mockMyCnfCleanup });
 });
 
 afterEach(() => {
@@ -89,10 +92,11 @@ describe('runBrokered', () => {
     expect(revokeCalls[0][0]).toBe(`/v1/dynamic-secrets/leases/${CREDENTIAL.leaseId}/revoke`);
     // cnf cleanup was called
     expect(mockMyCnfCleanup).toHaveBeenCalledOnce();
-    // run received credential + cnfPath
+    // run received credential + the open fd and its /dev/fd path
     expect(run).toHaveBeenCalledWith({
       credential: CREDENTIAL,
-      cnfPath: CNF_PATH,
+      fd: CNF_FD,
+      fdPath: CNF_FD_PATH,
     });
   });
 

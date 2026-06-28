@@ -127,9 +127,10 @@ Examples:
         const code = await runBrokered({
           roleId,
           ttlSeconds,
-          run: ({ credential, cnfPath }) =>
+          run: ({ credential, fd, fdPath }) =>
             runMysql({
-              cnfPath,
+              fd,
+              fdPath,
               database: opts.database ?? credential.database,
               mode: 'exec',
               files: opts.file,
@@ -166,9 +167,10 @@ Examples:
         const code = await runBrokered({
           roleId,
           ttlSeconds,
-          run: ({ credential, cnfPath }) =>
+          run: ({ credential, fd, fdPath }) =>
             runMysql({
-              cnfPath,
+              fd,
+              fdPath,
               database: opts.database ?? credential.database,
               mode: 'connect',
               passthrough,

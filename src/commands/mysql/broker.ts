@@ -5,11 +5,13 @@
  *
  * runBrokered:
  *   1. Generates a short-lived dynamic-secret credential.
- *   2. Writes credentials to a 0600 temp my.cnf on a memory-backed fs.
- *   3. Calls the injected `run` callback with { credential, cnfPath }.
+ *   2. Writes credentials to a 0600 temp my.cnf on a memory-backed fs, then
+ *      unlinks the directory entry immediately, keeping it alive via an open fd
+ *      (spec F1 — no plaintext name on disk for the run).
+ *   3. Calls the injected `run` callback with { credential, fd, fdPath }.
  *   4. In ALL exit paths (normal return, run error, SIGINT/SIGTERM/SIGHUP,
  *      uncaughtException) — calls a single idempotent cleanup() that:
- *        a. Shreds + unlinks the temp my.cnf.
+ *        a. Closes the cnf fd (releasing the unlinked inode) + rmdir's the dir.
  *        b. Revokes the lease (3 retries: 1s/2s/4s backoff).
  *           "Already revoked" errors are treated as success.
  *           All retries exhausted → loud WARN with leaseId (TTL backstop).
@@ -98,13 +100,15 @@ export interface RunBrokeredOptions {
    */
   ttlSeconds?: number;
   /**
-   * Callback that receives the credential + path to the temp my.cnf.
-   * Should return the numeric child process exit code.
+   * Callback that receives the credential + the open cnf fd and its /dev/fd
+   * path. Should return the numeric child process exit code.
    *
-   * The my.cnf is valid for the duration of this callback.
-   * The lease is revoked immediately after the callback returns (or throws).
+   * The cnf inode is valid (reachable via `fdPath`) for the duration of this
+   * callback — its directory entry is already unlinked, so the child mysql must
+   * inherit `fd` at the same number (runMysql does this). The fd is closed and
+   * the lease is revoked immediately after the callback returns (or throws).
    */
-  run: (ctx: { credential: GeneratedCredential; cnfPath: string }) => Promise<number>;
+  run: (ctx: { credential: GeneratedCredential; fd: number; fdPath: string }) => Promise<number>;
 }
 
 /**
@@ -144,16 +148,17 @@ export async function runBrokered(opts: RunBrokeredOptions): Promise<number> {
     );
   }
 
-  // ── 3. Write temp my.cnf ────────────────────────────────────────────────────
+  // ── 3. Write temp my.cnf (open fd + immediate unlink — spec F1) ────────────
   // The lease is minted but the idempotent cleanup()/try-finally below is not
   // installed yet. If createMyCnf throws (disk full, mkdir race, EMFILE) here,
   // the lease would be orphaned (only the TTL backstop would save it). Revoke it
   // first, then rethrow. No double-revoke risk: cleanup() is not installed until
   // after this succeeds, so on this path revoke fires exactly once (I-2).
-  let cnfPath: string;
+  let cnfFd: number;
+  let cnfFdPath: string;
   let cleanupCnf: () => void;
   try {
-    ({ path: cnfPath, cleanup: cleanupCnf } = await createMyCnf({
+    ({ fd: cnfFd, fdPath: cnfFdPath, cleanup: cleanupCnf } = await createMyCnf({
       user: credential.username,
       password: credential.password,
       host: credential.host,
@@ -195,7 +200,7 @@ export async function runBrokered(opts: RunBrokeredOptions): Promise<number> {
 
   // ── 6. Run callback + cleanup in finally ────────────────────────────────────
   try {
-    const exitCode = await run({ credential, cnfPath });
+    const exitCode = await run({ credential, fd: cnfFd, fdPath: cnfFdPath });
     return exitCode;
   } finally {
     // Remove signal handlers BEFORE awaiting cleanup so that a signal arriving
