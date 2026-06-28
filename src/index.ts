@@ -38,6 +38,7 @@ import { registerDynamicSecretsCommands } from './commands/dynamic-secrets.js';
 import { registerSSHCommands } from './commands/ssh/index.js';
 import { registerSSHCACommands } from './commands/ssh-ca.js';
 import { registerKmipCommands } from './commands/kmip/index.js';
+import { registerMysqlCommands } from './commands/mysql/index.js';
 import { client } from './lib/client.js';
 import {
   setRuntimeProfile,
@@ -169,6 +170,7 @@ registerDynamicSecretsCommands(program);
 registerSSHCommands(program);
 registerSSHCACommands(program);
 registerKmipCommands(program);
+registerMysqlCommands(program);
 
 // Superadmin namespace (must come last so all referenced groups are loaded).
 registerSuperadminCommands(program);
