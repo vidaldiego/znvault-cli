@@ -135,7 +135,8 @@ export async function runBrokered(opts: RunBrokeredOptions): Promise<number> {
 
   // ── 2. Validate host/port (spec F2 — no --host fallback) ───────────────────
   if (!credential.host || credential.port === undefined) {
-    // Revoke immediately before throwing (best-effort; no retry for this case).
+    // Revoke the just-minted lease before throwing. revokeWithRetry applies the
+    // same retry/backoff as the main cleanup path (it does NOT skip retries).
     await revokeWithRetry(credential.leaseId);
     throw new Error(
       `Vault did not return host/port in the credential for role '${roleId}'. ` +
@@ -144,12 +145,24 @@ export async function runBrokered(opts: RunBrokeredOptions): Promise<number> {
   }
 
   // ── 3. Write temp my.cnf ────────────────────────────────────────────────────
-  const { path: cnfPath, cleanup: cleanupCnf } = await createMyCnf({
-    user: credential.username,
-    password: credential.password,
-    host: credential.host,
-    port: credential.port,
-  });
+  // The lease is minted but the idempotent cleanup()/try-finally below is not
+  // installed yet. If createMyCnf throws (disk full, mkdir race, EMFILE) here,
+  // the lease would be orphaned (only the TTL backstop would save it). Revoke it
+  // first, then rethrow. No double-revoke risk: cleanup() is not installed until
+  // after this succeeds, so on this path revoke fires exactly once (I-2).
+  let cnfPath: string;
+  let cleanupCnf: () => void;
+  try {
+    ({ path: cnfPath, cleanup: cleanupCnf } = await createMyCnf({
+      user: credential.username,
+      password: credential.password,
+      host: credential.host,
+      port: credential.port,
+    }));
+  } catch (err) {
+    await revokeWithRetry(credential.leaseId);
+    throw err;
+  }
 
   // ── 4. Idempotent cleanup (guarded by `cleaned` boolean) ───────────────────
   let cleaned = false;

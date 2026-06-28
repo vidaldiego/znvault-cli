@@ -1,7 +1,44 @@
 // test/commands/mysql/index.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Command } from 'commander';
-import { registerMysqlCommands } from '../../../src/commands/mysql/index.js';
+import { registerMysqlCommands, parseTtlSeconds } from '../../../src/commands/mysql/index.js';
+
+// ---------------------------------------------------------------------------
+// M-2: TTL validation (parseTtlSeconds)
+// ---------------------------------------------------------------------------
+
+describe('parseTtlSeconds (M-2)', () => {
+  it('returns undefined when --ttl is not provided (server default applies)', () => {
+    expect(parseTtlSeconds(undefined)).toBeUndefined();
+  });
+
+  it('parses a valid positive integer', () => {
+    expect(parseTtlSeconds('1800')).toBe(1800);
+  });
+
+  it('throws a clear error for a non-numeric --ttl (no NaN reaches the server)', () => {
+    expect(() => parseTtlSeconds('abc')).toThrow(/--ttl.*positive integer/i);
+  });
+
+  it('throws a clear error for a zero --ttl', () => {
+    expect(() => parseTtlSeconds('0')).toThrow(/--ttl.*positive integer/i);
+  });
+
+  it('throws a clear error for a negative --ttl', () => {
+    expect(() => parseTtlSeconds('-5')).toThrow(/--ttl.*positive integer/i);
+  });
+
+  it('throws for an empty string --ttl', () => {
+    expect(() => parseTtlSeconds('')).toThrow(/--ttl.*positive integer/i);
+  });
+
+  it('never returns NaN for any input', () => {
+    // The whole point: NaN must never slip through to the lease request.
+    for (const bad of ['abc', '0', '-1', '', '  ']) {
+      expect(() => parseTtlSeconds(bad)).toThrow();
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Registration smoke-tests (pre-existing)

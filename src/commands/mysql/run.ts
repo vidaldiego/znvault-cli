@@ -11,13 +11,15 @@
  *   - `MYSQL_HISTFILE=/dev/null` is injected into the child env so executed
  *     SQL is not persisted to ~/.mysql_history (spec F4).
  *   - No --host / --port flags are added; connection coordinates come from the
- *     cnf written by B2 (spec F2 — no client-side override).
+ *     cnf written by B2 (spec F2 — no client-side override). Caller passthrough
+ *     is scrubbed of any host/port/defaults/password override flag, since mysql
+ *     CLI flags override option-file values (last-wins) and would otherwise
+ *     re-point the leased credential at an arbitrary server (F2 bypass).
  *   - This module never opens cnfPath itself; mysql reads it directly.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as output from '../../lib/output.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PATH resolution
@@ -40,8 +42,9 @@ export function assertMysqlOnPath(): string {
     const candidate = path.join(dir, 'mysql');
     try {
       fs.accessSync(candidate, fs.constants.X_OK);
-      // Found — log for auditability (spec F11).
-      output.info(`[znvault] Resolved mysql binary: ${candidate}`);
+      // Found — log for auditability (spec F11). Write to STDERR so the audit
+      // line never pollutes exec's machine-readable STDOUT (M-1).
+      process.stderr.write(`[znvault] Resolved mysql binary: ${candidate}\n`);
       return candidate;
     } catch {
       // Not executable or not present in this dir; keep scanning.
@@ -53,6 +56,69 @@ export function assertMysqlOnPath(): string {
     'Install it (e.g. `brew install mysql-client` or `apt install mariadb-client`) ' +
     'and ensure it is on your PATH.',
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Passthrough flag allow/deny (spec F2 — no client-side connection override)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Connection/credential/defaults flags that a caller MUST NOT be able to inject
+ * via `-- <passthrough>`.
+ *
+ * Why: mysql command-line flags override option-file values (last-wins). A
+ * passthrough `--host evil-db` (or `--defaults-extra-file /evil.cnf`) would
+ * re-point the leased '%' credential at an arbitrary server — the exact F2
+ * access-control bypass the spec forbids. Likewise `--password`/`-p` would let
+ * the caller supply a password that must come ONLY from the leased cnf.
+ *
+ * Stored WITHOUT the leading dashes for both long (`--flag`) and short (`-x`)
+ * forms; matching is case-sensitive (mysql distinguishes `-P` port from `-p`
+ * password).
+ */
+const FORBIDDEN_PASSTHROUGH_FLAGS: ReadonlySet<string> = new Set([
+  // Connection coordinates — must come from the leased cnf only.
+  '--host',
+  '-h',
+  '--port',
+  '-P',
+  // Defaults-file overrides — would let the caller swap the whole option file.
+  '--defaults-extra-file',
+  '--defaults-file',
+  '--login-path',
+  '--no-defaults',
+  // Password — must come from the leased cnf only, never from argv.
+  '--password',
+  '-p',
+]);
+
+/**
+ * Reject any passthrough token that is (or starts with `=`-form of) a forbidden
+ * connection/credential/defaults override flag.
+ *
+ * Recognised forms for a forbidden flag `--host`:
+ *   - exact:   `--host`        (its value is the next token)
+ *   - inline:  `--host=value`
+ *   - short:   `-h`            (value is next token)  / `-P`, `-p`
+ *
+ * Tokens that merely START with a forbidden name but are a different flag
+ * (e.g. `--hostgroup`, `--port-something`) are NOT rejected.
+ *
+ * @throws Error naming the offending flag and citing F2, on the first match.
+ */
+export function assertPassthroughAllowed(passthrough: readonly string[]): void {
+  for (const token of passthrough) {
+    // Normalise an inline `--flag=value` to its flag head for the lookup.
+    const eqIdx = token.indexOf('=');
+    const flag = eqIdx === -1 ? token : token.slice(0, eqIdx);
+
+    if (FORBIDDEN_PASSTHROUGH_FLAGS.has(flag)) {
+      throw new Error(
+        `Passthrough flag '${flag}' is not allowed — host/port come from the ` +
+        `leased connection and cannot be overridden (see F2).`,
+      );
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,13 +150,20 @@ export interface BuildMysqlInvocationOpts {
  *   - `--defaults-extra-file=<cnfPath>` is args[0].
  *   - No --user / -u / --password / -p / MYSQL_PWD in args or env.
  *   - No --host / --port / -h / -P flags (connection coords from cnf).
+ *   - Forbidden override flags in `passthrough` are rejected (spec F2).
  *   - MYSQL_HISTFILE=/dev/null overrides any pre-existing value.
+ *
+ * @throws If `passthrough` contains a forbidden connection/credential/defaults
+ *         override flag (see assertPassthroughAllowed).
  */
 export function buildMysqlInvocation(opts: BuildMysqlInvocationOpts): {
   args: string[];
   env: NodeJS.ProcessEnv;
 } {
   const { cnfPath, database, passthrough = [] } = opts;
+
+  // F2: reject host/port/defaults/password overrides BEFORE they reach argv.
+  assertPassthroughAllowed(passthrough);
 
   // --defaults-extra-file MUST be first (mysql enforces this).
   const args: string[] = [`--defaults-extra-file=${cnfPath}`];
@@ -100,7 +173,8 @@ export function buildMysqlInvocation(opts: BuildMysqlInvocationOpts): {
     args.push(database);
   }
 
-  // Caller-supplied pass-through flags appended verbatim at the end.
+  // Caller-supplied pass-through flags appended verbatim at the end (now safe —
+  // forbidden connection/credential overrides were rejected above).
   args.push(...passthrough);
 
   // Child env: inherit everything, then suppress history (spec F4).
@@ -147,6 +221,35 @@ export interface RunMysqlOpts {
 }
 
 /**
+ * Best-effort unlink of the cnf directory entry (spec F1).
+ *
+ * Called IMMEDIATELY after the child mysql has been spawned. mysql reads the
+ * `--defaults-extra-file` at startup (before doing anything else), so removing
+ * the directory entry right after spawn is safe — the child has already been
+ * exec'd and will open/read the file. Removing the entry now means:
+ *   - no plaintext directory entry persists for the lifetime of the run, and
+ *   - a `kill -9` of either process leaves nothing on disk.
+ *
+ * Idempotent and never throws (the broker's cleanup() also unlinks; whichever
+ * runs first wins, and the loser is a no-op).
+ *
+ * Residual micro-race (documented): because the unlink happens after the spawn
+ * call returns rather than after mysql has provably finished reading the file,
+ * there is a vanishingly small window in which the entry exists post-spawn. The
+ * fully race-free alternative (open the file, pass the OPEN FD to mysql via
+ * /dev/fd/N) requires preserving the fd NUMBER across spawn, which is fragile
+ * and non-portable with Node's stdio-array fd mapping. spawn-then-unlink is the
+ * pragmatic, portable (Linux + macOS) improvement chosen here.
+ */
+function unlinkCnfBestEffort(cnfPath: string): void {
+  try {
+    fs.unlinkSync(cnfPath);
+  } catch {
+    // Already gone (broker cleanup beat us, or it never existed) — ignore.
+  }
+}
+
+/**
  * Spawn the system `mysql` client and wait for it to exit.
  *
  * - Resolves with the child's numeric exit code (caller/CI relies on non-zero).
@@ -158,7 +261,11 @@ export interface RunMysqlOpts {
  *     4. parent stdin is a TTY and neither files nor sql provided → Error
  *   stdout/stderr are inherited for both modes.
  *
+ * F1: in every spawn path, the cnf directory entry is unlinked IMMEDIATELY
+ * after spawn (see unlinkCnfBestEffort) so no plaintext file survives the run.
+ *
  * @throws If the `mysql` binary is not on PATH (via assertMysqlOnPath).
+ * @throws If `passthrough` contains a forbidden override flag (via the builder).
  * @throws If exec mode is requested but no SQL source is available.
  */
 export async function runMysql(opts: RunMysqlOpts): Promise<number> {
@@ -174,6 +281,8 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
   if (opts.mode === 'connect') {
     // Interactive: inherit all stdio so the terminal works end-to-end.
     const child = spawn(mysqlBin, args, { stdio: 'inherit', env });
+    // F1: drop the directory entry now that mysql has been exec'd.
+    unlinkCnfBestEffort(opts.cnfPath);
     return new Promise<number>((resolve, reject) => {
       child.on('error', (err) => { reject(err); });
       child.on('close', (code) => { resolve(code ?? 1); });
@@ -190,6 +299,8 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
     const sqlBuf = Buffer.concat(chunks);
 
     const child = spawn(mysqlBin, args, { stdio: ['pipe', 'inherit', 'inherit'], env });
+    // F1: drop the directory entry now that mysql has been exec'd.
+    unlinkCnfBestEffort(opts.cnfPath);
     return new Promise<number>((resolve, reject) => {
       child.on('error', (err) => { reject(err); });
       child.on('close', (code) => { resolve(code ?? 1); });
@@ -203,6 +314,8 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
     // Inline SQL string piped to stdin.
     const sqlBuf = Buffer.from(opts.sql);
     const child = spawn(mysqlBin, args, { stdio: ['pipe', 'inherit', 'inherit'], env });
+    // F1: drop the directory entry now that mysql has been exec'd.
+    unlinkCnfBestEffort(opts.cnfPath);
     return new Promise<number>((resolve, reject) => {
       child.on('error', (err) => { reject(err); });
       child.on('close', (code) => { resolve(code ?? 1); });
@@ -221,6 +334,8 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
 
   // Parent stdin is piped — pass it through.
   const child = spawn(mysqlBin, args, { stdio: ['inherit', 'inherit', 'inherit'], env });
+  // F1: drop the directory entry now that mysql has been exec'd.
+  unlinkCnfBestEffort(opts.cnfPath);
   return new Promise<number>((resolve, reject) => {
     child.on('error', (err) => { reject(err); });
     child.on('close', (code) => { resolve(code ?? 1); });

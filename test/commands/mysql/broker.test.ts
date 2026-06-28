@@ -236,4 +236,27 @@ describe('runBrokered', () => {
       expect.objectContaining({ ttlSeconds: 1800 }),
     );
   });
+
+  // ── I-2: createMyCnf throwing must NOT orphan the lease ──────────────────
+  it('revokes the lease exactly once and rethrows when createMyCnf throws', async () => {
+    setupHappyPath();
+    // createMyCnf fails (disk full / EMFILE / mkdir race) AFTER the lease minted.
+    mockCreateMyCnf.mockRejectedValueOnce(new Error('ENOSPC: no space left on device'));
+
+    const { runBrokered } = await import('../../../src/commands/mysql/broker.js');
+
+    const run = vi.fn().mockResolvedValue(0);
+
+    await expect(runBrokered({ roleId: 'dbr_rw', run })).rejects.toThrow(/ENOSPC/);
+
+    // run must never have been called (createMyCnf failed before it).
+    expect(run).not.toHaveBeenCalled();
+    // The lease was minted, so it MUST be revoked — exactly once (no double-revoke
+    // from a later cleanup path, since cleanup is not installed when this throws).
+    const revokeCalls = mockPost.mock.calls.filter(([url]: [string]) => url.includes('/revoke'));
+    expect(revokeCalls).toHaveLength(1);
+    expect(revokeCalls[0][0]).toBe(`/v1/dynamic-secrets/leases/${CREDENTIAL.leaseId}/revoke`);
+    // No cnf was created, so its cleanup must NOT have been called.
+    expect(mockMyCnfCleanup).not.toHaveBeenCalled();
+  });
 });

@@ -113,13 +113,11 @@ export async function resolveTarget(
     `/v1/dynamic-secrets/connections/${connectionId}/roles`,
   );
 
-  const effectiveRoleOpt = roleOpt;
-
-  if (effectiveRoleOpt !== undefined) {
-    const role = roles.find((r) => r.name === effectiveRoleOpt || r.id === effectiveRoleOpt);
+  if (roleOpt !== undefined) {
+    const role = roles.find((r) => r.name === roleOpt || r.id === roleOpt);
     if (role === undefined) {
       throw new Error(
-        `Role '${effectiveRoleOpt}' not found on connection '${target}'. ` +
+        `Role '${roleOpt}' not found on connection '${target}'. ` +
           `Available: ${roles.map((r) => r.name).join(', ') || '(none)'}`,
       );
     }

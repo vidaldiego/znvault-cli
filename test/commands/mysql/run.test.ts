@@ -57,6 +57,51 @@ describe('assertMysqlOnPath', () => {
     expect(msg).toMatch(/brew|apt|install/i);
   });
 
+  it('writes the resolved-binary audit line to STDERR, not STDOUT (M-1)', () => {
+    const hasMysql = (() => {
+      try {
+        execSync('command -v mysql', { stdio: 'pipe' });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    if (!hasMysql) return; // can't assert positive case without mysql
+
+    process.env.PATH = originalPath;
+
+    const stdoutWrites: string[] = [];
+    const stderrWrites: string[] = [];
+    const origStdout = process.stdout.write.bind(process.stdout);
+    const origStderr = process.stderr.write.bind(process.stderr);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    process.stdout.write = ((chunk: any, ...rest: any[]): boolean => {
+      stdoutWrites.push(String(chunk));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      return origStdout(chunk, ...rest);
+    }) as typeof process.stdout.write;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    process.stderr.write = ((chunk: any, ...rest: any[]): boolean => {
+      stderrWrites.push(String(chunk));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      return origStderr(chunk, ...rest);
+    }) as typeof process.stderr.write;
+
+    try {
+      assertMysqlOnPath();
+    } finally {
+      process.stdout.write = origStdout;
+      process.stderr.write = origStderr;
+    }
+
+    const stdout = stdoutWrites.join('');
+    const stderr = stderrWrites.join('');
+    // The audit line must NOT pollute machine-readable stdout.
+    expect(stdout).not.toContain('Resolved mysql binary');
+    // It must appear on stderr instead.
+    expect(stderr).toContain('Resolved mysql binary');
+  });
+
   it('returns an absolute path ending with "mysql" when mysql IS on PATH', () => {
     // This machine has mysql at /opt/homebrew/bin/mysql.
     // If the test machine lacks mysql, we skip rather than fail.
@@ -221,5 +266,94 @@ describe('buildMysqlInvocation', () => {
         process.env.MYSQL_PWD = prev;
       }
     }
+  });
+
+  // ── I-1: forbidden passthrough flags (F2 access-control bypass) ──────────
+  //
+  // mysql command-line flags override option-file values (last-wins). A caller
+  // who slips --host/--port (or --defaults-extra-file/--password/...) into the
+  // passthrough would re-point or re-credential the leased '%' connection at an
+  // arbitrary server — the exact F2 bypass the spec forbids. buildMysqlInvocation
+  // must reject any such token BEFORE appending the passthrough.
+
+  it.each([
+    ['--host', 'evil-db'],
+    ['--port', '3307'],
+    ['--defaults-extra-file', '/tmp/evil.cnf'],
+    ['--defaults-file', '/tmp/evil.cnf'],
+    ['--login-path', 'evil'],
+    ['--password', 'x'],
+  ])('rejects a "%s <value>" passthrough with the F2 error', (flag, value) => {
+    expect(() =>
+      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: [flag, value] }),
+    ).toThrow(/is not allowed.*host\/port come from the leased connection.*F2/s);
+  });
+
+  it.each([
+    '--host=evil-db',
+    '--port=3307',
+    '--defaults-extra-file=/tmp/evil.cnf',
+    '--defaults-file=/tmp/evil.cnf',
+    '--login-path=evil',
+    '--password=x',
+    '--no-defaults',
+  ])('rejects the inline "%s" passthrough form with the F2 error', (token) => {
+    expect(() =>
+      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: [token] }),
+    ).toThrow(/is not allowed.*F2/s);
+  });
+
+  it.each([
+    ['-h', 'evil-db'],
+    ['-P', '3307'],
+    ['-p', 'x'],
+  ])('rejects the short "%s" passthrough flag with the F2 error', (flag, value) => {
+    expect(() =>
+      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: [flag, value] }),
+    ).toThrow(/is not allowed.*F2/s);
+  });
+
+  it('names the offending flag in the rejection error', () => {
+    expect(() =>
+      buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough: ['--host', 'evil'] }),
+    ).toThrow(/Passthrough flag '--host' is not allowed/);
+  });
+
+  it('allows benign passthrough flags through unchanged', () => {
+    const { args } = buildMysqlInvocation({
+      cnfPath: CNF_PATH,
+      passthrough: ['--batch', '--silent'],
+    });
+    // Benign flags survive appended at the end.
+    expect(args.slice(-2)).toEqual(['--batch', '--silent']);
+  });
+
+  it('does NOT over-reject flags that merely START with a forbidden name', () => {
+    // --hostname / --port-something are NOT in the forbidden set; only exact
+    // flag names (with optional =value) must be rejected.
+    const { args } = buildMysqlInvocation({
+      cnfPath: CNF_PATH,
+      passthrough: ['--hostgroup=1', '--port-something'],
+    });
+    expect(args).toContain('--hostgroup=1');
+    expect(args).toContain('--port-something');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// I-1 (runMysql): forbidden passthrough must be rejected before any spawn.
+// We mock node:child_process so no real mysql is spawned; the rejection must
+// happen during argv assembly (buildMysqlInvocation), before spawn is reached.
+describe('runMysql — forbidden passthrough rejection (I-1)', () => {
+  it('throws the F2 error for "-- --host evil" and never spawns mysql', async () => {
+    const { runMysql } = await import('../../../src/commands/mysql/run.js');
+    await expect(
+      runMysql({
+        cnfPath: '/dev/shm/x/my.cnf',
+        mode: 'exec',
+        sql: 'SELECT 1',
+        passthrough: ['--host', 'evil'],
+      }),
+    ).rejects.toThrow(/Passthrough flag '--host' is not allowed.*F2/s);
   });
 });

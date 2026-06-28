@@ -31,6 +31,30 @@ function collect(value: string, previous: string[]): string[] {
 }
 
 /**
+ * Parse and validate the `--ttl <seconds>` option (M-2).
+ *
+ * `parseInt('abc', 10)` is `NaN`, and `NaN ?? 600` stays `NaN` — which would be
+ * sent to the server as the requested TTL and produce a confusing bad request.
+ * Validate locally and fail fast with a clear message BEFORE any lease is
+ * generated.
+ *
+ * @param raw The raw `--ttl` option value, or undefined when not provided.
+ * @returns The parsed positive integer, or undefined when `--ttl` is absent
+ *          (so the server/role default applies).
+ * @throws If `--ttl` is provided but is not a positive integer.
+ */
+export function parseTtlSeconds(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const ttl = Number(raw);
+  if (!Number.isInteger(ttl) || ttl <= 0) {
+    throw new Error(
+      `Invalid --ttl '${raw}': must be a positive integer number of seconds.`,
+    );
+  }
+  return ttl;
+}
+
+/**
  * Register the `mysql` command group and all subcommands on `program`.
  */
 export function registerMysqlCommands(program: Command): void {
@@ -96,10 +120,13 @@ Examples:
         // Fail fast: check mysql binary before generating any lease.
         assertMysqlOnPath();
 
+        // Validate --ttl locally before generating any lease (M-2).
+        const ttlSeconds = parseTtlSeconds(opts.ttl);
+
         const { roleId } = await resolveTarget(target, opts.role);
         const code = await runBrokered({
           roleId,
-          ttlSeconds: opts.ttl !== undefined ? parseInt(opts.ttl, 10) : undefined,
+          ttlSeconds,
           run: ({ credential, cnfPath }) =>
             runMysql({
               cnfPath,
@@ -132,10 +159,13 @@ Examples:
         // Fail fast: check mysql binary before generating any lease.
         assertMysqlOnPath();
 
+        // Validate --ttl locally before generating any lease (M-2).
+        const ttlSeconds = parseTtlSeconds(opts.ttl);
+
         const { roleId } = await resolveTarget(target, opts.role);
         const code = await runBrokered({
           roleId,
-          ttlSeconds: opts.ttl !== undefined ? parseInt(opts.ttl, 10) : undefined,
+          ttlSeconds,
           run: ({ credential, cnfPath }) =>
             runMysql({
               cnfPath,
