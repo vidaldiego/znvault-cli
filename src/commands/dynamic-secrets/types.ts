@@ -69,6 +69,9 @@ export interface GeneratedCredential {
   maxExpiresAt: string;
   ttlSeconds: number;
   renewalCount: number;
+  host?: string;
+  port?: number;
+  database?: string;
 }
 
 export interface TestConnectionResult {
