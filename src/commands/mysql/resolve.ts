@@ -12,6 +12,55 @@ import type { DbConnection, DbRole } from '../dynamic-secrets/types.js';
 import { getAlias } from './alias.js';
 
 /**
+ * Resolve a connection name or id to a concrete connection id.
+ *
+ * Strategy (avoids a guaranteed 404 round-trip on the common name case):
+ *   - If `target` looks like a connection id (starts with "dbc_"), try GET by id
+ *     first; if that 404s, fall back to listing and matching by name.
+ *   - Otherwise (target is a friendly name), list all connections and match by
+ *     name first; if not found, try GET by id as a last resort.
+ *   - If neither resolves, throw a clear "not found (by id or name)" error.
+ *
+ * Connection names are unique per tenant, so a name match is unambiguous.
+ * If somehow multiple entries share a name, the first match is used.
+ */
+async function resolveConnectionId(target: string): Promise<string> {
+  const looksLikeId = target.startsWith('dbc_');
+
+  if (looksLikeId) {
+    // Try direct GET by id first.
+    try {
+      const conn = await client.get<DbConnection>(`/v1/dynamic-secrets/connections/${target}`);
+      return conn.id;
+    } catch {
+      // Fall through to list-by-name.
+    }
+  }
+
+  // List all connections and match by name.
+  const connections = await client.get<DbConnection[]>('/v1/dynamic-secrets/connections');
+  const byName = connections.find((c) => c.name === target);
+  if (byName !== undefined) {
+    return byName.id;
+  }
+
+  if (!looksLikeId) {
+    // Not found by name; try GET by id as a last resort.
+    try {
+      const conn = await client.get<DbConnection>(`/v1/dynamic-secrets/connections/${target}`);
+      return conn.id;
+    } catch {
+      // Fall through to error.
+    }
+  }
+
+  throw new Error(
+    `Connection '${target}' not found (by id or name). ` +
+      `Run 'znvault dynamic-secrets connections list' to see available connections.`,
+  );
+}
+
+/**
  * Resolve `target` (a connection name/id OR an alias) plus an optional role
  * name/id into concrete IDs.
  *
@@ -35,11 +84,9 @@ export async function resolveTarget(
     const connectionTarget = alias.connection;
     const roleTarget = alias.role;
 
-    let connection: DbConnection;
+    let connectionId: string;
     try {
-      connection = await client.get<DbConnection>(
-        `/v1/dynamic-secrets/connections/${connectionTarget}`,
-      );
+      connectionId = await resolveConnectionId(connectionTarget);
     } catch {
       throw new Error(
         `Dangling alias '${target}': connection '${connectionTarget}' no longer exists`,
@@ -47,7 +94,7 @@ export async function resolveTarget(
     }
 
     const roles = await client.get<DbRole[]>(
-      `/v1/dynamic-secrets/connections/${connection.id}/roles`,
+      `/v1/dynamic-secrets/connections/${connectionId}/roles`,
     );
     const role = roles.find((r) => r.name === roleTarget || r.id === roleTarget);
     if (role === undefined) {
@@ -56,14 +103,11 @@ export async function resolveTarget(
       );
     }
 
-    return { connectionId: connection.id, roleId: role.id };
+    return { connectionId, roleId: role.id };
   }
 
   // Direct connection path.
-  const connection = await client.get<DbConnection>(
-    `/v1/dynamic-secrets/connections/${target}`,
-  );
-  const connectionId = connection.id;
+  const connectionId = await resolveConnectionId(target);
 
   const roles = await client.get<DbRole[]>(
     `/v1/dynamic-secrets/connections/${connectionId}/roles`,
