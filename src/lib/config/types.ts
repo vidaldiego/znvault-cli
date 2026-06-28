@@ -30,6 +30,8 @@ export interface Profile {
   sshUser?: string;  // Default SSH username for `znvault ssh connect`
   sshIdentity?: string;  // Default SSH identity file path
   sshBookmarks?: Record<string, SSHBookmark>;  // Named host bookmarks
+  // MySQL alias store: maps alias name → connection+role
+  mysqlAliases?: Record<string, { connection: string; role: string }>;
 }
 
 export interface SSHBookmark {
