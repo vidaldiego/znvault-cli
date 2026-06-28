@@ -36,10 +36,8 @@ function collect(value: string, previous: string[]): string[] {
 export function registerMysqlCommands(program: Command): void {
   const mysql = program
     .command('mysql')
-    // enablePositionalOptions() is required on every ancestor of a command that
-    // calls passThroughOptions() — including this intermediate `mysql` group.
-    // The root `program` in src/index.ts already has it; the `mysql` subcommand
-    // needs it too so that `exec` and `connect` can call passThroughOptions().
+    // enablePositionalOptions() lets the variadic [mysqlArgs...] coexist cleanly
+    // with named options — keeps '--' separator forwarding well-defined.
     .enablePositionalOptions()
     .description('Connect to MySQL databases via short-lived dynamic-secret credentials')
     .addHelpText('after', `
@@ -67,22 +65,32 @@ Examples:
 `);
 
   // ── exec ─────────────────────────────────────────────────────────────────────
+  //
+  // Using `exec <target> [mysqlArgs...]` (variadic) instead of passThroughOptions()
+  // so that named options (--role, --sql, etc.) can appear AFTER the positional
+  // <target> argument without being misread as excess positional args.
+  //
+  // With passThroughOptions(), Commander stops option-parsing at the first
+  // non-option token (the target), so `exec staging-mysql --role app-rw` was
+  // rejected as "too many arguments" — the target consumed the stop-point and
+  // --role/--sql were treated as excess positional args.
+  //
+  // The variadic approach: Commander continues parsing named options across the
+  // whole argv, and any unrecognised tokens (or tokens after `--`) land in the
+  // mysqlArgs array instead of causing an error.  The `--` separator itself is
+  // NOT included in mysqlArgs — Commander strips it automatically.
   mysql
-    .command('exec <target>')
+    .command('exec <target> [mysqlArgs...]')
     .description('Execute SQL against a MySQL database via a short-lived credential')
     .option('--role <name>', 'Dynamic-secrets role name or ID')
     .option('--file <path>', 'SQL file to execute (repeatable; concatenated in order)', collect, [])
     .option('--sql <sql>', 'Inline SQL to execute')
     .option('--ttl <seconds>', `Requested lease TTL in seconds (default: 600; capped by role maxTtl)`)
     .option('--database <db>', 'Database/schema to select (overrides the credential default)')
-    // passThroughOptions() enables `-- <args>` forwarding: everything after `--`
-    // is collected into Command.args as raw strings (Commander stops parsing at `--`).
-    .passThroughOptions()
-    .allowUnknownOption()
-    .action(async (target: string, opts: MysqlExecCmdOptions, cmd: Command) => {
-      // Everything after `--` lands in cmd.args (Commander collects them there
-      // when passThroughOptions() is enabled).
-      const passthrough: string[] = cmd.args.filter((a) => a !== '--');
+    .action(async (target: string, mysqlArgs: string[], opts: MysqlExecCmdOptions) => {
+      // mysqlArgs contains any extra tokens (e.g. post-`--` flags like --batch).
+      // Commander excludes the `--` separator itself from this array.
+      const passthrough: string[] = mysqlArgs;
 
       try {
         // Fail fast: check mysql binary before generating any lease.
@@ -110,17 +118,15 @@ Examples:
     });
 
   // ── connect ───────────────────────────────────────────────────────────────────
+  // Same variadic idiom as exec — see exec comment above.
   mysql
-    .command('connect <target>')
+    .command('connect <target> [mysqlArgs...]')
     .description('Open an interactive MySQL shell via a short-lived credential')
     .option('--role <name>', 'Dynamic-secrets role name or ID')
     .option('--ttl <seconds>', `Requested lease TTL in seconds (default: 600; capped by role maxTtl)`)
     .option('--database <db>', 'Database/schema to select (overrides the credential default)')
-    // passThroughOptions() enables `-- <args>` forwarding.
-    .passThroughOptions()
-    .allowUnknownOption()
-    .action(async (target: string, opts: MysqlExecOptions, cmd: Command) => {
-      const passthrough: string[] = cmd.args.filter((a) => a !== '--');
+    .action(async (target: string, mysqlArgs: string[], opts: MysqlExecOptions) => {
+      const passthrough: string[] = mysqlArgs;
 
       try {
         // Fail fast: check mysql binary before generating any lease.
