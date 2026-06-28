@@ -82,19 +82,28 @@ function validateResponseShape(parsed: unknown, statusCode: number): void {
  * Base HTTP client class with authentication support
  */
 export class HttpClient {
-  protected baseUrl: string;
-  protected insecure: boolean;
+  // Explicit per-invocation overrides (from --url / --insecure / explicit
+  // construction config). When set, they win over profile resolution.
+  //
+  // F1 fix: do NOT freeze the profile's baseUrl/insecure at construction time.
+  // The client singleton is built at module-import, before the `--profile`
+  // preAction hook applies the runtime override; freezing here routed
+  // `--profile X <cmd>` to the ACTIVE profile's URL instead of profile X's.
+  // Instead, resolve from getConfig() per-request (it honors the runtime
+  // override) and only let explicit --url/--insecure take precedence.
+  private urlOverride?: string;
+  private insecureOverride?: boolean;
   protected timeout: number;
   private refreshPromise: Promise<void> | null = null;
 
   constructor(config?: Partial<ClientConfig>) {
     const defaultConfig = getConfig();
-    this.baseUrl = config?.baseUrl ?? defaultConfig.url;
-    this.insecure = config?.insecure ?? defaultConfig.insecure;
+    if (config?.baseUrl !== undefined) this.urlOverride = config.baseUrl;
+    if (config?.insecure !== undefined) this.insecureOverride = config.insecure;
     this.timeout = config?.timeout ?? defaultConfig.timeout;
 
     // Warn about insecure mode (once per session)
-    if (this.insecure && !insecureWarningShown) {
+    if (this.resolveInsecure() && !insecureWarningShown) {
       insecureWarningShown = true;
       output.warn('TLS certificate verification is disabled (--insecure or ZNVAULT_INSECURE=true)');
       output.warn('This is insecure and should only be used for development/testing');
@@ -102,18 +111,45 @@ export class HttpClient {
   }
 
   /**
-   * Update client configuration
+   * Resolve the effective base URL at call time: explicit --url override wins,
+   * otherwise the currently-resolved profile's URL (which follows --profile,
+   * ZNVAULT_PROFILE, and ZNVAULT_URL via getConfig()).
    */
-  configure(url?: string, insecure?: boolean): void {
-    if (url) this.baseUrl = url;
-    if (insecure !== undefined) this.insecure = insecure;
+  protected resolveBaseUrl(): string {
+    return this.urlOverride ?? getConfig().url;
+  }
+
+  /** Resolve the effective insecure flag at call time (explicit override wins). */
+  protected resolveInsecure(): boolean {
+    return this.insecureOverride ?? getConfig().insecure;
   }
 
   /**
-   * Get base URL
+   * Backwards-compatible accessor. Some call sites read `this.baseUrl`; keep it
+   * as a live getter so it always reflects the resolved profile.
+   */
+  protected get baseUrl(): string {
+    return this.resolveBaseUrl();
+  }
+
+  /** Backwards-compatible accessor for the resolved insecure flag. */
+  protected get insecure(): boolean {
+    return this.resolveInsecure();
+  }
+
+  /**
+   * Update client configuration (explicit --url / --insecure overrides).
+   */
+  configure(url?: string, insecure?: boolean): void {
+    if (url) this.urlOverride = url;
+    if (insecure !== undefined) this.insecureOverride = insecure;
+  }
+
+  /**
+   * Get base URL (resolved at call time).
    */
   getBaseUrl(): string {
-    return this.baseUrl;
+    return this.resolveBaseUrl();
   }
 
   /**
