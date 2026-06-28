@@ -42,6 +42,10 @@ function sleep(ms: number): Promise<void> {
 /**
  * Returns true if the error message indicates the lease is already revoked.
  * The server throws "Cannot revoke <id>: lease is already REVOKED" (or similar).
+ *
+ * TODO: also check the HTTP status code (e.g. 404/409) once the client surfaces
+ * it on the error object — matching solely on err.message is fragile if the
+ * server error wording changes.
  */
 function isAlreadyRevoked(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
@@ -158,18 +162,17 @@ export async function runBrokered(opts: RunBrokeredOptions): Promise<number> {
 
   // ── 5. Signal handlers ──────────────────────────────────────────────────────
   // SIGPIPE is intentionally not handled — treat as normal (don't crash).
-  const onSIGINT = (): void => {
-    void cleanup().then(() => process.exit(130));
-  };
-  const onSIGTERM = (): void => {
-    void cleanup().then(() => process.exit(143));
-  };
-  const onSIGHUP = (): void => {
-    void cleanup().then(() => process.exit(129));
-  };
+  // Each handler uses an async IIFE so cleanup() is properly awaited before
+  // process.exit. The outer `void` is the lint-clean way to fire-and-forget an
+  // async function from a synchronous signal handler — cleanup() cannot throw
+  // (revokeWithRetry eats errors, cleanupCnf is try/caught), so there is no
+  // unhandled rejection risk.
+  const onSIGINT = (): void => { void (async () => { await cleanup(); process.exit(130); })(); };
+  const onSIGTERM = (): void => { void (async () => { await cleanup(); process.exit(143); })(); };
+  const onSIGHUP = (): void => { void (async () => { await cleanup(); process.exit(129); })(); };
   const onUncaughtException = (err: Error): void => {
-    console.error('[znvault] Uncaught exception during mysql exec:', err.message);
-    void cleanup().then(() => process.exit(1));
+    console.error('[znvault] Uncaught exception during mysql exec:', err.stack ?? err);
+    void (async () => { await cleanup(); process.exit(1); })();
   };
 
   process.once('SIGINT', onSIGINT);
@@ -182,11 +185,13 @@ export async function runBrokered(opts: RunBrokeredOptions): Promise<number> {
     const exitCode = await run({ credential, cnfPath });
     return exitCode;
   } finally {
-    await cleanup();
-    // Remove signal handlers to prevent leaks across calls.
+    // Remove signal handlers BEFORE awaiting cleanup so that a signal arriving
+    // during cleanup does not re-enter the handler (which would be a no-op due
+    // to the `cleaned` guard but would also leak across repeated runBrokered calls).
     process.off('SIGINT', onSIGINT);
     process.off('SIGTERM', onSIGTERM);
     process.off('SIGHUP', onSIGHUP);
     process.off('uncaughtException', onUncaughtException);
+    await cleanup();
   }
 }

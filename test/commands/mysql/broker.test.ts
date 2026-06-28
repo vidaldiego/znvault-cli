@@ -110,13 +110,21 @@ describe('runBrokered', () => {
     expect(mockMyCnfCleanup).toHaveBeenCalledOnce();
   });
 
-  it('double cleanup — revoke and cnf cleanup are each called at most once (cleaned guard)', async () => {
+  it('cleaned guard — revoke and cnf cleanup are each called exactly once on normal completion', async () => {
+    // Exercises the `cleaned` boolean guard: even though both the finally block
+    // and any concurrent signal handler call cleanup(), the underlying revoke and
+    // cnfCleanup must each fire at most once.
+    //
+    // Note: triggering a true double invocation of cleanup() from user-space
+    // requires either exporting internals or a real signal, neither of which is
+    // viable in unit tests. Instead we verify the observable contract that
+    // matters: on a normal runBrokered call, revoke is called EXACTLY once and
+    // cnfCleanup is called EXACTLY once — which is what the `cleaned` guard
+    // guarantees (any second call is a no-op before any side effects).
     setupHappyPath();
 
     const { runBrokered } = await import('../../../src/commands/mysql/broker.js');
 
-    // A normal run; the `cleaned` guard ensures idempotence even if some signal
-    // handler races with the finally block (we verify no double revoke at runtime).
     const run = vi.fn().mockResolvedValue(42);
     const code = await runBrokered({ roleId: 'dbr_rw', run });
 
