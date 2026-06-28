@@ -60,15 +60,15 @@ export function assertMysqlOnPath(): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Options mirroring runMysql's interface (minus exec-only stdin wiring).
+ * Options for the pure argv/env builder.
+ * `mode` is intentionally absent — stdin wiring is exec/connect-specific and
+ * is handled by runMysql, not by this pure builder.
  */
 export interface BuildMysqlInvocationOpts {
   /** Path to the 0600 my.cnf file written by mycnf.ts. */
   cnfPath: string;
   /** Optional default schema to select (positional arg — spec F8). */
   database?: string;
-  /** 'connect' = interactive; 'exec' = non-interactive (stdin wiring done by caller). */
-  mode: 'exec' | 'connect';
   /** Extra arguments appended verbatim to the mysql argv. */
   passthrough?: string[];
 }
@@ -109,6 +109,11 @@ export function buildMysqlInvocation(opts: BuildMysqlInvocationOpts): {
     ...process.env,
     MYSQL_HISTFILE: '/dev/null',
   };
+
+  // Scrub any ambient MYSQL_PWD so the password comes ONLY from the cnf
+  // (spec: never from env). Also scrub MYSQL_PWD_PATH for completeness.
+  delete env.MYSQL_PWD;
+  delete env.MYSQL_PWD_PATH;
 
   return { args, env };
 }
@@ -160,7 +165,11 @@ export async function runMysql(opts: RunMysqlOpts): Promise<number> {
   const { spawn } = await import('node:child_process');
 
   const mysqlBin = assertMysqlOnPath();
-  const { args, env } = buildMysqlInvocation(opts);
+  const { args, env } = buildMysqlInvocation({
+    cnfPath: opts.cnfPath,
+    database: opts.database,
+    passthrough: opts.passthrough,
+  });
 
   if (opts.mode === 'connect') {
     // Interactive: inherit all stdio so the terminal works end-to-end.

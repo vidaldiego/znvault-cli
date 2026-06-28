@@ -14,6 +14,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as path from 'node:path';
+import { execSync } from 'node:child_process';
 
 // We import lazily inside tests so PATH manipulation takes effect before the
 // module resolves the binary path. But since assertMysqlOnPath is called at
@@ -61,7 +62,6 @@ describe('assertMysqlOnPath', () => {
     // If the test machine lacks mysql, we skip rather than fail.
     const hasMysql = (() => {
       try {
-        const { execSync } = require('child_process') as typeof import('child_process');
         execSync('command -v mysql', { stdio: 'pipe' });
         return true;
       } catch {
@@ -91,19 +91,18 @@ describe('buildMysqlInvocation', () => {
   // ── Security-critical: flag order and secrets ────────────────────────────
 
   it('puts --defaults-extra-file=<cnfPath> as the FIRST argument', () => {
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect' });
+    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH });
     expect(args[0]).toBe(`--defaults-extra-file=${CNF_PATH}`);
   });
 
   it('sets MYSQL_HISTFILE=/dev/null in the child environment (spec F4)', () => {
-    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect' });
+    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
     expect(env.MYSQL_HISTFILE).toBe('/dev/null');
   });
 
   it('does NOT put any password or user in argv', () => {
     const { args } = buildMysqlInvocation({
       cnfPath: CNF_PATH,
-      mode: 'connect',
       database: 'mydb',
       passthrough: ['--verbose'],
     });
@@ -114,7 +113,7 @@ describe('buildMysqlInvocation', () => {
   });
 
   it('does NOT put any password or user in env (beyond what process.env already contains)', () => {
-    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect' });
+    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
     // MYSQL_PWD must not be added by buildMysqlInvocation.
     expect(env.MYSQL_PWD).toBeUndefined();
   });
@@ -122,7 +121,6 @@ describe('buildMysqlInvocation', () => {
   it('does NOT add --host or --port flags (connection params come from cnf — spec F2)', () => {
     const { args } = buildMysqlInvocation({
       cnfPath: CNF_PATH,
-      mode: 'connect',
     });
     const argsStr = args.join(' ');
     expect(argsStr).not.toMatch(/--host|--port|-h\s|-P\s/);
@@ -131,7 +129,7 @@ describe('buildMysqlInvocation', () => {
   // ── Database positional arg (spec F8) ────────────────────────────────────
 
   it('appends database as a positional arg AFTER the flags, when provided', () => {
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect', database: 'appdb' });
+    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, database: 'appdb' });
     // First arg = --defaults-extra-file; database must appear after all flags.
     expect(args[0]).toBe(`--defaults-extra-file=${CNF_PATH}`);
     expect(args).toContain('appdb');
@@ -141,7 +139,7 @@ describe('buildMysqlInvocation', () => {
   });
 
   it('omits the database positional arg when not provided', () => {
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect' });
+    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH });
     // No bare word that looks like a database name should appear.
     // The only flag-like arg should be --defaults-extra-file.
     const nonFlagArgs = args.filter((a) => !a.startsWith('-'));
@@ -152,7 +150,7 @@ describe('buildMysqlInvocation', () => {
 
   it('appends passthrough args verbatim at the end of argv', () => {
     const passthrough = ['--verbose', '--column-names'];
-    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect', passthrough });
+    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH, passthrough });
     const lastTwo = args.slice(-2);
     expect(lastTwo).toEqual(passthrough);
   });
@@ -161,7 +159,6 @@ describe('buildMysqlInvocation', () => {
     const passthrough = ['--verbose'];
     const { args } = buildMysqlInvocation({
       cnfPath: CNF_PATH,
-      mode: 'connect',
       database: 'appdb',
       passthrough,
     });
@@ -174,18 +171,18 @@ describe('buildMysqlInvocation', () => {
   // ── exec-specific: no --batch/--skip-column-names forced from builder ────
   // (exec mode stdin wiring is handled by runMysql, not buildMysqlInvocation)
 
-  it('returns the same base args for exec mode as for connect mode', () => {
-    const connect = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect' });
-    const exec = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'exec' });
-    // Core args should be identical (stdin wiring is done by the caller).
-    expect(exec.args).toEqual(connect.args);
+  it('returns mode-agnostic args (mode removed from builder — stdin wiring is done by caller)', () => {
+    // buildMysqlInvocation has no mode param; args are always mode-agnostic.
+    const { args } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+    expect(args[0]).toBe(`--defaults-extra-file=${CNF_PATH}`);
+    expect(args).toHaveLength(1);
   });
 
   // ── Environment inherits process.env ────────────────────────────────────
 
   it('preserves existing process.env variables in the returned env', () => {
     const prev = process.env.HOME;
-    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect' });
+    const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
     if (prev !== undefined) {
       expect(env.HOME).toBe(prev);
     }
@@ -195,13 +192,33 @@ describe('buildMysqlInvocation', () => {
     const prevHistfile = process.env.MYSQL_HISTFILE;
     process.env.MYSQL_HISTFILE = '/tmp/sneaky_history';
     try {
-      const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH, mode: 'connect' });
+      const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
       expect(env.MYSQL_HISTFILE).toBe('/dev/null');
     } finally {
       if (prevHistfile === undefined) {
         delete process.env.MYSQL_HISTFILE;
       } else {
         process.env.MYSQL_HISTFILE = prevHistfile;
+      }
+    }
+  });
+
+  // ── Security: scrub ambient MYSQL_PWD (spec: password ONLY from cnf) ─────
+
+  it('scrubs MYSQL_PWD from the child env even when process.env has it set', () => {
+    // Poison the parent env to simulate an operator who happens to have
+    // MYSQL_PWD exported in their shell session.
+    const prev = process.env.MYSQL_PWD;
+    process.env.MYSQL_PWD = 'supersecret';
+    try {
+      const { env } = buildMysqlInvocation({ cnfPath: CNF_PATH });
+      // MYSQL_PWD must be absent — the password must come ONLY from the cnf.
+      expect(env.MYSQL_PWD).toBeUndefined();
+    } finally {
+      if (prev === undefined) {
+        delete process.env.MYSQL_PWD;
+      } else {
+        process.env.MYSQL_PWD = prev;
       }
     }
   });
