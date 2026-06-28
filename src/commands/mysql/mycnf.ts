@@ -2,6 +2,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 function memBackedTmpBase(): string {
   // Prefer a memory-backed fs so the plaintext never hits spinning disk (spec F1).
@@ -16,8 +17,9 @@ function memBackedTmpBase(): string {
 export async function createMyCnf(opts: {
   user: string; password: string; host: string; port: number;
 }): Promise<{ path: string; cleanup: () => void }> {
-  const dir = fs.mkdtempSync(path.join(memBackedTmpBase(), 'znvault-my-'));
-  fs.chmodSync(dir, 0o700);
+  const suffix = randomBytes(8).toString('hex');
+  const dir = path.join(memBackedTmpBase(), `znvault-my-${suffix}`);
+  fs.mkdirSync(dir, { mode: 0o700 });
   const file = path.join(dir, 'my.cnf');
   const body = `[client]\nuser=${opts.user}\npassword=${opts.password}\nhost=${opts.host}\nport=${opts.port}\n`;
   fs.writeFileSync(file, body, { mode: 0o600 });
