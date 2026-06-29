@@ -23,6 +23,7 @@ export interface CreateOptions {
   resources?: string;
   aliases?: string;
   tags?: string;
+  sshPrincipals?: string;
   tenant?: string;
   json?: boolean;
 }
@@ -62,6 +63,7 @@ export interface UpdateConditionsOptions {
   resources?: string;
   aliases?: string;
   tags?: string;
+  sshPrincipals?: string;
   clearAll?: boolean;
   tenant?: string;
   json?: boolean;
@@ -102,5 +104,6 @@ export interface ApiKeyConditions {
   resources?: Record<string, string[]>;
   aliases?: string[];
   resourceTags?: Record<string, string>;
+  sshPrincipals?: string[];   // SSH principal allowlist for ssh:ca:sign-as
   [key: string]: unknown;
 }

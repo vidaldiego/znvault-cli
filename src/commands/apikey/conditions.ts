@@ -21,6 +21,7 @@ export function registerConditionsCommand(apiKeyCmd: Command): void {
     .option('--resources <ids>', 'Resource IDs (type:id,...) or "clear"')
     .option('--aliases <patterns>', 'Alias patterns (glob) or "clear"')
     .option('--tags <tags>', 'Resource tags (key=value,...) or "clear"')
+    .option('--ssh-principals <principals>', 'Comma-separated SSH principal allowlist (for ssh:ca:sign-as keys)')
     .option('--clear-all', 'Remove all conditions')
     .option('-t, --tenant <id>', 'Tenant ID')
     .option('--json', 'Output as JSON')

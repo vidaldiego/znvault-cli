@@ -24,6 +24,7 @@ export function registerCreateCommand(apiKeyCmd: Command): void {
     .option('--resources <ids>', 'Specific resource IDs (type:id,...): secrets:id1,certificates:id2')
     .option('--aliases <patterns>', 'Comma-separated alias patterns (glob): prod/*,api/*')
     .option('--tags <tags>', 'Required resource tags: key=value,key2=value2')
+    .option('--ssh-principals <principals>', 'Comma-separated SSH principal allowlist (for ssh:ca:sign-as keys)')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only)')
     .option('--json', 'Output as JSON')
     .action(async (name: string, options: CreateOptions, cmd: Command) => {

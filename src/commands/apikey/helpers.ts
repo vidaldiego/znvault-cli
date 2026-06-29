@@ -66,6 +66,7 @@ export function formatConditionsSummary(conditions?: ApiKeyConditions): string {
   if (conditions.resources) parts.push('Resources');
   if (conditions.aliases) parts.push('Aliases');
   if (conditions.resourceTags) parts.push('Tags');
+  if (conditions.sshPrincipals) parts.push('SSH Principals');
 
   if (parts.length === 0) return '-';
   if (parts.length <= 2) return parts.join(', ');
@@ -82,6 +83,7 @@ export function displayConditions(cond: ApiKeyConditions): void {
   if (cond.resources) console.log(`  - Resources: ${JSON.stringify(cond.resources)}`);
   if (cond.aliases) console.log(`  - Aliases: ${cond.aliases.join(', ')}`);
   if (cond.resourceTags) console.log(`  - Tags: ${JSON.stringify(cond.resourceTags)}`);
+  if (cond.sshPrincipals) console.log(`  - SSH Principals: ${cond.sshPrincipals.join(', ')}`);
 }
 
 /**
@@ -94,6 +96,7 @@ export function parseConditionsFromOptions(options: {
   resources?: string;
   aliases?: string;
   tags?: string;
+  sshPrincipals?: string;
 }): ApiKeyConditions {
   const conditions: ApiKeyConditions = {};
 
@@ -137,6 +140,11 @@ export function parseConditionsFromOptions(options: {
   // Alias patterns condition
   if (options.aliases && options.aliases !== 'clear') {
     conditions.aliases = options.aliases.split(',').map((a) => a.trim());
+  }
+
+  // SSH principal allowlist (ssh:ca:sign-as)
+  if (options.sshPrincipals && options.sshPrincipals !== 'clear') {
+    conditions.sshPrincipals = options.sshPrincipals.split(',').map((p) => p.trim());
   }
 
   // Resource tags condition
