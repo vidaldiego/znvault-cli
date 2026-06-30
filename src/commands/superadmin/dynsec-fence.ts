@@ -128,11 +128,12 @@ export async function removeFenceEntry(
     await client.delete(`/v1/superadmin/dynamic-secrets/fence/${id}`);
     spinner.stop();
 
-    output.success(`Fence entry ${id} removed`);
-
     if (options.json) {
       output.json({ removed: true, id });
+      return;
     }
+
+    output.success(`Fence entry ${id} removed`);
   } catch (err) {
     spinner.fail('Failed to remove fence entry');
     output.error(err instanceof Error ? err.message : String(err));

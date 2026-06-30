@@ -129,11 +129,12 @@ export async function removeAllowedHost(
     await client.delete(`/v1/dynamic-secrets/allowed-hosts/${id}`);
     spinner.stop();
 
-    output.success(`Allowed host ${id} removed`);
-
     if (options.json) {
       output.json({ removed: true, id });
+      return;
     }
+
+    output.success(`Allowed host ${id} removed`);
   } catch (err) {
     spinner.fail('Failed to remove allowed host');
     output.error(err instanceof Error ? err.message : String(err));

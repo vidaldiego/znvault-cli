@@ -223,6 +223,15 @@ describe('dynasec allowed-hosts add', () => {
     ).rejects.toThrow('process.exit(1)');
     expect(output.error).toHaveBeenCalledWith('Host already exists');
   });
+
+  it('surfaces a 429 rate-limit error and exits 1', async () => {
+    vi.mocked(client.post).mockRejectedValue(new Error('rate limit exceeded'));
+
+    await expect(
+      program.parseAsync(['node', 'test', 'dynasec', 'allowed-hosts', 'add', 'pg.prod.example.com']),
+    ).rejects.toThrow('process.exit(1)');
+    expect(output.error).toHaveBeenCalledWith('rate limit exceeded');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -323,6 +332,24 @@ describe('dynasec allowed-hosts rm', () => {
       program.parseAsync(['node', 'test', 'dynasec', 'allowed-hosts', 'rm', 'bad-id']),
     ).rejects.toThrow('process.exit(1)');
     expect(output.error).toHaveBeenCalledWith('not found');
+  });
+
+  it('outputs ONLY JSON and no text success message when --json is passed', async () => {
+    vi.mocked(client.delete).mockResolvedValue(undefined);
+
+    await program.parseAsync(['node', 'test', 'dynasec', 'allowed-hosts', 'rm', 'ah-1', '--json']);
+
+    expect(output.json).toHaveBeenCalledWith({ removed: true, id: 'ah-1' });
+    expect(output.success).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a 429 rate-limit error and exits 1', async () => {
+    vi.mocked(client.delete).mockRejectedValue(new Error('rate limit exceeded'));
+
+    await expect(
+      program.parseAsync(['node', 'test', 'dynasec', 'allowed-hosts', 'rm', 'ah-1']),
+    ).rejects.toThrow('process.exit(1)');
+    expect(output.error).toHaveBeenCalledWith('rate limit exceeded');
   });
 });
 
@@ -479,6 +506,18 @@ describe('superadmin dynsec fence add', () => {
     ).rejects.toThrow('process.exit(1)');
     expect(output.error).toHaveBeenCalledWith('Fence pattern already exists');
   });
+
+  it('emits a scanning alert warning when --force is used', async () => {
+    vi.mocked(client.post).mockResolvedValue(SAMPLE_FENCE_ROW);
+
+    await program.parseAsync([
+      'node', 'test', 'superadmin', 'dynsec', 'fence', 'add', '0.0.0.0/0', '--force',
+    ]);
+
+    expect(output.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/broad.?fence|scanning alert|emitted/i),
+    );
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -579,5 +618,14 @@ describe('superadmin dynsec fence rm', () => {
       program.parseAsync(['node', 'test', 'superadmin', 'dynsec', 'fence', 'rm', 'bad-id']),
     ).rejects.toThrow('process.exit(1)');
     expect(output.error).toHaveBeenCalledWith('fence entry not found');
+  });
+
+  it('outputs ONLY JSON and no text success message when --json is passed', async () => {
+    vi.mocked(client.delete).mockResolvedValue(undefined);
+
+    await program.parseAsync(['node', 'test', 'superadmin', 'dynsec', 'fence', 'rm', 'f-1', '--json']);
+
+    expect(output.json).toHaveBeenCalledWith({ removed: true, id: 'f-1' });
+    expect(output.success).not.toHaveBeenCalled();
   });
 });
