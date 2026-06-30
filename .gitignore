@@ -5,3 +5,6 @@ dist/
 coverage/
 .env
 .env.local
+
+# Swift build output (SwiftPM) — never track
+secure-enclave/.build/
