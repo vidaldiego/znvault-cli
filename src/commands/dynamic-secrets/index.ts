@@ -27,6 +27,7 @@ import {
   renewLease,
   revokeLease,
 } from './lease.js';
+import { registerAllowedHostsCommands } from './allowed-hosts.js';
 
 // Re-export types
 export * from './types.js';
@@ -215,4 +216,9 @@ Examples:
     .option('--force', 'Skip confirmation')
     .option('--json', 'Output as JSON')
     .action(revokeLease);
+
+  // -------------------------------------------------------------------------
+  // Allowed-Hosts Commands
+  // -------------------------------------------------------------------------
+  registerAllowedHostsCommands(dynasec);
 }
