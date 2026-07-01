@@ -123,6 +123,9 @@ export interface RoleCreateOptions {
 
 export interface RoleUpdateOptions {
   description?: string;
+  creationStatements?: string;
+  revocationStatements?: string;
+  renewStatements?: string;
   defaultTtl?: string;
   maxTtl?: string;
   enabled?: string;
