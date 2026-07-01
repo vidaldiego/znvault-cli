@@ -106,6 +106,7 @@ export interface ConnectionUpdateOptions {
   defaultTtl?: string;
   maxTtl?: string;
   status?: string;
+  routinesConnectionString?: string;
   json?: boolean;
 }
 

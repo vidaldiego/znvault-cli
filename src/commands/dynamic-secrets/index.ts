@@ -28,6 +28,7 @@ import {
   revokeLease,
 } from './lease.js';
 import { registerAllowedHostsCommands } from './allowed-hosts.js';
+import { registerRoutinesCommands } from './routines.js';
 
 // Re-export types
 export * from './types.js';
@@ -101,6 +102,7 @@ Examples:
     .option('--default-ttl <seconds>', 'Default credential TTL')
     .option('--max-ttl <seconds>', 'Maximum credential TTL')
     .option('--status <status>', 'Connection status (ACTIVE or DISABLED)')
+    .option('--routines-connection-string <string>', 'Write-only credential for the persistent "routines" sub-account (rotating = re-setting; never returned in any response)')
     .option('--json', 'Output as JSON')
     .action(updateConnection);
 
@@ -224,4 +226,9 @@ Examples:
   // Allowed-Hosts Commands
   // -------------------------------------------------------------------------
   registerAllowedHostsCommands(dynasec);
+
+  // -------------------------------------------------------------------------
+  // Routines Commands
+  // -------------------------------------------------------------------------
+  registerRoutinesCommands(dynasec);
 }

@@ -156,6 +156,7 @@ export async function updateConnection(nameOrId: string, options: ConnectionUpda
     if (options.defaultTtl) body.defaultTtlSeconds = parseInt(options.defaultTtl, 10);
     if (options.maxTtl) body.maxTtlSeconds = parseInt(options.maxTtl, 10);
     if (options.status) body.status = options.status.toUpperCase();
+    if (options.routinesConnectionString) body.routinesConnectionString = options.routinesConnectionString;
 
     const response = await client.patch<DbConnection>(`/v1/dynamic-secrets/connections/${nameOrId}`, body);
     spinner.succeed('Connection updated');
