@@ -12,6 +12,8 @@ import {
   updateConnection,
   deleteConnection,
   testConnection,
+  provisionConnection,
+  rotateAdminCredential,
 } from './connection.js';
 import {
   listRoles,
@@ -119,6 +121,101 @@ Examples:
     .description('Test a database connection')
     .option('--json', 'Output as JSON')
     .action(testConnection);
+
+  connection
+    .command('provision <name>')
+    .description(
+      'Provision a database connection end-to-end: validates the root credential, creates (or ' +
+      'adopts) a least-privilege admin sub-account server-side, and stores the connection. ' +
+      'The root credential is transient — read from --root-file or a masked prompt, sent once, ' +
+      'never persisted or logged.',
+    )
+    .option('--type <type>', 'Database type: mysql or postgresql (required)')
+    .option(
+      '--root-file <path>',
+      'Path to a file containing the root/superuser connection string. If omitted, you will be ' +
+      'prompted interactively with masked input. NEVER pass the root credential as an inline flag — ' +
+      'command-line arguments are visible to other processes via `ps` and are often saved to shell history.',
+    )
+    .option('--account-prefix <prefix>', 'Optional prefix for the generated admin/routines account usernames')
+    .option('--routines-bundle <name>', 'MySQL only: name of a shipped routine bundle to apply (requires --routines-version)')
+    .option('--routines-version <n>', 'MySQL only: version of the routine bundle to apply (requires --routines-bundle)')
+    .option('--json', 'Output the raw ProvisionReport as JSON')
+    .addHelpText('after', `
+Examples:
+  # Provision a MySQL connection, reading the root credential from a file
+  # (write it out-of-band, e.g. \`read -s ROOT && echo -n "$ROOT" > /tmp/root.txt\`,
+  # then delete the file once provisioning succeeds):
+  znvault dynasec connection provision my-mysql --type mysql \\
+    --root-file /tmp/root.txt
+
+  # Same, but prompted interactively instead of using a file (masked input,
+  # nothing written to disk or shell history):
+  znvault dynasec connection provision my-mysql --type mysql
+  # -> Root (superuser) connection string: ****************
+
+  # PostgreSQL connection (routines are MySQL-only; omit --routines-*):
+  znvault dynasec connection provision my-pg --type postgresql \\
+    --root-file /tmp/pg-root.txt
+
+  # MySQL connection that also applies the znapi-helpers routine bundle to a
+  # persistent routines sub-account in the same pass:
+  znvault dynasec connection provision my-mysql --type mysql \\
+    --root-file /tmp/root.txt \\
+    --routines-bundle znapi-helpers --routines-version 1
+
+  # Custom account-name prefix for the generated admin/routines sub-accounts:
+  znvault dynasec connection provision my-mysql --type mysql \\
+    --root-file /tmp/root.txt --account-prefix zn_
+
+  # Machine-readable output (CI pipelines, scripting):
+  znvault dynasec connection provision my-mysql --type mysql \\
+    --root-file /tmp/root.txt --json
+
+Notes:
+  - Adopt, don't clobber: if the target admin sub-account already exists,
+    provision ADOPTS it (re-grants least-privilege permissions) instead of
+    resetting its password. If you need a fresh admin credential on an
+    already-provisioned connection, use:
+      znvault dynasec connection rotate-admin <connection-id>
+  - The root credential is used once, in-memory, for this call only — it is
+    never stored, logged, or echoed back in the response or audit trail.
+  - Root host is subject to the same SSRF host-allowlist guard as other
+    dynamic-secrets connections (loopback/internal/metadata hosts are
+    rejected with a 400).
+  - On failure, the error message is printed along with the HTTP status;
+    some failures (e.g. 422 root_insufficient, 502 provision_failed) occur
+    partway through a multi-step process — re-run \`connection get <name>\`
+    to inspect what (if anything) was left behind.
+`)
+    .action(provisionConnection);
+
+  connection
+    .command('rotate-admin <id>')
+    .description(
+      'Rotate the admin credential on an already-provisioned connection (generates a fresh ' +
+      'password for the vault-managed admin sub-account; does not touch roles or leases)',
+    )
+    .option('--json', 'Output as JSON')
+    .addHelpText('after', `
+Examples:
+  # Rotate the admin credential for a connection by ID
+  znvault dynasec connection rotate-admin 3f2b1c4a-...
+
+  # Machine-readable confirmation
+  znvault dynasec connection rotate-admin 3f2b1c4a-... --json
+
+Notes:
+  - This only rotates the vault-managed ADMIN account's password (the
+    account provision created/adopted for managing roles and leases) — it
+    does not affect the root credential (which vault never stores) or any
+    already-issued dynamic-secret leases.
+  - Use this after \`connection provision\` adopted a pre-existing account
+    with an unknown password (409 adopted_account_no_password on provision
+    means vault could not verify/rotate it during provisioning — rotate
+    it explicitly once you've confirmed the adopted grants are correct).
+`)
+    .action(rotateAdminCredential);
 
   // -------------------------------------------------------------------------
   // Role Commands

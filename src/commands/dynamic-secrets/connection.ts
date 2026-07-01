@@ -5,11 +5,20 @@
  */
 
 
+import * as fs from 'node:fs';
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
-import type { DbConnection, TestConnectionResult, ConnectionCreateOptions, ConnectionUpdateOptions } from './types.js';
+import type {
+  DbConnection,
+  TestConnectionResult,
+  ConnectionCreateOptions,
+  ConnectionUpdateOptions,
+  ConnectionProvisionOptions,
+  ProvisionReport,
+  RotateAdminResult,
+} from './types.js';
 import { formatStatus, formatDate, formatTtl } from './helpers.js';
 
 export async function listConnections(options: { json?: boolean }): Promise<void> {
@@ -198,6 +207,172 @@ export async function deleteConnection(nameOrId: string, options: { force?: bool
     }
   } catch (err) {
     spinner.fail('Failed to delete connection');
+    output.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+/**
+ * Read the root (superuser) connection string for `provision`.
+ *
+ * LOAD-BEARING: the root credential is NEVER accepted as an inline CLI flag —
+ * argv is visible to every other process on the host via `ps`/`/proc`, and is
+ * frequently persisted in shell history. The only two supported input paths
+ * are:
+ *   1. `--root-file <path>` — a file the operator writes out-of-band (e.g.
+ *      `read -s`'d into a file, or piped from another secrets tool) and
+ *      ideally deletes afterward. Read once, synchronously, and never
+ *      written back anywhere.
+ *   2. A masked interactive prompt (inquirer `type: 'password'`) when
+ *      `--root-file` is omitted — nothing is echoed to the terminal and
+ *      nothing touches argv.
+ *
+ * The returned string is held in memory only for the duration of the POST.
+ */
+async function readRootConnectionString(rootFile: string | undefined): Promise<string> {
+  if (rootFile) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(rootFile, 'utf8');
+    } catch (err) {
+      output.error(`Failed to read --root-file "${rootFile}": ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      output.error(`--root-file "${rootFile}" is empty`);
+      process.exit(1);
+    }
+    return trimmed;
+  }
+
+  const { rootConnectionString } = await inquirer.prompt<{ rootConnectionString: string }>([{
+    type: 'password',
+    name: 'rootConnectionString',
+    message: 'Root (superuser) connection string:',
+    mask: '*',
+    validate: (input: string) => input.trim() ? true : 'Root connection string is required',
+  }]);
+  return rootConnectionString.trim();
+}
+
+/**
+ * Print a per-step provisioning report. Each step carries at minimum
+ * `{ step, status }`; any additional fields (e.g. `detail`, `username`) are
+ * rendered too, but credentials never appear here — the server-side
+ * ProvisionReport contract guarantees no secret material is included.
+ */
+function printProvisionReport(report: ProvisionReport): void {
+  const table = new Table({
+    head: ['Step', 'Status', 'Detail'],
+    style: { head: ['cyan'] },
+  });
+
+  for (const s of report.steps) {
+    const { step, status: stepStatus, ...rest } = s;
+    const detailEntries = Object.entries(rest).filter(([, v]) => v !== undefined);
+    const detail = detailEntries.length > 0
+      ? detailEntries.map(([k, v]) => `${k}=${String(v)}`).join(', ')
+      : '-';
+    table.push([step, stepStatus, detail]);
+  }
+
+  console.log(table.toString());
+}
+
+export async function provisionConnection(name: string, options: ConnectionProvisionOptions): Promise<void> {
+  if (!options.type) {
+    output.error('--type is required (mysql or postgresql)');
+    process.exit(1);
+  }
+
+  const connectionType = options.type.toUpperCase();
+  if (connectionType !== 'MYSQL' && connectionType !== 'POSTGRESQL') {
+    output.error(`Invalid --type "${options.type}": must be "mysql" or "postgresql"`);
+    process.exit(1);
+  }
+
+  if (options.routinesBundle && !options.routinesVersion) {
+    output.error('--routines-version is required when --routines-bundle is given');
+    process.exit(1);
+  }
+  if (options.routinesVersion && !options.routinesBundle) {
+    output.error('--routines-bundle is required when --routines-version is given');
+    process.exit(1);
+  }
+
+  let routinesVersion: number | undefined;
+  if (options.routinesVersion) {
+    routinesVersion = parseInt(options.routinesVersion, 10);
+    if (!Number.isInteger(routinesVersion) || routinesVersion < 1) {
+      output.error('--routines-version must be a positive integer');
+      process.exit(1);
+    }
+  }
+
+  // Read the root credential BEFORE starting the spinner — an interactive
+  // masked prompt and an ora spinner fight over the same terminal line.
+  const rootConnectionString = await readRootConnectionString(options.rootFile);
+
+  const spinner = output.spinner('Provisioning connection...').start();
+
+  try {
+    const body: Record<string, unknown> = {
+      name,
+      connectionType,
+      rootConnectionString,
+    };
+    if (options.accountPrefix) body.accountPrefix = options.accountPrefix;
+    if (options.routinesBundle && routinesVersion) {
+      body.routines = { bundle: options.routinesBundle, version: routinesVersion };
+    }
+
+    const response = await client.post<ProvisionReport>('/v1/dynamic-secrets/connections/provision', body);
+    spinner.succeed(`Connection "${response.name}" provisioned`);
+
+    if (options.json) {
+      output.json(response);
+      return;
+    }
+
+    printProvisionReport(response);
+    output.success(
+      `Connection "${response.name}" (${response.connectionId}) provisioned=${String(response.provisioned)}`,
+    );
+  } catch (err) {
+    spinner.fail('Failed to provision connection');
+    output.error(err instanceof Error ? err.message : String(err));
+
+    // Some provision failures (422 root_insufficient, 502 provision_failed /
+    // routines_apply_failed) include a partial `steps` report showing where
+    // the process stopped. The shared HTTP client currently only preserves
+    // `message`/`statusCode` on thrown errors (see src/lib/client/http.ts),
+    // so a mid-flight step report is not available here yet — surface what
+    // we have and point at `dynasec connection get` for post-mortem state.
+    const statusCode = (err as { statusCode?: number } | null)?.statusCode;
+    if (statusCode !== undefined) {
+      output.info(`Server responded with HTTP ${statusCode}. Run "znvault dynasec connection get ${name}" to check partial state.`);
+    }
+
+    process.exit(1);
+  }
+}
+
+export async function rotateAdminCredential(id: string, options: { json?: boolean }): Promise<void> {
+  const spinner = output.spinner('Rotating admin credential...').start();
+
+  try {
+    const response = await client.post<RotateAdminResult>(`/v1/dynamic-secrets/connections/${id}/rotate-admin`, {});
+    spinner.succeed('Admin credential rotated');
+
+    if (options.json) {
+      output.json(response);
+      return;
+    }
+
+    output.success(`Admin credential rotated for connection ${id} (rotated=${String(response.rotated)})`);
+  } catch (err) {
+    spinner.fail('Failed to rotate admin credential');
     output.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }

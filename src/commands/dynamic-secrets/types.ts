@@ -144,3 +144,31 @@ export interface LeaseRevokeOptions {
   force?: boolean;
   json?: boolean;
 }
+
+// ─── Connection Provisioner (S1) ────────────────────────────────────────────
+
+export interface ProvisionStep {
+  step: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+export interface ProvisionReport {
+  connectionId: string;
+  name: string;
+  steps: ProvisionStep[];
+  provisioned: boolean;
+}
+
+export interface RotateAdminResult {
+  rotated: boolean;
+}
+
+export interface ConnectionProvisionOptions {
+  type?: string;
+  rootFile?: string;
+  accountPrefix?: string;
+  routinesBundle?: string;
+  routinesVersion?: string;
+  json?: boolean;
+}
