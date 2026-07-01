@@ -150,6 +150,9 @@ export async function updateRole(roleId: string, options: RoleUpdateOptions): Pr
   try {
     const body: Record<string, unknown> = {};
     if (options.description !== undefined) body.description = options.description;
+    if (options.creationStatements) body.creationStatements = options.creationStatements.split(';').filter(s => s.trim());
+    if (options.revocationStatements) body.revocationStatements = options.revocationStatements.split(';').filter(s => s.trim());
+    if (options.renewStatements) body.renewStatements = options.renewStatements.split(';').filter(s => s.trim());
     if (options.defaultTtl) body.defaultTtlSeconds = parseInt(options.defaultTtl, 10);
     if (options.maxTtl) body.maxTtlSeconds = parseInt(options.maxTtl, 10);
     if (options.enabled !== undefined) body.isEnabled = options.enabled === 'true';

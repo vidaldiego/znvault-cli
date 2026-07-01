@@ -511,6 +511,25 @@ describe('Dynamic Secrets Commands', () => {
 
       expect(output.json).toHaveBeenCalledWith(updated);
     });
+
+    it('should update role with creation/revocation/renew statements split by semicolon', async () => {
+      const updated = { id: 'role-123', name: 'updated-role' };
+      vi.mocked(client.patch).mockResolvedValue(updated);
+
+      await program.parseAsync([
+        'node', 'test', 'dynasec', 'role', 'update', 'role-123',
+        '--creation-statements', 'CREATE USER x;GRANT SELECT ON *.* TO x',
+        '--revocation-statements', 'DROP USER IF EXISTS x',
+        '--renew-statements', 'ALTER USER x IDENTIFIED BY \'{{password}}\'',
+      ]);
+
+      expect(client.patch).toHaveBeenCalledWith('/v1/dynamic-secrets/roles/role-123', expect.objectContaining({
+        creationStatements: ['CREATE USER x', 'GRANT SELECT ON *.* TO x'],
+        revocationStatements: ['DROP USER IF EXISTS x'],
+        renewStatements: ['ALTER USER x IDENTIFIED BY \'{{password}}\''],
+      }));
+      expect(output.success).toHaveBeenCalled();
+    });
   });
 
   describe('dynasec role delete', () => {
