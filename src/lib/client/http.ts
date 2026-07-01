@@ -56,7 +56,9 @@ function isConflict(err: unknown): boolean {
 /**
  * Type guard to check if a value looks like an API error response
  */
-function isApiErrorLike(value: unknown): value is { message?: string; error?: string } {
+function isApiErrorLike(
+  value: unknown,
+): value is { message?: string; error?: string; steps?: unknown[] } {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -447,7 +449,22 @@ export class HttpClient {
               if (isApiErrorLike(parsed)) {
                 const errorMessage = parsed.message ?? parsed.error ?? `Request failed with status ${statusCode}`;
                 const e = new Error(errorMessage);
-                (e as Error & { statusCode?: number }).statusCode = statusCode;
+                // Preserve the machine-readable parts of the error body so
+                // callers (e.g. dynamic-secrets provision/routines commands)
+                // can render a partial-progress report instead of just a
+                // message + status code. `errorCode`/`steps` are only set
+                // when present in the body; `details` carries the full
+                // parsed body for forward-compat with future fields.
+                const ext = e as Error & {
+                  statusCode?: number;
+                  errorCode?: string;
+                  steps?: unknown[];
+                  details?: unknown;
+                };
+                ext.statusCode = statusCode;
+                if (parsed.error !== undefined) ext.errorCode = parsed.error;
+                if (parsed.steps !== undefined) ext.steps = parsed.steps;
+                ext.details = parsed;
                 reject(e);
               } else {
                 const e = new Error(`HTTP ${statusCode}: ${JSON.stringify(parsed).slice(0, 200)}`);

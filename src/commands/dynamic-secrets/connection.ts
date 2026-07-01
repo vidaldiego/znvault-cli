@@ -345,13 +345,15 @@ export async function provisionConnection(name: string, options: ConnectionProvi
 
     // Some provision failures (422 root_insufficient, 502 provision_failed /
     // routines_apply_failed) include a partial `steps` report showing where
-    // the process stopped. The shared HTTP client currently only preserves
-    // `message`/`statusCode` on thrown errors (see src/lib/client/http.ts),
-    // so a mid-flight step report is not available here yet — surface what
-    // we have and point at `dynasec connection get` for post-mortem state.
-    const statusCode = (err as { statusCode?: number } | null)?.statusCode;
-    if (statusCode !== undefined) {
-      output.info(`Server responded with HTTP ${statusCode}. Run "znvault dynasec connection get ${name}" to check partial state.`);
+    // the process stopped. The shared HTTP client (src/lib/client/http.ts)
+    // attaches the parsed error body's `steps`/`error` fields to the thrown
+    // Error, so render that partial report here when present; otherwise
+    // fall back to pointing at `dynasec connection get` for post-mortem state.
+    const errDetails = err as { statusCode?: number; errorCode?: string; steps?: ProvisionReport['steps'] } | null;
+    if (errDetails?.steps !== undefined && errDetails.steps.length > 0) {
+      printProvisionReport({ connectionId: '', name, steps: errDetails.steps, provisioned: false });
+    } else if (errDetails?.statusCode !== undefined) {
+      output.info(`Server responded with HTTP ${errDetails.statusCode}. Run "znvault dynasec connection get ${name}" to check partial state.`);
     }
 
     process.exit(1);

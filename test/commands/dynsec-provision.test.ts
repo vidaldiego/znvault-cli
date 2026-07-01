@@ -326,6 +326,49 @@ describe('dynasec connection provision', () => {
 
     expect(output.error).toHaveBeenCalledWith(expect.stringMatching(/root_insufficient/));
   });
+
+  it('renders the partial step report when a failed provision error carries .steps (e.g. 422 root_insufficient)', async () => {
+    const err = new Error('root_insufficient') as Error & {
+      statusCode?: number;
+      errorCode?: string;
+      steps?: unknown[];
+    };
+    err.statusCode = 422;
+    err.errorCode = 'root_insufficient';
+    err.steps = [
+      { step: 'lock', status: 'acquired' },
+      { step: 'preflight', status: 'failed' },
+    ];
+    vi.mocked(client.post).mockRejectedValueOnce(err);
+
+    await expect(
+      program.parseAsync([
+        'node', 'test', 'dynasec', 'connection', 'provision', 'my-mysql',
+        '--type', 'mysql', '--root-file', rootFile,
+      ]),
+    ).rejects.toThrow('process.exit(1)');
+
+    expect(output.error).toHaveBeenCalledWith(expect.stringMatching(/root_insufficient/));
+    // The per-step table must include where the process stopped.
+    const flattened = tablePushedRows.flat();
+    expect(flattened).toContain('preflight');
+    expect(flattened).toContain('failed');
+  });
+
+  it('falls back to the "check connection get" hint when the error has no .steps', async () => {
+    const err = new Error('provision failed') as Error & { statusCode?: number };
+    err.statusCode = 502;
+    vi.mocked(client.post).mockRejectedValueOnce(err);
+
+    await expect(
+      program.parseAsync([
+        'node', 'test', 'dynasec', 'connection', 'provision', 'my-mysql',
+        '--type', 'mysql', '--root-file', rootFile,
+      ]),
+    ).rejects.toThrow('process.exit(1)');
+
+    expect(output.info).toHaveBeenCalledWith(expect.stringMatching(/connection get my-mysql/));
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
