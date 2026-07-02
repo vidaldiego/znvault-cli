@@ -138,7 +138,14 @@ function checkPluginUpdates(): PluginUpdateInfo[] {
  */
 function updatePlugins(packages: string[], pluginsDir: string): Promise<{ success: boolean; output: string }> {
   return new Promise((resolve) => {
-    const npm = spawn('npm', ['update', ...packages], {
+    // Install the `latest` dist-tag explicitly (mirrors `znvault plugin update`).
+    // Bare `npm update` only bumps within the semver range recorded in the
+    // plugins-dir package.json (typically a caret `^1.x`), so it silently CANNOT
+    // cross a major (e.g. 1.28.3 → 2.0.0) and exits 0 without changing anything.
+    // `npm install <pkg>@latest` resolves the registry `latest` tag unconditionally
+    // and rewrites the saved range, so a major release is actually applied.
+    const specs = packages.map((p) => `${p}@latest`);
+    const npm = spawn('npm', ['install', ...specs], {
       cwd: pluginsDir,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -307,10 +314,25 @@ export function registerSelfUpdateCommands(program: Command): void {
           const pluginResult = await updatePlugins(packagesToUpdate, pluginsDir);
 
           if (pluginResult.success) {
-            pluginSpinner.succeed('Plugins updated successfully!');
+            // Verify against disk — npm can exit 0 without changing anything, so
+            // re-read each plugin's installed version and only claim success when it
+            // actually matches the target. A plugin left behind is surfaced with an
+            // actionable hint rather than a fabricated green line.
             console.log();
+            let allApplied = true;
             for (const plugin of pluginUpdates) {
-              console.log(`  ${chalk.green('✓')} ${chalk.cyan(plugin.name)}: ${plugin.currentVersion} → ${plugin.latestVersion}`);
+              const actual = getInstalledVersion(plugin.package, pluginsDir);
+              if (actual === plugin.latestVersion) {
+                console.log(`  ${chalk.green('✓')} ${chalk.cyan(plugin.name)}: ${plugin.currentVersion} → ${actual}`);
+              } else {
+                allApplied = false;
+                console.log(`  ${chalk.yellow('!')} ${chalk.cyan(plugin.name)}: still ${actual ?? 'unknown'} (expected ${plugin.latestVersion}) — run 'znvault plugin update ${plugin.name}'`);
+              }
+            }
+            if (allApplied) {
+              pluginSpinner.succeed('Plugins updated successfully!');
+            } else {
+              pluginSpinner.warn('Some plugins were not updated (see above)');
             }
           } else {
             pluginSpinner.fail('Plugin update failed');
