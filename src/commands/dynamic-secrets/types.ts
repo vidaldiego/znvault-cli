@@ -119,6 +119,8 @@ export interface RoleCreateOptions {
   defaultTtl?: string;
   maxTtl?: string;
   usernameTemplate?: string;
+  template?: string;
+  templateVersion?: string;
   json?: boolean;
 }
 
@@ -170,5 +172,43 @@ export interface ConnectionProvisionOptions {
   accountPrefix?: string;
   routinesBundle?: string;
   routinesVersion?: string;
+  json?: boolean;
+}
+
+// ─── Role Templates (S2) ────────────────────────────────────────────────────
+
+/**
+ * A role created from a fixed, server-defined template may return warnings
+ * alongside the created role (e.g. `bundle_not_applied` for a MySQL
+ * `migrate` role when the znapi-helpers routine bundle hasn't been applied
+ * to the connection yet). The create still succeeds (201) in that case.
+ */
+export interface DbRoleCreateResponse extends DbRole {
+  warnings?: string[];
+}
+
+export interface RoleTemplateSummary {
+  engine: 'mysql' | 'postgresql';
+  name: string;
+  version: number;
+  description: string;
+  params: Record<string, unknown>;
+}
+
+export interface RoleTemplateDetail extends RoleTemplateSummary {
+  example?: {
+    creationStatements?: string[];
+    revocationStatements?: string[];
+    renewStatements?: string[];
+    [key: string]: unknown;
+  };
+}
+
+export interface TemplatesListOptions {
+  engine?: string;
+  json?: boolean;
+}
+
+export interface TemplateGetOptions {
   json?: boolean;
 }

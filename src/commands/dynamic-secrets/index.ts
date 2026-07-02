@@ -31,6 +31,7 @@ import {
 } from './lease.js';
 import { registerAllowedHostsCommands } from './allowed-hosts.js';
 import { registerRoutinesCommands } from './routines.js';
+import { registerTemplatesCommands } from './templates.js';
 
 // Re-export types
 export * from './types.js';
@@ -238,16 +239,56 @@ Notes:
 
   role
     .command('create <connection-id>')
-    .description('Create a new role for a connection')
+    .description('Create a new role for a connection (from a fixed template, or raw SQL as an escape hatch)')
     .option('--name <name>', 'Role name')
     .option('--description <desc>', 'Role description')
-    .option('--creation-statements <sql>', 'SQL statements to create credentials (semicolon-separated)')
-    .option('--revocation-statements <sql>', 'SQL statements to revoke credentials (semicolon-separated)')
-    .option('--renew-statements <sql>', 'SQL statements to renew credentials (semicolon-separated)')
+    .option('--template <name>', 'Create from a fixed, versioned server template (e.g. readonly, readwrite, ddl, migrate) — mutually exclusive with the raw SQL flags below')
+    .option('--template-version <n>', 'Template version (defaults to latest on the server if omitted)')
+    .option('--creation-statements <sql>', '[raw mode, requires dynamic-secrets:roles:write-raw] SQL statements to create credentials (semicolon-separated)')
+    .option('--revocation-statements <sql>', '[raw mode] SQL statements to revoke credentials (semicolon-separated)')
+    .option('--renew-statements <sql>', '[raw mode] SQL statements to renew credentials (semicolon-separated)')
     .option('--default-ttl <seconds>', 'Default credential TTL')
     .option('--max-ttl <seconds>', 'Maximum credential TTL')
-    .option('--username-template <template>', 'Username template (e.g., v_{{role}}_{{random:8}})')
+    .option('--username-template <template>', '[raw mode only] Username template (e.g., v_{{role}}_{{random:8}})')
     .option('--json', 'Output as JSON')
+    .addHelpText('after', `
+Examples:
+  # Template mode (recommended): create a role from a shipped template.
+  # Reuses the "dynamic-secrets:roles:write" permission you already have.
+  znvault dynasec role create <connection-id> --name readwrite --template readwrite
+
+  # Pin a specific template version instead of the server's latest
+  znvault dynasec role create <connection-id> --name ro --template readonly --template-version 1
+
+  # MySQL migrate role (grants EXECUTE on the pre-applied znapi-helpers
+  # bundle; the bundle itself is applied separately via
+  # "dynasec routines apply"). Role creation still succeeds even if the
+  # bundle isn't applied yet — it prints a "bundle_not_applied" warning.
+  znvault dynasec role create <mysql-connection-id> --name migrator --template migrate
+
+  # Raw mode (escape hatch): hand-write the SQL yourself. Requires the
+  # separate "dynamic-secrets:roles:write-raw" permission (NOT auto-granted —
+  # ask an admin to grant it if you get a 403).
+  znvault dynasec role create <connection-id> --name custom \\
+    --creation-statements "CREATE ROLE \\"{{username}}\\" WITH LOGIN PASSWORD '{{password}}'" \\
+    --revocation-statements "DROP ROLE IF EXISTS \\"{{username}}\\""
+
+Template catalog (v1, fixed server-side — see "znvault dynasec templates list"):
+  MySQL:      readonly, readwrite, ddl, migrate
+  PostgreSQL: readonly, readwrite     (ddl/migrate are MySQL-only; using them
+                                        on a PostgreSQL connection 400s with
+                                        ddl_unsupported_for_engine)
+
+Notes:
+  - Exactly one mode per role: --template XOR the raw SQL flags. Combining
+    them is rejected client-side before any request is sent.
+  - Template mode has a fixed schema — no --username-template, no custom
+    schema. The server 400s (username_template_not_allowed /
+    schema_override_unsupported) if you try; the CLI catches the
+    --username-template case before sending the request.
+  - Templates take no other caller params in v1. Inspect one with:
+      znvault dynasec templates get <engine>/<name>/<version>
+`)
     .action(createRole);
 
   role
@@ -328,4 +369,9 @@ Notes:
   // Routines Commands
   // -------------------------------------------------------------------------
   registerRoutinesCommands(dynasec);
+
+  // -------------------------------------------------------------------------
+  // Templates Commands
+  // -------------------------------------------------------------------------
+  registerTemplatesCommands(dynasec);
 }
