@@ -196,10 +196,13 @@ export interface RoleTemplateSummary {
 }
 
 export interface RoleTemplateDetail extends RoleTemplateSummary {
+  // Rendered preview from the server (executes nothing). Matches the server's
+  // ExpandedStatements shape: `{ creation, revocation, renew? }` (statement
+  // arrays), NOT the `*Statements` field names used elsewhere.
   example?: {
-    creationStatements?: string[];
-    revocationStatements?: string[];
-    renewStatements?: string[];
+    creation?: string[];
+    revocation?: string[];
+    renew?: string[];
     [key: string]: unknown;
   };
 }
