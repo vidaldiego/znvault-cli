@@ -5,6 +5,30 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.13.0] - 2026-07-02
+
+### Added — dynamic-secrets role templates (server S2)
+
+- `znvault dynasec role create <connection-id> --name <name> --template <name> [--template-version <n>]`
+  — create a dynamic-secrets role from a vetted, server-side template instead of hand-written SQL.
+  MySQL: `readonly`/`readwrite`/`ddl`/`migrate`; PostgreSQL: `readonly`/`readwrite`.
+- `znvault dynasec templates list [--engine mysql|postgresql]` and
+  `znvault dynasec templates get <engine>/<name>/<version>` — browse the fixed template catalog.
+- Raw `--creation-statements`/`--revocation-statements` remain as an escape hatch; the server now
+  requires the `dynamic-secrets:roles:write-raw` permission for raw mode (actionable CLI error).
+
+## [4.12.0] - 2026-07-01
+
+### Added — one-shot connection provisioning (server S1)
+
+- `znvault dynasec connection provision <name> --type mysql|postgresql --root-file <path>` — provision
+  a connection end-to-end from a transient root credential (least-priv sub-accounts + connection +
+  optional MySQL routine bundle). Root via `--root-file` or masked prompt, never an inline flag.
+- `znvault dynasec connection rotate-admin <connection-id>` — deliberate admin-password rotation.
+- HttpClient now surfaces the server's error-body `steps` array on 4xx/5xx provision failures.
+
+> Releases 4.1.0–4.11.0 (2026-05 to 2026-07) are not individually itemized here; see git history.
+
 ## [4.0.0] - 2026-05-18
 
 ### Breaking changes — tenant isolation hardening
