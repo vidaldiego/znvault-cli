@@ -202,7 +202,9 @@ function describeRoleWarning(warning: string): string {
   if (warning === 'bundle_not_applied') {
     return 'bundle_not_applied: this role was created, but the znapi-helpers routine bundle has not been ' +
       'applied to the connection yet. The role\'s EXECUTE grant will fail at credential-generation time until ' +
-      'you run: znvault dynasec routines apply <connection-or-role> --bundle znapi-helpers --version 1';
+      'the bundle is applied — either during initial provisioning ("dynasec connection provision ... ' +
+      '--routines-bundle znapi-helpers --routines-version 1") or by re-running provisioning\'s routines step ' +
+      'against this connection.';
   }
   return warning;
 }
