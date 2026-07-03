@@ -30,7 +30,6 @@ import {
   revokeLease,
 } from './lease.js';
 import { registerAllowedHostsCommands } from './allowed-hosts.js';
-import { registerRoutinesCommands } from './routines.js';
 import { registerTemplatesCommands } from './templates.js';
 
 // Re-export types
@@ -261,9 +260,10 @@ Examples:
   znvault dynasec role create <connection-id> --name ro --template readonly --template-version 1
 
   # MySQL migrate role (grants EXECUTE on the pre-applied znapi-helpers
-  # bundle; the bundle itself is applied separately via
-  # "dynasec routines apply"). Role creation still succeeds even if the
-  # bundle isn't applied yet — it prints a "bundle_not_applied" warning.
+  # bundle; the bundle itself is applied automatically during
+  # "dynasec connection provision" --routines-bundle/--routines-version).
+  # Role creation still succeeds even if the bundle isn't applied yet — it
+  # prints a "bundle_not_applied" warning.
   znvault dynasec role create <mysql-connection-id> --name migrator --template migrate
 
   # Raw mode (escape hatch): hand-write the SQL yourself. Requires the
@@ -364,11 +364,6 @@ Notes:
   // Allowed-Hosts Commands
   // -------------------------------------------------------------------------
   registerAllowedHostsCommands(dynasec);
-
-  // -------------------------------------------------------------------------
-  // Routines Commands
-  // -------------------------------------------------------------------------
-  registerRoutinesCommands(dynasec);
 
   // -------------------------------------------------------------------------
   // Templates Commands

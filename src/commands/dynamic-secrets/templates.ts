@@ -175,10 +175,12 @@ Catalog (v1, fixed in server code — no runtime mutation):
 
 Notes:
   - "migrate" (MySQL only) grants EXECUTE on the pre-applied znapi-helpers
-    routine bundle; it does NOT create the bundle. If the bundle hasn't been
-    applied to the connection yet, role creation still succeeds but returns
-    a "bundle_not_applied" warning — apply it first (or after) with:
-      znvault dynasec routines apply <connection-or-role> --bundle znapi-helpers --version 1
+    routine bundle; it does NOT create the bundle. The bundle is applied
+    automatically during connection provisioning:
+      znvault dynasec connection provision <name> --type mysql \\
+        --root-file <path> --routines-bundle znapi-helpers --routines-version 1
+    If the bundle hasn't been applied to the connection yet, role creation
+    still succeeds but returns a "bundle_not_applied" warning.
   - Templates take no caller params in v1 — schema is fixed (the connection's
     database for MySQL, "public" for PostgreSQL). Use
     \`dynasec role create --template <name>\` to actually create a role from
