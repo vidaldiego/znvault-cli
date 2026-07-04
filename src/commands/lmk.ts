@@ -115,13 +115,13 @@ interface RootCAReissueResponse {
   plan: {
     oldRoot: { id: string; fingerprint: string; unrecoverable: boolean };
     newRoot: { subjectDn: string; keyType: string; validityYears: number };
-    intermediates: {
+    intermediates: Array<{
       caId: string;
       tenantId: string;
       oldFingerprint: string;
       newFingerprint: string;
       chainVerified: boolean;
-    }[];
+    }>;
   };
 }
 

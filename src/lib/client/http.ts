@@ -178,9 +178,14 @@ export class HttpClient {
       throw new RefreshHardReauthError();
     }
 
-    // Double-check pattern: After confirming token is expired, check again
-    // if another caller started a refresh while we were checking
+    // Double-check pattern: after confirming expiry, a CONCURRENT caller may have
+    // started a refresh while we were checking. TypeScript proves this.refreshPromise
+    // is null here (the earlier guard returned when it was set) and flags the await as
+    // non-thenable — but that proof assumes single-threaded flow; under real concurrency
+    // the field can be reassigned between the two checks, which is the whole point of
+    // this second guard. The await is genuinely of a Promise at runtime.
     if (this.refreshPromise) {
+      // eslint-disable-next-line @typescript-eslint/await-thenable
       await this.refreshPromise;
       return;
     }

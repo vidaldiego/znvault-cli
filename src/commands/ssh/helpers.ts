@@ -58,7 +58,7 @@ export async function isCertificateValid(certPath: string): Promise<{ valid: boo
     const output = execSync(`ssh-keygen -L -f "${certPath}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
 
     // Parse "Valid: from YYYY-MM-DDTHH:MM:SS to YYYY-MM-DDTHH:MM:SS"
-    const validMatch = output.match(/Valid:\s+from\s+(\S+)\s+to\s+(\S+)/);
+    const validMatch = /Valid:\s+from\s+(\S+)\s+to\s+(\S+)/.exec(output);
     if (!validMatch) {
       return { valid: false, reason: 'Could not parse certificate validity' };
     }
@@ -156,7 +156,7 @@ export async function parseCertificateInfo(certPath: string): Promise<{
 
     // Parse principals
     const principals: string[] = [];
-    const principalsMatch = output.match(/Principals:\s*([\s\S]*?)(?=\s+Critical Options:)/);
+    const principalsMatch = /Principals:\s*([\s\S]*?)(?=\s+Critical Options:)/.exec(output);
     if (principalsMatch) {
       const lines = principalsMatch[1].trim().split('\n');
       for (const line of lines) {
@@ -168,20 +168,20 @@ export async function parseCertificateInfo(certPath: string): Promise<{
     }
 
     // Parse validity
-    const validMatch = output.match(/Valid:\s+from\s+(\S+)\s+to\s+(\S+)/);
+    const validMatch = /Valid:\s+from\s+(\S+)\s+to\s+(\S+)/.exec(output);
     const validAfter = validMatch ? new Date(validMatch[1]) : null;
     const validBefore = validMatch ? new Date(validMatch[2]) : null;
 
     // Parse fingerprint
-    const fpMatch = output.match(/Public key:.*?(\S+:\S+)/);
+    const fpMatch = /Public key:.*?(\S+:\S+)/.exec(output);
     const fingerprint = fpMatch ? fpMatch[1] : null;
 
     // Parse key ID
-    const keyIdMatch = output.match(/Key ID:\s*"([^"]+)"/);
+    const keyIdMatch = /Key ID:\s*"([^"]+)"/.exec(output);
     const keyId = keyIdMatch ? keyIdMatch[1] : null;
 
     // Parse serial
-    const serialMatch = output.match(/Serial:\s*(\d+)/);
+    const serialMatch = /Serial:\s*(\d+)/.exec(output);
     const serial = serialMatch ? serialMatch[1] : null;
 
     // Check validity

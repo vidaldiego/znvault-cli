@@ -112,11 +112,11 @@ export function formatUptime(seconds: number): string {
 export function parseHostPort(hostPort: string): { host: string; port: number } {
   if (hostPort.includes(':')) {
     const [host, portStr] = hostPort.split(':');
-    const port = parseInt(portStr!, 10);
+    const port = parseInt(portStr, 10);
     if (isNaN(port) || port < 1 || port > 65535) {
       throw new Error(`Invalid port: ${portStr}`);
     }
-    return { host: host!, port };
+    return { host: host, port };
   }
   return { host: hostPort, port: DEFAULT_AGENT_PORT };
 }
@@ -321,7 +321,7 @@ export async function selectAgentInteractively(): Promise<{ host: string; port: 
       return parseHostPort(manualHost.trim());
     }
 
-    const selected = agentList[selectedNum - 1]!;
+    const selected = agentList[selectedNum - 1];
     return { host: selected.ip, port: DEFAULT_AGENT_PORT };
   } catch (err) {
     spinner.stop();

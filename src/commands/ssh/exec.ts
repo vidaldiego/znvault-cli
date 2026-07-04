@@ -120,7 +120,9 @@ async function executeOnHost(
       stderr: '',
     };
   } catch (err: unknown) {
-    const error = err as { status?: number; stdout?: string; stderr?: string; message?: string };
+    // execFileSync-style errors carry stdout/stderr as Buffer (or string), so the
+    // .toString() below is load-bearing — annotate the type to match reality.
+    const error = err as { status?: number; stdout?: string | Buffer; stderr?: string | Buffer; message?: string };
     return {
       host: hostInfo.host,
       displayName: hostInfo.displayName,

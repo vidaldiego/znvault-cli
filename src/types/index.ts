@@ -670,7 +670,7 @@ export interface IpQuarantineStats {
   uniqueIpsQuarantined24h: number;
   failuresLast1h: number;
   failuresLast24h: number;
-  topFailingIps: { ip: string; count: number }[];
+  topFailingIps: Array<{ ip: string; count: number }>;
 }
 
 export interface IpQuarantineConfig {

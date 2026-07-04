@@ -190,7 +190,7 @@ export function registerBookmarkCommands(parent: Command): void {
         }
       }
 
-      delete profile.sshBookmarks[name];
+      Reflect.deleteProperty(profile.sshBookmarks, name);
       saveProfile(profileName, profile);
       output.success(`Bookmark '${name}' removed`);
     });
@@ -249,7 +249,7 @@ export function registerBookmarkCommands(parent: Command): void {
       }
 
       profile.sshBookmarks[newName] = profile.sshBookmarks[oldName];
-      delete profile.sshBookmarks[oldName];
+      Reflect.deleteProperty(profile.sshBookmarks, oldName);
       saveProfile(profileName, profile);
 
       output.success(`Bookmark renamed: ${oldName} → ${newName}`);

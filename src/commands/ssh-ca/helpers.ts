@@ -87,7 +87,7 @@ export async function readPublicKey(file?: string): Promise<string> {
       let data = '';
       process.stdin.setEncoding('utf8');
       process.stdin.on('data', chunk => { data += chunk; });
-      process.stdin.on('end', () => resolve(data.trim()));
+      process.stdin.on('end', () => { resolve(data.trim()); });
       process.stdin.on('error', reject);
     });
   }

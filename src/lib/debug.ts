@@ -53,7 +53,7 @@ export function createDebugLogger(context: string): {
   silenced: (operation: string, error: unknown) => void;
 } {
   return {
-    log: (message: string, error?: unknown) => debug(context, message, error),
-    silenced: (operation: string, error: unknown) => debugSilencedError(context, operation, error),
+    log: (message: string, error?: unknown) => { debug(context, message, error); },
+    silenced: (operation: string, error: unknown) => { debugSilencedError(context, operation, error); },
   };
 }

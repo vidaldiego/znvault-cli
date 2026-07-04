@@ -445,7 +445,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
 
         if (config.ipAllowlist.length > 0) {
           output.section('IP Allowlist');
-          config.ipAllowlist.forEach(ip => output.info(`  ${ip}`));
+          config.ipAllowlist.forEach(ip => { output.info(`  ${ip}`); });
         }
 
         console.log();

@@ -9,9 +9,17 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+// The per-install K_local (HMAC key) file the CLI lazily creates. We pre-seed it
+// per test so two workers launched in PARALLEL against a fresh config dir both READ
+// the same key instead of racing to CREATE it (a create-race would give each worker
+// its own random K_local → different lock keys → the "same key" assertion flakes,
+// which is exactly what failed in CI). Must match refresh-lock.ts's K_LOCAL_FILE (32 bytes).
+const K_LOCAL_FILE = 'lock-hmac.key';
 
 const WORKER = resolve(__dirname, '../fixtures/lock-worker.mjs');
 let configDir: string;
@@ -72,6 +80,8 @@ describe('cross-process refresh lock (real OS processes)', () => {
   }, 120000);
   beforeEach(() => {
     configDir = mkdtempSync(join(tmpdir(), 'znv-xproc-'));
+    // Pre-seed K_local so parallel workers share one key (no create-race — see note above).
+    writeFileSync(join(configDir, K_LOCAL_FILE), randomBytes(32), { mode: 0o600 });
   });
   afterEach(() => rmSync(configDir, { recursive: true, force: true }));
 

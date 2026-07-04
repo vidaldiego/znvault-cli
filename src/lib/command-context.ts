@@ -129,6 +129,9 @@ interface CommandLike {
 export function applyTenantContextPatch(commandPrototype: CommandLike): void {
   if (_tenantPatchApplied) return;
   _tenantPatchApplied = true;
+  // Capture the original method to delegate to; `this` is re-bound explicitly via
+  // original.call(this, ...) below, so the unbound-method concern does not apply.
+  // eslint-disable-next-line @typescript-eslint/unbound-method
   const original = commandPrototype.option;
   commandPrototype.option = function patchedOption(
     this: CommandLike,
@@ -143,6 +146,6 @@ export function applyTenantContextPatch(commandPrototype: CommandLike): void {
       // Swallow the call in tenant context; return self for chain continuity.
       return this;
     }
-    return original.call(this, flags, description, ...rest) as CommandLike;
+    return original.call(this, flags, description, ...rest);
   };
 }

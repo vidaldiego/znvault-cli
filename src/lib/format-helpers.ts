@@ -232,7 +232,7 @@ export function formatTtl(seconds: number | undefined | null): string {
  * Examples: "8h" -> 28800, "1d" -> 86400, "30m" -> 1800
  */
 export function parseTtl(ttl: string): number {
-  const match = ttl.match(/^(\d+)([smhd])?$/i);
+  const match = /^(\d+)([smhd])?$/i.exec(ttl);
   if (!match) {
     throw new Error(`Invalid TTL format: ${ttl}. Use format like 8h, 30m, 1d, or 3600`);
   }

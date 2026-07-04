@@ -90,7 +90,7 @@ export function formatConfigSummary(item: HostListItem | HostConfig['config']): 
     if (secretCount > 0) parts.push(`${secretCount} secret(s)`);
   } else {
     // Full config format
-    const config = item as HostConfig['config'];
+    const config = item;
     const certCount = config.targets?.length ?? 0;
     const secretCount = config.secretTargets?.length ?? 0;
     const pluginCount = config.plugins?.filter((p) => p.enabled !== false).length ?? 0;
@@ -129,7 +129,7 @@ export function validateHostname(hostname: string): { valid: boolean; error?: st
  * Parse duration string to ISO date (e.g., "1h", "24h", "7d")
  */
 export function parseDuration(duration: string): Date {
-  const match = duration.match(/^(\d+)([hmd])$/);
+  const match = /^(\d+)([hmd])$/.exec(duration);
   if (!match) {
     throw new Error(`Invalid duration format: ${duration}. Use format like '1h', '24h', '7d'`);
   }
