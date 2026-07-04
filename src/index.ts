@@ -39,6 +39,7 @@ import { registerSSHCommands } from './commands/ssh/index.js';
 import { registerSSHCACommands } from './commands/ssh-ca.js';
 import { registerKmipCommands } from './commands/kmip/index.js';
 import { registerMysqlCommands } from './commands/mysql/index.js';
+import { registerMigrationCommands } from './commands/migration.js';
 import { client } from './lib/client.js';
 import {
   setRuntimeProfile,
@@ -171,6 +172,7 @@ registerSSHCommands(program);
 registerSSHCACommands(program);
 registerKmipCommands(program);
 registerMysqlCommands(program);
+registerMigrationCommands(program);
 
 // Superadmin namespace (must come last so all referenced groups are loaded).
 registerSuperadminCommands(program);
