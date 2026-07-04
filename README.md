@@ -231,6 +231,36 @@ znvault superadmin backup storage show
 znvault superadmin backup storage set-s3 --bucket my-bucket --region us-east-1
 ```
 
+### Schema Migrations
+
+Run schema migrations against a database through a short-lived dynamic-secrets lease.
+`apply` mints a lease, connects to MySQL, runs pending migrations, and **always** revokes
+the lease when done (even on failure); `status` is read-only.
+
+```bash
+znvault migration apply <config.json>            # Apply pending migrations per phase
+znvault migration status <config.json>           # Read-only: pending/applied/reconcile counts
+```
+
+The `<config.json>` argument is a **MigrationConfig** — either a single object or an array of
+phase objects (applied in order):
+
+```json
+{
+  "engine": "mysql",
+  "roleId": "dbr_...",
+  "migrationsDir": "/abs/or/rel/migrations",
+  "database": "optional",
+  "scaffoldingFile": "optional"
+}
+```
+
+- **MySQL only.** An `"engine": "postgres"` config is rejected at validation before any lease
+  is minted (PostgreSQL support is deferred).
+- **Lease model.** The lease is minted from the dynamic-secrets role named by `roleId`, so the
+  active profile must be authenticated with access to that role. The lease is always revoked
+  on exit.
+
 ### Audit & Security
 
 ```bash

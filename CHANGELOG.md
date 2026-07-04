@@ -5,6 +5,26 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.0] - 2026-07-04
+
+### Added — `znvault migration apply/status` command
+
+- `znvault migration apply <config.json>` — apply pending schema migrations for each phase in a
+  JSON config, via `@zincapp/znvault-migrate`. Mints a dynamic-secrets lease per phase, connects
+  to MySQL, runs migrations, and **always** revokes the lease (even on failure).
+- `znvault migration status <config.json>` — read-only; prints pending/applied/reconcile counts
+  per phase (mints its own short-lived lease, runs `MigrationRunner.status()`, always revokes).
+- The `<config.json>` MigrationConfig may be a single object or an array of phase objects. MySQL
+  only — an `"engine": "postgres"` config is rejected at validation (PostgreSQL is deferred).
+
+## [4.14.0] - 2026-07-03
+
+### Removed — `dynasec routines apply/get/bundles` command (server Phase 2)
+
+- Removed the `znvault dynasec routines {apply,get,bundles}` command. The migration bundle-apply
+  route was retired server-side (Phase 2 scaffolding cutover); the routine bundle is now applied
+  by the S1 connection provisioner, not via a standalone command. Dangling help strings reworded.
+
 ## [4.13.1] - 2026-07-02
 
 ### Fixed — `self-update` now applies plugin major upgrades

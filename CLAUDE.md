@@ -48,6 +48,7 @@ src/
 │   ├── apikey.ts         # API key management
 │   ├── kms.ts            # Key management service
 │   ├── ssh.ts            # SSH CA management and quick connect
+│   ├── migration.ts      # migration apply/status via dynamic-secrets lease (@zincapp/znvault-migrate)
 │   ├── backup/           # Modularized backup commands
 │   │   ├── index.ts      # Command registration
 │   │   ├── types.ts      # Type definitions
@@ -168,6 +169,7 @@ Key ESLint rules:
 | `chalk` | Colored terminal output |
 | `ink`, `react` | Terminal UI components |
 | `pg` | PostgreSQL (emergency operations) |
+| `@zincapp/znvault-migrate` | schema-migration runner + lease lifecycle (`mysqlAdapter`, `MigrationRunner`) |
 
 ## Adding a New Command
 
