@@ -26,6 +26,10 @@ export interface SecretMetadata {
   createdAt: string;
   updatedAt: string;
   references?: { count: number };
+  /** Server-derived: the secret is opted-in to reference resolution. Additive on /meta (undefined on old servers). */
+  referencesEnabled?: boolean;
+  /** Server-derived: the secret currently carries ${ref:...} tokens or is a link. Additive on /meta (undefined on old servers). */
+  hasReferences?: boolean;
 }
 
 export interface DecryptedSecret extends SecretMetadata {
