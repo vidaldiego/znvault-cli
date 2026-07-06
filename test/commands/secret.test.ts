@@ -528,4 +528,107 @@ describe('secret commands', () => {
       ])).rejects.toThrow(/exit:1/);
     });
   });
+
+  describe('secret can-decrypt', () => {
+    const allowedVerdict = {
+      verdict: 'allowed',
+      simulatedIdentity: { kind: 'self', id: null },
+      secret: { id: 'secret-1', alias: 'web/prod/api-key', subType: undefined, hasReferences: false },
+      self: { verdict: 'allowed', conditionalOn: [] },
+      targets: [],
+      firstDenial: null,
+    };
+
+    it('posts {} for a self-check (neither --as-* flag)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce(allowedVerdict as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'can-decrypt', 'secret-1']);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/can-decrypt', {});
+    });
+
+    it('posts {asApiKeyId} for --as-api-key', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce(allowedVerdict as never);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'can-decrypt', 'secret-1', '--as-api-key', 'ak_123',
+      ]);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/can-decrypt', {
+        asApiKeyId: 'ak_123',
+      });
+    });
+
+    it('posts {asUserId} for --as-user', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce(allowedVerdict as never);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'can-decrypt', 'secret-1', '--as-user', 'user-42',
+      ]);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/can-decrypt', {
+        asUserId: 'user-42',
+      });
+    });
+
+    it('rejects --as-api-key together with --as-user (exit 1, no POST)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'can-decrypt', 'secret-1',
+        '--as-api-key', 'ak_123', '--as-user', 'user-42',
+      ])).rejects.toThrow(/exit:1/);
+
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('renders each verdict class (allowed/conditional/denied/indeterminate) in plain output', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce({
+        verdict: 'conditional',
+        simulatedIdentity: { kind: 'apikey', id: 'ak_123' },
+        secret: { id: 'secret-1', alias: 'api/staging/config', subType: undefined, hasReferences: true },
+        self: { verdict: 'allowed', conditionalOn: [] },
+        targets: [
+          { alias: 'db/prod/creds', verdict: 'conditional', conditionalOn: ['ip'], reason: 'ABAC requires source IP in 10.0.0.0/8' },
+          { alias: 'cache/redis', verdict: 'denied', reason: 'identity lacks secret:read:value' },
+          { alias: null, verdict: 'indeterminate', reason: 'reference_unresolvable' },
+        ],
+        firstDenial: { alias: 'cache/redis', reason: 'identity lacks secret:read:value' },
+      } as never);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'can-decrypt', 'secret-1', '--as-api-key', 'ak_123',
+      ]);
+
+      const printed = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toContain('secret');
+      expect(printed).toContain('ALLOWED');
+      expect(printed).toContain('ref db/prod/creds');
+      expect(printed).toContain('CONDITIONAL');
+      expect(printed).toContain('ABAC requires source IP in 10.0.0.0/8');
+      expect(printed).toContain('ref cache/redis');
+      expect(printed).toContain('DENIED');
+      expect(printed).toContain('identity lacks secret:read:value');
+      expect(printed).toContain('ref <hidden>');
+      expect(printed).toContain('INDETERMINATE');
+      expect(printed).toContain('not visible to you');
+      expect(printed).toContain('Verdict: CONDITIONAL');
+    });
+
+    it('passes the raw verdict through with --json', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { json } = await import('../../src/lib/output.js');
+      vi.mocked(client.post).mockResolvedValueOnce(allowedVerdict as never);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'can-decrypt', 'secret-1', '--json',
+      ]);
+
+      expect(json).toHaveBeenCalledWith(allowedVerdict);
+    });
+  });
 });
