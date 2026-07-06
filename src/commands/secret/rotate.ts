@@ -25,7 +25,12 @@ export function registerRotateCommand(secretCmd: Command): void {
         const id = await resolveSecretId(idOrAlias);
         spinner.text = 'Fetching current secret...';
 
-        const current = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
+        // Pre-fetch the RAW template so rotating a reference secret never bakes a
+        // resolved snapshot into the new version. Byte-identical for others.
+        const current = await client.post<DecryptedSecret>(
+          `/v1/secrets/${id}/decrypt?resolve=false`,
+          {},
+        );
         spinner.stop();
 
         console.log(`Current secret: ${current.alias} (v${current.version})`);

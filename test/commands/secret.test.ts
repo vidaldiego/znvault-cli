@@ -274,7 +274,15 @@ describe('secret commands', () => {
 
       await program.parseAsync(['node', 'test', 'secret', 'rotate', 'secret-1']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
+    });
+
+    it('pre-fetch uses ?resolve=false', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({ dataJson: '{"apiKey":"x"}' } as never);
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'rotate', 'secret-1']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
     });
   });
 
