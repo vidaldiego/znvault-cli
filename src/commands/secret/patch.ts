@@ -143,8 +143,10 @@ Value Types:
         id = await resolveSecretId(idOrAlias);
         spinner.text = 'Decrypting secret...';
 
-        // Decrypt current secret
-        secret = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
+        // Decrypt current secret RAW (no reference resolution) so patching a
+        // reference secret never bakes a resolved snapshot over its template.
+        // Byte-identical for non-reference secrets (server short-circuits).
+        secret = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt?resolve=false`, {});
         spinner.stop();
       } catch (error) {
         spinner.fail('Failed to fetch secret');
