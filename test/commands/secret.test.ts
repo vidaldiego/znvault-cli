@@ -70,6 +70,7 @@ vi.mock('../../src/lib/client.js', () => ({
       return Promise.resolve(mockSecretMetadata);
     }),
     patch: vi.fn().mockResolvedValue(mockSecretMetadata),
+    put: vi.fn().mockResolvedValue(mockSecretMetadata),
     delete: vi.fn().mockResolvedValue(undefined),
     configure: vi.fn(),
   },
@@ -87,15 +88,21 @@ vi.mock('../../src/lib/output.js', () => ({
   info: vi.fn(),
   warn: vi.fn(),
   json: vi.fn(),
+  keyValue: vi.fn(),
+  section: vi.fn(),
 }));
 
 describe('secret commands', () => {
   let program: Command;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     program = new Command();
     program.exitOverride();
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code ?? 0}`);
+    }) as never);
 
     const { registerSecretCommands } = await import('../../src/commands/secret.js');
     registerSecretCommands(program);
@@ -105,6 +112,7 @@ describe('secret commands', () => {
 
   afterEach(() => {
     consoleSpy.mockRestore();
+    exitSpy.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -177,6 +185,18 @@ describe('secret commands', () => {
       await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--json']);
 
       expect(json).toHaveBeenCalledWith(mockDecryptedSecret);
+    });
+
+    it('sends ?resolve=false with --no-resolve', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--no-resolve']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
+    });
+
+    it('sends no query by default (regression)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
     });
   });
 
