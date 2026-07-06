@@ -13,6 +13,7 @@ import { getAuthContext } from '../../lib/auth-context.js';
 import type { CreateOptions, SecretMetadata, SuggestResult } from './types.js';
 import { formatBytes } from './helpers.js';
 import { analyzeFileForSuggestion, formatPemType, type FileAnalysisInfo } from './pem-analysis.js';
+import { validateTokenAlias, validateFieldPath, buildLinkData } from './references.js';
 
 export function registerCreateCommand(secretCmd: Command): void {
   secretCmd
@@ -34,12 +35,66 @@ export function registerCreateCommand(secretCmd: Command): void {
     .option('--password <password>', 'Password for credential type (non-interactive)')
     .option('--text <text>', 'Text content (non-interactive)')
     .option('--data <json>', 'JSON data (non-interactive)')
+    .option('--enable-references', 'Opt this secret in to ${ref:...} reference resolution')
+    .option('--link <alias>', 'Create a link secret pointing at another secret (sets sub-type link)')
+    .option('--link-field <path>', 'Narrow a --link to a single field (dot-path, e.g. password or db.host)')
     .option('--file <path>', 'File to upload (non-interactive)')
-    .action(async (aliasOrDescription: string, options: CreateOptions) => {
+    .addHelpText('after', `
+Examples:
+  znvault secret create api/current-key --link secrets/api-key-prod
+  znvault secret create app/db-pw --link db/prod/creds --link-field password
+  znvault secret create app/db-url --sub-type env --enable-references \\
+    --data '{"DATABASE_URL":"postgres://app:\${ref:db/prod/creds#password}@db:5432/app"}'
+`)
+    .action(async (aliasOrDescription: string, options: CreateOptions, cmd: Command) => {
       let alias = aliasOrDescription;
       let actualType = options.type || 'opaque';
       let actualSubType = options.subType;
       let actualTags = options.tags;
+
+      // --- Link-secret construction and conflict gating (Secret References) ---
+      let linkData: Record<string, unknown> | undefined;
+      if (options.link !== undefined) {
+        const dataBearing = options.data || options.text || options.username
+          || options.password || options.file;
+        if (dataBearing) {
+          output.error(
+            '--link cannot be combined with --data/--text/--username/--password/--file '
+            + "(a link's value is its pointer).",
+          );
+          process.exit(1);
+        }
+        if (options.subType && options.subType !== 'link') {
+          output.error('--link cannot be combined with --sub-type (a link sets its own sub-type).');
+          process.exit(1);
+        }
+        if (cmd.getOptionValueSource('type') === 'cli' && options.type !== 'setting') {
+          output.error("--link cannot be combined with an explicit --type other than 'setting'.");
+          process.exit(1);
+        }
+        if (options.suggest) {
+          output.error('--link cannot be combined with --suggest.');
+          process.exit(1);
+        }
+        const aliasCheck = validateTokenAlias(options.link);
+        if (!aliasCheck.valid) {
+          output.error(`Invalid --link alias: ${aliasCheck.error}.`);
+          process.exit(1);
+        }
+        if (options.linkField !== undefined) {
+          const fieldCheck = validateFieldPath(options.linkField);
+          if (!fieldCheck.valid) {
+            output.error(`Invalid --link-field path: ${fieldCheck.error}.`);
+            process.exit(1);
+          }
+        }
+        linkData = buildLinkData(options.link, options.linkField) as unknown as Record<string, unknown>;
+        actualType = 'setting';
+        actualSubType = 'link';
+      } else if (options.linkField !== undefined) {
+        output.error('--link-field requires --link.');
+        process.exit(1);
+      }
 
       // AI Suggestion flow
       if (options.suggest) {
@@ -199,10 +254,14 @@ export function registerCreateCommand(secretCmd: Command): void {
 
       let data: Record<string, unknown> = {};
 
-      // Check for non-interactive data options first
+      // Check for non-interactive data options first. A --link owns the value
+      // (its pointer), so it bypasses both interactive and other non-interactive
+      // data collection.
       const hasNonInteractiveData = options.username || options.password || options.text || options.data || options.file;
 
-      if (hasNonInteractiveData) {
+      if (linkData) {
+        data = linkData;
+      } else if (hasNonInteractiveData) {
         // Non-interactive mode: use CLI options
         if (options.username || options.password) {
           actualType = 'credential';
@@ -320,6 +379,11 @@ export function registerCreateCommand(secretCmd: Command): void {
         if (options.expires) body.expiresAt = options.expires;
         if (options.contentType) body.contentType = options.contentType;
 
+        // Opt in to ${ref:...} resolution (ignored for a link — inherently a reference).
+        if (options.enableReferences !== undefined && !linkData) {
+          body.enableReferences = options.enableReferences;
+        }
+
         const result = await client.post<SecretMetadata>('/v1/secrets', body);
         spinner.stop();
 
@@ -332,6 +396,9 @@ export function registerCreateCommand(secretCmd: Command): void {
         console.log(`  ID:     ${result.id}`);
         console.log(`  Alias:  ${result.alias}`);
         console.log(`  Tenant: ${result.tenant}`);
+        if (result.references) {
+          console.log(`  References: ${result.references.count}`);
+        }
       } catch (error) {
         spinner.fail('Failed to create secret');
         output.error((error as Error).message);

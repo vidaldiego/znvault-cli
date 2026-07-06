@@ -77,8 +77,9 @@ vi.mock('../../src/lib/client.js', () => ({
 }));
 
 vi.mock('../../src/lib/config.js', () => ({
-  getCredentials: vi.fn().mockReturnValue({ accessToken: 'token' }),
+  getCredentials: vi.fn().mockReturnValue({ accessToken: 'token', tenantId: 'acme', role: 'admin' }),
   getConfig: vi.fn().mockReturnValue({ url: 'https://localhost:8443', insecure: false, timeout: 30000 }),
+  hasApiKey: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../../src/lib/output.js', () => ({
@@ -336,6 +337,91 @@ describe('secret commands', () => {
       await program.parseAsync(['node', 'test', 'secret', 'history', 'secret-1']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/secrets/secret-1/history');
+    });
+  });
+
+  describe('secret create', () => {
+    it('builds a link secret from --link', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'create', 'api/current-key',
+        '--link', 'secrets/api-key-prod',
+      ]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        alias: 'api/current-key',
+        type: 'setting',
+        subType: 'link',
+        data: { ref: 'secrets/api-key-prod' },
+      }));
+    });
+
+    it('builds a field-narrowed link from --link --link-field', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'create', 'app/db-pw',
+        '--link', 'db/prod/creds', '--link-field', 'password',
+      ]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        subType: 'link',
+        data: { ref: 'db/prod/creds', field: 'password' },
+      }));
+    });
+
+    it('sends the raw ${ref:...} token verbatim with --enable-references (no expansion)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'create', 'app/url',
+        '--sub-type', 'env', '--enable-references',
+        '--data', '{"u":"${ref:db#password}"}',
+      ]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        enableReferences: true,
+        data: { u: '${ref:db#password}' },
+      }));
+    });
+
+    it('rejects --link with --data', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--data', '{}',
+      ])).rejects.toThrow(/exit:1/);
+      expect(client.post).not.toHaveBeenCalledWith('/v1/secrets', expect.anything());
+    });
+
+    it('rejects --link with a conflicting --sub-type', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--sub-type', 'json',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects --link with an explicit non-setting --type', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--type', 'credential',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects --link with --suggest', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--suggest',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects --link-field without --link', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link-field', 'password',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects a --link alias with a leading dash', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', '-bad',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects a --link-field with a prototype-pollution segment', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--link-field', '__proto__.x',
+      ])).rejects.toThrow(/exit:1/);
     });
   });
 });
