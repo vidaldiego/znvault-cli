@@ -278,6 +278,49 @@ describe('secret commands', () => {
     });
   });
 
+  describe('secret update', () => {
+    it('sends enableReferences:true with --enable-references', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'update', 'secret-1',
+        '--enable-references', '--data', '{"a":1}',
+      ]);
+      expect(client.put).toHaveBeenCalledWith(
+        '/v1/secrets/secret-1',
+        expect.objectContaining({ enableReferences: true }),
+      );
+    });
+
+    it('sends enableReferences:false with --no-enable-references', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'update', 'secret-1',
+        '--no-enable-references', '--data', '{"a":1}',
+      ]);
+      expect(client.put).toHaveBeenCalledWith(
+        '/v1/secrets/secret-1',
+        expect.objectContaining({ enableReferences: false }),
+      );
+    });
+
+    it('omits enableReferences when neither flag is passed (sticky)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'update', 'secret-1', '--data', '{"a":1}',
+      ]);
+      const call = vi.mocked(client.put).mock.calls.at(-1);
+      expect(call?.[1]).not.toHaveProperty('enableReferences');
+    });
+
+    it('interactive pre-fetch uses ?resolve=false', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({ updateData: false } as never);
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'update', 'secret-1']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
+    });
+  });
+
   describe('secret history', () => {
     it('should show secret history', async () => {
       const { client } = await import('../../src/lib/client.js');
