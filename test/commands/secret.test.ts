@@ -171,6 +171,110 @@ describe('secret commands', () => {
     });
   });
 
+  describe('secret get — references row + timestamps', () => {
+    const isoNow = new Date().toISOString();
+
+    // Point resolveSecretId at a UUID so it passes through, then serve /meta.
+    function stubMeta(
+      mockedClient: Awaited<ReturnType<typeof import('../../src/lib/client.js')>>['client'],
+      meta: Record<string, unknown>,
+    ): void {
+      vi.mocked(mockedClient.get).mockImplementation((path: string) => {
+        if (path.includes('/meta')) return Promise.resolve(meta as never);
+        return Promise.resolve(meta as never);
+      });
+    }
+
+    it('renders "link secret" and the --no-resolve tip for a link secret', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      stubMeta(client, {
+        id: 'secret-1', alias: 'api/current-key', tenant: 'acme',
+        type: 'setting', subType: 'link', version: 3,
+        createdBy: 'admin', createdAt: isoNow, updatedAt: isoNow,
+        referencesEnabled: true, hasReferences: true,
+      });
+
+      await program.parseAsync(['node', 'test', 'secret', 'get', 'api/current-key']);
+
+      // The rendered cli-table3 string is logged as one console.log call.
+      const tableOut = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(tableOut).toContain('References');
+      expect(tableOut).toContain('link secret');
+      // Tip line for a link.
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("secret decrypt <alias> --no-resolve"),
+      );
+    });
+
+    it('renders "enabled · has tokens" and the resolve tip for an opted-in secret with tokens', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      stubMeta(client, {
+        id: 'secret-1', alias: 'app/db-url', tenant: 'acme',
+        type: 'setting', subType: 'env', version: 1,
+        createdBy: 'admin', createdAt: isoNow, updatedAt: isoNow,
+        referencesEnabled: true, hasReferences: true,
+      });
+
+      await program.parseAsync(['node', 'test', 'secret', 'get', 'app/db-url']);
+
+      const tableOut = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(tableOut).toContain('References');
+      expect(tableOut).toContain('enabled · has tokens');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("resolves references"),
+      );
+    });
+
+    it('renders "enabled · no tokens yet" for an opted-in secret without tokens', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      stubMeta(client, {
+        id: 'secret-1', alias: 'app/config', tenant: 'acme',
+        type: 'setting', subType: 'env', version: 1,
+        createdBy: 'admin', createdAt: isoNow, updatedAt: isoNow,
+        referencesEnabled: true, hasReferences: false,
+      });
+
+      await program.parseAsync(['node', 'test', 'secret', 'get', 'app/config']);
+
+      const tableOut = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(tableOut).toContain('enabled · no tokens yet');
+    });
+
+    it('does NOT render a References row for a plain secret (references off)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      stubMeta(client, {
+        id: 'secret-1', alias: 'web/prod/api-key', tenant: 'acme',
+        type: 'opaque', version: 1,
+        createdBy: 'admin', createdAt: isoNow, updatedAt: isoNow,
+        referencesEnabled: false, hasReferences: false,
+      });
+
+      await program.parseAsync(['node', 'test', 'secret', 'get', 'web/prod/api-key']);
+
+      const tableOut = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(tableOut).not.toContain('References');
+    });
+
+    it('populates Created At / Updated At from camelCase metadata (not "-")', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      stubMeta(client, {
+        id: 'secret-1', alias: 'web/prod/api-key', tenant: 'acme',
+        type: 'opaque', version: 1,
+        createdBy: 'admin', createdAt: isoNow, updatedAt: isoNow,
+        referencesEnabled: false, hasReferences: false,
+      });
+
+      await program.parseAsync(['node', 'test', 'secret', 'get', 'web/prod/api-key']);
+
+      const tableOut = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      // The row exists and is not the empty-timestamp placeholder.
+      expect(tableOut).toContain('Created At');
+      const createdLine = tableOut.split('\n').find((l) => l.includes('Created At')) ?? '';
+      expect(createdLine).not.toContain('-'.padEnd(2)); // not the bare "-" placeholder
+      expect(createdLine).toContain(new Date(isoNow).getFullYear().toString());
+    });
+  });
+
   describe('secret decrypt', () => {
     it('should decrypt secret', async () => {
       const { client } = await import('../../src/lib/client.js');

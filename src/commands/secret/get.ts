@@ -13,6 +13,28 @@ import type { GetOptions, SecretMetadata } from './types.js';
 import { formatDate, formatType, formatBytes } from './helpers.js';
 import { resolveSecretId } from './resolve.js';
 
+/**
+ * Derive the "References" table row purely from stored metadata (no decrypt).
+ * Returns the display string, or null when the row should be omitted
+ * (references off / plain secret). Mapping per the reference-metadata design:
+ *   subType === 'link'                  → 'link secret'
+ *   referencesEnabled && hasReferences  → 'enabled · has tokens'
+ *   referencesEnabled && !hasReferences → 'enabled · no tokens yet'
+ *   hasReferences                       → 'has tokens'   (link-only edge; rare)
+ *   otherwise                           → null           (off → omit)
+ */
+function referencesRowValue(secret: SecretMetadata): string | null {
+  if (secret.subType === 'link') return 'link secret';
+  if (secret.referencesEnabled === true && secret.hasReferences === true) {
+    return 'enabled · has tokens';
+  }
+  if (secret.referencesEnabled === true && secret.hasReferences !== true) {
+    return 'enabled · no tokens yet';
+  }
+  if (secret.hasReferences === true) return 'has tokens';
+  return null;
+}
+
 export function registerGetCommand(secretCmd: Command): void {
   secretCmd
     .command('get <id-or-alias>')
@@ -58,6 +80,12 @@ export function registerGetCommand(secretCmd: Command): void {
         if (secret.contentType) {
           table.push(['Content Type', secret.contentType]);
         }
+
+        const refsRow = referencesRowValue(secret);
+        if (refsRow !== null) {
+          table.push(['References', refsRow]);
+        }
+
         if (secret.expiresAt) {
           table.push(['Expires At', formatDate(secret.expiresAt)]);
         }
@@ -74,6 +102,19 @@ export function registerGetCommand(secretCmd: Command): void {
         );
 
         console.log(table.toString());
+
+        // Reference tips (below the table), derived from the same metadata.
+        if (secret.subType === 'link') {
+          console.log(
+            "(tip: 'znvault secret decrypt <alias> --no-resolve' shows the pointer; " +
+              "'decrypt <alias>' the target)",
+          );
+        } else if (secret.referencesEnabled === true && secret.hasReferences === true) {
+          console.log(
+            "(tip: 'znvault secret decrypt <alias>' resolves references; " +
+              "'--no-resolve' shows the raw template)",
+          );
+        }
       } catch (error) {
         spinner.fail('Failed to get secret');
         output.error((error as Error).message);
