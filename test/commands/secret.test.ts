@@ -70,14 +70,16 @@ vi.mock('../../src/lib/client.js', () => ({
       return Promise.resolve(mockSecretMetadata);
     }),
     patch: vi.fn().mockResolvedValue(mockSecretMetadata),
+    put: vi.fn().mockResolvedValue(mockSecretMetadata),
     delete: vi.fn().mockResolvedValue(undefined),
     configure: vi.fn(),
   },
 }));
 
 vi.mock('../../src/lib/config.js', () => ({
-  getCredentials: vi.fn().mockReturnValue({ accessToken: 'token' }),
+  getCredentials: vi.fn().mockReturnValue({ accessToken: 'token', tenantId: 'acme', role: 'admin' }),
   getConfig: vi.fn().mockReturnValue({ url: 'https://localhost:8443', insecure: false, timeout: 30000 }),
+  hasApiKey: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../../src/lib/output.js', () => ({
@@ -87,15 +89,21 @@ vi.mock('../../src/lib/output.js', () => ({
   info: vi.fn(),
   warn: vi.fn(),
   json: vi.fn(),
+  keyValue: vi.fn(),
+  section: vi.fn(),
 }));
 
 describe('secret commands', () => {
   let program: Command;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     program = new Command();
     program.exitOverride();
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code ?? 0}`);
+    }) as never);
 
     const { registerSecretCommands } = await import('../../src/commands/secret.js');
     registerSecretCommands(program);
@@ -105,6 +113,7 @@ describe('secret commands', () => {
 
   afterEach(() => {
     consoleSpy.mockRestore();
+    exitSpy.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -178,6 +187,66 @@ describe('secret commands', () => {
 
       expect(json).toHaveBeenCalledWith(mockDecryptedSecret);
     });
+
+    it('sends ?resolve=false with --no-resolve', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--no-resolve']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
+    });
+
+    it('sends no query by default (regression)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
+    });
+
+    it('displays provenance (resolvedFrom and resolved) in non-JSON output', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      const decryptedWithProvenance = {
+        ...mockDecryptedSecret,
+        resolvedFrom: { alias: 'db/prod/creds', field: 'password' },
+        resolved: { count: 2 },
+      };
+
+      vi.mocked(client.post).mockResolvedValueOnce(decryptedWithProvenance as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Resolved from: db/prod/creds#password')
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Resolved refs: 2')
+      );
+    });
+
+    it('unwraps { value } when secret is resolved from a reference field', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      const decryptedWithValueUnwrap = {
+        id: 'secret-1',
+        alias: 'web/prod/api-key',
+        tenant: 'acme',
+        type: 'setting',
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        data: { value: 'p@ssw0rd' },
+        resolvedFrom: { alias: 'db/prod/creds', field: 'password' },
+      };
+
+      vi.mocked(client.post).mockResolvedValueOnce(decryptedWithValueUnwrap as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('p@ssw0rd')
+      );
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('"value"')
+      );
+    });
   });
 
   describe('secret delete', () => {
@@ -206,7 +275,58 @@ describe('secret commands', () => {
 
       await program.parseAsync(['node', 'test', 'secret', 'rotate', 'secret-1']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
+    });
+
+    it('pre-fetch uses ?resolve=false', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({ dataJson: '{"apiKey":"x"}' } as never);
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'rotate', 'secret-1']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
+    });
+  });
+
+  describe('secret update', () => {
+    it('sends enableReferences:true with --enable-references', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'update', 'secret-1',
+        '--enable-references', '--data', '{"a":1}',
+      ]);
+      expect(client.put).toHaveBeenCalledWith(
+        '/v1/secrets/secret-1',
+        expect.objectContaining({ enableReferences: true }),
+      );
+    });
+
+    it('sends enableReferences:false with --no-enable-references', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'update', 'secret-1',
+        '--no-enable-references', '--data', '{"a":1}',
+      ]);
+      expect(client.put).toHaveBeenCalledWith(
+        '/v1/secrets/secret-1',
+        expect.objectContaining({ enableReferences: false }),
+      );
+    });
+
+    it('omits enableReferences when neither flag is passed (sticky)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'update', 'secret-1', '--data', '{"a":1}',
+      ]);
+      const call = vi.mocked(client.put).mock.calls.at(-1);
+      expect(call?.[1]).not.toHaveProperty('enableReferences');
+    });
+
+    it('interactive pre-fetch uses ?resolve=false', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({ updateData: false } as never);
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'update', 'secret-1']);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
     });
   });
 
@@ -217,6 +337,91 @@ describe('secret commands', () => {
       await program.parseAsync(['node', 'test', 'secret', 'history', 'secret-1']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/secrets/secret-1/history');
+    });
+  });
+
+  describe('secret create', () => {
+    it('builds a link secret from --link', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'create', 'api/current-key',
+        '--link', 'secrets/api-key-prod',
+      ]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        alias: 'api/current-key',
+        type: 'setting',
+        subType: 'link',
+        data: { ref: 'secrets/api-key-prod' },
+      }));
+    });
+
+    it('builds a field-narrowed link from --link --link-field', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'create', 'app/db-pw',
+        '--link', 'db/prod/creds', '--link-field', 'password',
+      ]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        subType: 'link',
+        data: { ref: 'db/prod/creds', field: 'password' },
+      }));
+    });
+
+    it('sends the raw ${ref:...} token verbatim with --enable-references (no expansion)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync([
+        'node', 'test', 'secret', 'create', 'app/url',
+        '--sub-type', 'env', '--enable-references',
+        '--data', '{"u":"${ref:db#password}"}',
+      ]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        enableReferences: true,
+        data: { u: '${ref:db#password}' },
+      }));
+    });
+
+    it('rejects --link with --data', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--data', '{}',
+      ])).rejects.toThrow(/exit:1/);
+      expect(client.post).not.toHaveBeenCalledWith('/v1/secrets', expect.anything());
+    });
+
+    it('rejects --link with a conflicting --sub-type', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--sub-type', 'json',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects --link with an explicit non-setting --type', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--type', 'credential',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects --link with --suggest', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--suggest',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects --link-field without --link', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link-field', 'password',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects a --link alias with a leading dash', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', '-bad',
+      ])).rejects.toThrow(/exit:1/);
+    });
+
+    it('rejects a --link-field with a prototype-pollution segment', async () => {
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--link-field', '__proto__.x',
+      ])).rejects.toThrow(/exit:1/);
     });
   });
 });

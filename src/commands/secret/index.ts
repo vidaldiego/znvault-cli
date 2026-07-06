@@ -61,3 +61,4 @@ export function registerSecretCommands(program: Command): void {
 export * from './types.js';
 export * from './helpers.js';
 export * from './resolve.js';
+export * from './references.js';

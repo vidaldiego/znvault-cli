@@ -25,11 +25,14 @@ export interface SecretMetadata {
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  references?: { count: number };
 }
 
 export interface DecryptedSecret extends SecretMetadata {
   data: Record<string, unknown>;
   content_type?: string;
+  resolvedFrom?: { alias: string; field?: string };
+  resolved?: { count: number };
 }
 
 // ============================================================================
@@ -52,6 +55,7 @@ export interface GetOptions {
 export interface DecryptOptions {
   output?: string;
   json?: boolean;
+  resolve?: boolean;
 }
 
 export interface CreateOptions {
@@ -71,6 +75,9 @@ export interface CreateOptions {
   text?: string;
   data?: string;
   file?: string;
+  enableReferences?: boolean;
+  link?: string;
+  linkField?: string;
 }
 
 export interface SuggestResult {
@@ -93,6 +100,7 @@ export interface UpdateOptions {
   json?: boolean;
   // Non-interactive data option
   data?: string;
+  enableReferences?: boolean;
 }
 
 export interface DeleteOptions {

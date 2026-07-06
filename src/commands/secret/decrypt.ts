@@ -18,12 +18,14 @@ export function registerDecryptCommand(secretCmd: Command): void {
     .description('Decrypt and show secret value (supports UUID or tenant/alias format)')
     .option('-o, --output <file>', 'Write content to file')
     .option('--json', 'Output as JSON')
+    .option('--no-resolve', 'Return the raw, unresolved template/pointer (skip reference resolution)')
     .addHelpText('after', `
 Examples:
   znvault secret decrypt zn-admin/config             # by alias path
   znvault secret decrypt alias:web/api-key           # with alias: prefix
   znvault secret decrypt abc12345-...                # by UUID
   znvault secret decrypt certs/server-key -o key.pem # save to file
+  znvault secret decrypt app/db-url --no-resolve     # raw template, tokens unexpanded
 `)
     .action(async (idOrAlias: string, options: DecryptOptions) => {
       const spinner = output.spinner('Resolving secret...').start();
@@ -33,7 +35,11 @@ Examples:
         const id = await resolveSecretId(idOrAlias);
         spinner.text = 'Decrypting secret...';
 
-        const secret = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
+        // Commander sets `resolve` to false only when `--no-resolve` is passed
+        // (default true). Append the query ONLY on explicit false — a default
+        // decrypt stays byte-identical to the pre-feature call.
+        const query = options.resolve === false ? '?resolve=false' : '';
+        const secret = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt${query}`, {});
         spinner.stop();
 
         if (options.json) {
@@ -66,6 +72,15 @@ Examples:
         console.log(`Tenant:  ${secret.tenant}`);
         console.log(`Type:    ${formatType(secret.type, secret.subType)}`);
         console.log(`Version: ${secret.version}`);
+        if (secret.resolvedFrom) {
+          const from = secret.resolvedFrom.field
+            ? `${secret.resolvedFrom.alias}#${secret.resolvedFrom.field}`
+            : secret.resolvedFrom.alias;
+          console.log(`Resolved from: ${from}`);
+        }
+        if (secret.resolved) {
+          console.log(`Resolved refs: ${secret.resolved.count}`);
+        }
 
         // Display data based on type
         console.log('\n--- Secret Data ---');
@@ -98,8 +113,16 @@ Examples:
           if (pub?.filename) console.log(`  Public Key: ${pub.filename}`);
           console.log('\nUse --output <file> to save the keys');
         } else {
-          // Generic key-value
-          console.log(JSON.stringify(secret.data, null, 2));
+          // A resolved field-narrowed link wraps a non-object value as { value }.
+          // Unwrap for display, but only when this is a resolved link (the server
+          // produces the envelope only then) so an ordinary { value } secret is
+          // rendered unchanged.
+          const keys = secret.data ? Object.keys(secret.data) : [];
+          if (secret.resolvedFrom && keys.length === 1 && keys[0] === 'value') {
+            console.log(JSON.stringify(secret.data.value, null, 2));
+          } else {
+            console.log(JSON.stringify(secret.data, null, 2));
+          }
         }
       } catch (error) {
         spinner.fail('Failed to decrypt secret');

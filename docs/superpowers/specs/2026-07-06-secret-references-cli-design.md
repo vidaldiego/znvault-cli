@@ -35,12 +35,21 @@
   authority) and updated `--help` examples.
 - **Affected components (CLI only):**
   `src/commands/secret/create.ts`, `src/commands/secret/decrypt.ts`,
-  `src/commands/secret/update.ts`, `src/commands/secret/rotate.ts`, `src/commands/secret/types.ts`,
+  `src/commands/secret/update.ts`, `src/commands/secret/rotate.ts`, `src/commands/secret/patch.ts`,
+  `src/commands/secret/types.ts`, `src/commands/secret/index.ts` (barrel re-export),
   a **new** `src/commands/secret/references.ts` (validation + link-pointer builder),
-  `test/commands/secret.test.ts` (extended). No changes to `helpers.ts`, `index.ts`, `resolve.ts`
+  `test/commands/secret.test.ts` + `test/commands/secret-patch.test.ts` + a new
+  `test/commands/secret/references.test.ts`. No changes to `helpers.ts`, `resolve.ts`
   are required beyond wiring; the HTTP client already supports query strings embedded in a path.
   A **docs follow-up** to `zn-vault/docs/SECRET_REFERENCES_GUIDE.md` (server repo) is noted but
   **not** performed here (out of CLI scope) — see finding #4.
+
+  > **`patch.ts` — added during the final whole-branch review.** `secret patch` is a **fourth**
+  > decrypt-then-write-back edit command (it merges `--set`/`--unset` into the decrypted value and
+  > PUTs the result) that the original scope missed. Left resolving, `patch` on a reference secret
+  > would bake a resolved snapshot over the template — the same corruption class as `update`/
+  > `rotate`, and worse (patch *always* writes back). It gets the identical `?resolve=false`
+  > interactive-pre-fetch fix.
 
 ## Goals
 

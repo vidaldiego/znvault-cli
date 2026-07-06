@@ -21,6 +21,8 @@ export function registerUpdateCommand(secretCmd: Command): void {
     .option('--expires <datetime>', 'Natural expiration (ISO 8601)')
     .option('--json', 'Output as JSON')
     .option('--data <json>', 'New data as JSON (non-interactive)')
+    .option('--enable-references', 'Opt this secret in to ${ref:...} reference resolution')
+    .option('--no-enable-references', 'Disable reference resolution (turn opt-in off)')
     .action(async (idOrAlias: string, options: UpdateOptions) => {
       let newData: Record<string, unknown> | undefined;
       let id: string;
@@ -47,7 +49,13 @@ export function registerUpdateCommand(secretCmd: Command): void {
         const spinner = output.spinner('Fetching current secret...').start();
 
         try {
-          const current = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
+          // Pre-fetch the RAW template so answering "no" to the edit prompt (or
+          // editing) never writes a resolved snapshot back over a reference
+          // secret. Byte-identical for non-reference secrets.
+          const current = await client.post<DecryptedSecret>(
+            `/v1/secrets/${id}/decrypt?resolve=false`,
+            {},
+          );
           spinner.stop();
 
           const { updateData } = await inquirer.prompt<{ updateData: boolean }>([
@@ -112,6 +120,10 @@ export function registerUpdateCommand(secretCmd: Command): void {
         if (options.tags) body.tags = options.tags.split(',').map(t => t.trim());
         if (options.ttl) body.ttlUntil = options.ttl;
         if (options.expires) body.expiresAt = options.expires;
+        // Only send when explicitly set; omitting preserves the server's sticky opt-in.
+        if (options.enableReferences !== undefined) {
+          body.enableReferences = options.enableReferences;
+        }
 
         const result = await client.put<SecretMetadata>(`/v1/secrets/${id}`, body);
         updateSpinner.stop();
@@ -123,6 +135,9 @@ export function registerUpdateCommand(secretCmd: Command): void {
 
         output.success('Secret updated successfully!');
         console.log(`  Version: ${result.version}`);
+        if (result.references) {
+          console.log(`  References: ${result.references.count}`);
+        }
       } catch (error) {
         updateSpinner.fail('Failed to update secret');
         output.error((error as Error).message);

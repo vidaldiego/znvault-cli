@@ -735,7 +735,7 @@ describe('secret patch command', () => {
     const { client } = await import('../../src/lib/client.js');
     const { success } = await import('../../src/lib/output.js');
 
-    expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
+    expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
     // Note: "2.0" is inferred as a number (2) by the value type inference
     expect(client.put).toHaveBeenCalledWith('/v1/secrets/secret-1', expect.objectContaining({
       data: expect.objectContaining({ version: 2 }),
@@ -868,6 +868,30 @@ describe('secret patch command', () => {
         }),
       }),
     }));
+
+    consoleSpy.mockRestore();
+  });
+
+  it('pre-fetches the raw template (no reference resolution)', async () => {
+    // When patching a reference secret, decrypt with resolve=false to avoid
+    // baking a resolved snapshot back over the template.
+    const program = new Command();
+    program.exitOverride();
+
+    const { registerSecretCommands } = await import('../../src/commands/secret/index.js');
+    registerSecretCommands(program);
+
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node', 'test', 'secret', 'patch', 'config/app',
+      '--set', 'version=2.0',
+    ]);
+
+    const { client } = await import('../../src/lib/client.js');
+
+    // Verify that decrypt was called with resolve=false query parameter
+    expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
 
     consoleSpy.mockRestore();
   });
