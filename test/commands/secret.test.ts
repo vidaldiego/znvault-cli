@@ -198,6 +198,54 @@ describe('secret commands', () => {
       await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']);
       expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
     });
+
+    it('displays provenance (resolvedFrom and resolved) in non-JSON output', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      const decryptedWithProvenance = {
+        ...mockDecryptedSecret,
+        resolvedFrom: { alias: 'db/prod/creds', field: 'password' },
+        resolved: { count: 2 },
+      };
+
+      vi.mocked(client.post).mockResolvedValueOnce(decryptedWithProvenance as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Resolved from: db/prod/creds#password')
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Resolved refs: 2')
+      );
+    });
+
+    it('unwraps { value } when secret is resolved from a reference field', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      const decryptedWithValueUnwrap = {
+        id: 'secret-1',
+        alias: 'web/prod/api-key',
+        tenant: 'acme',
+        type: 'setting',
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        data: { value: 'p@ssw0rd' },
+        resolvedFrom: { alias: 'db/prod/creds', field: 'password' },
+      };
+
+      vi.mocked(client.post).mockResolvedValueOnce(decryptedWithValueUnwrap as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('p@ssw0rd')
+      );
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('"value"')
+      );
+    });
   });
 
   describe('secret delete', () => {
