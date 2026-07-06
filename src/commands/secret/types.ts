@@ -175,3 +175,35 @@ export interface CopyResponse {
   };
   createdAt: string;
 }
+
+// ============================================================================
+// Can-Decrypt Preflight Types (SPEC B4/B6)
+// ============================================================================
+
+export interface CanDecryptOptions {
+  asApiKey?: string;
+  asUser?: string;
+  json?: boolean;
+}
+
+export type CanDecryptNodeVerdict = 'allowed' | 'denied' | 'conditional' | 'indeterminate';
+
+export interface CanDecryptTarget {
+  alias: string | null;
+  verdict: CanDecryptNodeVerdict;
+  conditionalOn?: string[];
+  reason?: string;
+}
+
+export interface CanDecryptVerdict {
+  verdict: CanDecryptNodeVerdict;
+  simulatedIdentity: { kind: 'apikey' | 'user' | 'self'; id: string | null };
+  secret: { id: string; alias: string; subType?: string; hasReferences?: boolean };
+  self: {
+    verdict: 'allowed' | 'denied' | 'conditional';
+    conditionalOn?: string[];
+    reason?: string;
+  };
+  targets: CanDecryptTarget[];
+  firstDenial: { alias: string | null; reason: string } | null;
+}
