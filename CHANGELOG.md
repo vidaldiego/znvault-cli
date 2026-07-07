@@ -5,6 +5,52 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.15.4] - 2026-07-07
+
+### Added — reference-metadata display + `secret can-decrypt` preflight
+
+- `secret get` now shows a **References** row (`link secret` / `enabled · has tokens` /
+  `enabled · no tokens yet`) derived from the server's new `/meta` fields, plus reference tips.
+  The previously-empty `Created At` / `Updated At` now populate (the server `/meta` endpoint now
+  emits camelCase timestamps + `subType` / `hasReferences` / `referencesEnabled`).
+- `secret can-decrypt <alias> [--as-api-key <id> | --as-user <id>] [--json]` — a preflight that
+  reports whether an identity could decrypt a secret across its full reference graph, with verdicts
+  `allowed` / `denied` / `conditional` / `indeterminate`. Self-check needs `secret:read:metadata`;
+  simulating another identity requires the strict, admin-granted `secret:simulate-access`.
+  `--as-api-key` and `--as-user` are mutually exclusive.
+
+> Requires the matching server release (the `/meta` reference fields and
+> `POST /v1/secrets/:id/can-decrypt`). Against an un-upgraded server, `can-decrypt` returns a
+> clean "endpoint not available" error and `get` shows no References row.
+
+## [4.15.3] - 2026-07-06
+
+### Added — Secret References authoring (`--link`, `--enable-references`, `--no-resolve`)
+
+- `secret create --link <alias> [--link-field <path>]` — construct a link secret
+  (`subType: 'link'`, `data: { ref, field? }`); rejects conflicting data-bearing flags.
+- `secret create --enable-references` and `secret update --enable-references` /
+  `--no-enable-references` — opt a secret in/out of `${ref:...}` resolution (sticky opt-in).
+- `secret decrypt --no-resolve` — return the raw, unresolved template/pointer (`?resolve=false`),
+  plus `resolvedFrom` / `resolved` provenance in the output.
+
+### Fixed
+
+- `secret update` / `rotate` / `patch` interactive pre-fetch now uses `?resolve=false`, so editing
+  a reference secret never bakes a resolved snapshot over its template.
+
+## [4.15.2] - 2026-07-04
+
+### Fixed
+
+- Green CI: resolved lint errors and a flaky cross-process refresh-lock test.
+
+## [4.15.1] - 2026-07-04
+
+### Documentation
+
+- Documented the `znvault migration apply/status` command in the README and CLAUDE.md.
+
 ## [4.15.0] - 2026-07-04
 
 ### Added — `znvault migration apply/status` command
