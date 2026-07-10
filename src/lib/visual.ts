@@ -10,8 +10,8 @@ import { isPlainMode } from './output-mode.js';
  * Supports both TUI (rich) and plain text modes
  */
 
-// Custom gradient for ZnVault branding
-const vaultGradient = gradient(['#00d4ff', '#0066ff', '#9933ff']);
+// Custom gradient for ZnVault branding (ZincApp lima -> green)
+const vaultGradient = gradient(['#B8E830', '#5CBF4A', '#1F9E63']);
 const successGradient = gradient(['#00ff88', '#00d4ff']);
 const warningGradient = gradient(['#ffcc00', '#ff6600']);
 const dangerGradient = gradient(['#ff6600', '#ff0033']);
