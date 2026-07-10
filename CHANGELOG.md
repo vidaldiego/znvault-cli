@@ -5,6 +5,14 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.16.0] - 2026-07-10
+
+### Changed — ZincApp identity banner
+
+- The `znvault` startup banner gradient now uses the ZincApp brand palette
+  (lima `#B8E830` → green `#1F9E63`), replacing the legacy blue→purple gradient.
+  Success/warning/danger gradients are unchanged (semantic colors).
+
 ## [4.15.4] - 2026-07-07
 
 ### Added — reference-metadata display + `secret can-decrypt` preflight
