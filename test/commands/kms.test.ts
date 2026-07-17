@@ -2,6 +2,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 // Mock dependencies
 vi.mock('inquirer', () => ({
@@ -62,6 +65,45 @@ const mockVersions = [
   { versionId: 'v1', createdAt: new Date().toISOString(), isCurrentVersion: false },
 ];
 
+// A signing key whose spec admits exactly one algorithm -- the "infer it" case.
+const mockPublicKeyResponse = {
+  keyId: 'key-001',
+  keyVersion: 1,
+  keySpec: 'ECC_ED25519',
+  keyUsage: 'SIGN_VERIFY',
+  publicKey: 'cHVibGljS2V5QmFzZTY0',
+  publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----',
+  signingAlgorithms: ['ED25519_SHA_512'],
+};
+
+// An RSA signing key whose spec admits multiple algorithms -- --algorithm is required.
+const mockRsaPublicKeyResponse = {
+  keyId: 'key-rsa',
+  keyVersion: 1,
+  keySpec: 'RSA_2048',
+  keyUsage: 'SIGN_VERIFY',
+  publicKey: 'cnNhUHVibGljS2V5',
+  publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----',
+  signingAlgorithms: [
+    'RSASSA_PKCS1_V1_5_SHA_256',
+    'RSASSA_PKCS1_V1_5_SHA_384',
+    'RSASSA_PKCS1_V1_5_SHA_512',
+    'RSASSA_PSS_SHA_256',
+    'RSASSA_PSS_SHA_384',
+    'RSASSA_PSS_SHA_512',
+  ],
+};
+
+const mockSignResponse = {
+  keyId: 'key-001',
+  keyVersion: 1,
+  signature: 'c2lnbmF0dXJlYnl0ZXM=',
+  signingAlgorithm: 'ED25519_SHA_512',
+};
+
+const mockVerifyValidResponse = { keyId: 'key-001', signatureValid: true, signingAlgorithm: 'ED25519_SHA_512' };
+const mockVerifyInvalidResponse = { keyId: 'key-001', signatureValid: false, signingAlgorithm: 'ED25519_SHA_512' };
+
 vi.mock('../../src/lib/client.js', () => ({
   client: {
     get: vi.fn().mockImplementation((path: string) => {
@@ -71,6 +113,7 @@ vi.mock('../../src/lib/client.js', () => ({
         return Promise.resolve({ items: mockKeys, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
       }
       if (path.includes('/versions')) return Promise.resolve(mockVersions);
+      if (path.includes('/public-key')) return Promise.resolve(mockPublicKeyResponse);
       // API returns { keyMetadata: { ... } }
       if (path.includes('/kms/keys/')) return Promise.resolve({ keyMetadata: mockKeyDetails });
       return Promise.resolve({ keyMetadata: mockKeyDetails });
@@ -79,6 +122,8 @@ vi.mock('../../src/lib/client.js', () => ({
       if (path.includes('/encrypt')) return Promise.resolve(mockEncryptResponse);
       if (path.includes('/decrypt')) return Promise.resolve(mockDecryptResponse);
       if (path.includes('/generate-data-key')) return Promise.resolve(mockDataKeyResponse);
+      if (path.includes('/kms/sign')) return Promise.resolve(mockSignResponse);
+      if (path.includes('/kms/verify')) return Promise.resolve(mockVerifyValidResponse);
       if (path.includes('/rotate')) return Promise.resolve({ keyId: 'key-001', newVersionId: 'v3', message: 'Rotated' });
       if (path.includes('/enable')) return Promise.resolve({});
       if (path.includes('/disable')) return Promise.resolve({});
@@ -108,6 +153,7 @@ vi.mock('../../src/lib/output.js', () => ({
 describe('kms commands', () => {
   let program: Command;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
+  let mockExit: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     program = new Command();
@@ -117,10 +163,24 @@ describe('kms commands', () => {
     registerKmsCommands(program);
 
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    // sign/verify/public-key call process.exit() directly (not via commander's
+    // exitOverride), including on success (verify exits 0/1 by design) -- mock
+    // it so tests never actually terminate the vitest process.
+    mockExit = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null): never => {
+      // `kms verify`'s success path calls process.exit(0) as the LAST
+      // statement inside its own try block. If we throw there too (as we do
+      // for every other exit call, to emulate exit's real never-returns
+      // semantics), that synthetic throw gets swallowed by the surrounding
+      // catch and turns into a spurious process.exit(1) -- so let 0 no-op
+      // instead of throwing.
+      if (code === 0) return undefined as never;
+      throw new Error(`process.exit(${code})`);
+    });
   });
 
   afterEach(() => {
     consoleSpy.mockRestore();
+    mockExit.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -384,6 +444,203 @@ describe('kms commands', () => {
       await program.parseAsync(['node', 'test', 'kms', 'versions', 'key-001', '--json']);
 
       expect(json).toHaveBeenCalledWith(mockVersions);
+    });
+  });
+
+  describe('kms sign', () => {
+    it('base64-encodes the message and prints the base64 signature to stdout', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await program.parseAsync([
+        'node', 'test', 'kms', 'sign', 'key-001', 'hello world',
+        '--algorithm', 'ED25519_SHA_512',
+      ]);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/kms/sign', {
+        keyId: 'key-001',
+        message: Buffer.from('hello world').toString('base64'),
+        signingAlgorithm: 'ED25519_SHA_512',
+      });
+      expect(stdoutSpy).toHaveBeenCalledWith(`${mockSignResponse.signature}\n`);
+
+      stdoutSpy.mockRestore();
+    });
+
+    it('writes the base64 signature to a file with --output', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { success } = await import('../../src/lib/output.js');
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'znvault-sign-'));
+      const outFile = path.join(dir, 'out.sig');
+
+      try {
+        await program.parseAsync([
+          'node', 'test', 'kms', 'sign', 'key-001', 'hello world',
+          '--algorithm', 'ED25519_SHA_512', '--output', outFile,
+        ]);
+
+        expect(client.post).toHaveBeenCalledWith('/v1/kms/sign', expect.objectContaining({ keyId: 'key-001' }));
+        expect(fs.readFileSync(outFile, 'utf8')).toBe(mockSignResponse.signature);
+        expect(success).toHaveBeenCalledWith(expect.stringContaining(outFile));
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('resolveAlgorithm (via kms sign/verify inference)', () => {
+    it('infers the algorithm when the key admits exactly one', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { resolveAlgorithm } = await import('../../src/commands/kms/helpers.js');
+
+      const algorithm = await resolveAlgorithm('key-001');
+
+      expect(client.get).toHaveBeenCalledWith('/v1/kms/keys/key-001/public-key');
+      expect(algorithm).toBe('ED25519_SHA_512');
+    });
+
+    it('errors listing the choices when the key admits multiple algorithms, without picking one', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { error } = await import('../../src/lib/output.js');
+      const { resolveAlgorithm } = await import('../../src/commands/kms/helpers.js');
+
+      vi.mocked(client.get).mockResolvedValueOnce(mockRsaPublicKeyResponse);
+
+      await expect(resolveAlgorithm('key-rsa')).rejects.toThrow('process.exit(1)');
+
+      const message = vi.mocked(error).mock.calls[0][0];
+      expect(message).toContain('--algorithm is required');
+      for (const alg of mockRsaPublicKeyResponse.signingAlgorithms) {
+        expect(message).toContain(alg);
+      }
+    });
+
+    it('uses an explicit --algorithm without fetching the key', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { resolveAlgorithm } = await import('../../src/commands/kms/helpers.js');
+
+      const algorithm = await resolveAlgorithm('key-001', 'RSASSA_PSS_SHA_256');
+
+      expect(algorithm).toBe('RSASSA_PSS_SHA_256');
+      expect(client.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('readMessage (--file / positional-message mutual exclusivity)', () => {
+    it('errors when both a message and --file are given', async () => {
+      const { error } = await import('../../src/lib/output.js');
+      const { readMessage } = await import('../../src/commands/kms/helpers.js');
+
+      await expect(readMessage('inline message', '/tmp/whatever.bin')).rejects.toThrow('process.exit(1)');
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('either a message argument or --file'));
+    });
+
+    it('errors when neither a message nor --file is given', async () => {
+      const { error } = await import('../../src/lib/output.js');
+      const { readMessage } = await import('../../src/commands/kms/helpers.js');
+
+      await expect(readMessage(undefined, undefined)).rejects.toThrow('process.exit(1)');
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('No message given'));
+    });
+
+    it('reads the message bytes from --file when given alone', async () => {
+      const { readMessage } = await import('../../src/commands/kms/helpers.js');
+
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'znvault-msg-'));
+      const file = path.join(dir, 'message.txt');
+      fs.writeFileSync(file, 'file contents');
+
+      try {
+        const bytes = await readMessage(undefined, file);
+        expect(bytes.toString('utf8')).toBe('file contents');
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('returns the positional message bytes when given alone', async () => {
+      const { readMessage } = await import('../../src/commands/kms/helpers.js');
+
+      const bytes = await readMessage('hello', undefined);
+
+      expect(bytes.toString('utf8')).toBe('hello');
+    });
+  });
+
+  describe('kms verify', () => {
+    it('exits 0 for a VALID signature via the normal result path', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { success } = await import('../../src/lib/output.js');
+
+      await program.parseAsync([
+        'node', 'test', 'kms', 'verify', 'key-001', 'hello world',
+        '--algorithm', 'ED25519_SHA_512', '--signature', 'c2lnbmF0dXJl',
+      ]);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/kms/verify', {
+        keyId: 'key-001',
+        message: Buffer.from('hello world').toString('base64'),
+        signature: 'c2lnbmF0dXJl',
+        signingAlgorithm: 'ED25519_SHA_512',
+      });
+      expect(success).toHaveBeenCalledWith(expect.stringContaining('VALID'));
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+
+    it('exits non-zero for an INVALID signature via the normal result path, not the catch/transport-error path', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { error } = await import('../../src/lib/output.js');
+
+      // The request itself succeeds (resolves, doesn't throw) -- it's the
+      // verdict inside the response body that is false. This is what must be
+      // distinguished from a transport/request failure below.
+      vi.mocked(client.post).mockResolvedValueOnce(mockVerifyInvalidResponse);
+
+      await expect(program.parseAsync([
+        'node', 'test', 'kms', 'verify', 'key-001', 'hello world',
+        '--algorithm', 'ED25519_SHA_512', '--signature', 'c2lnbmF0dXJl',
+      ])).rejects.toThrow('process.exit(1)');
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('INVALID'));
+      // The catch block's message is different ("Verification request failed" +
+      // the thrown error's message) -- assert we did NOT go down that path.
+      expect(error).not.toHaveBeenCalledWith(expect.stringContaining('request failed'));
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it('errors when no --signature or --signature-file is given', async () => {
+      const { error } = await import('../../src/lib/output.js');
+
+      await expect(program.parseAsync([
+        'node', 'test', 'kms', 'verify', 'key-001', 'hello world', '--algorithm', 'ED25519_SHA_512',
+      ])).rejects.toThrow('process.exit(1)');
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('No signature given'));
+    });
+  });
+
+  describe('kms public-key', () => {
+    it('returns the PEM public key with --pem', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await program.parseAsync(['node', 'test', 'kms', 'public-key', 'key-001', '--pem']);
+
+      expect(client.get).toHaveBeenCalledWith('/v1/kms/keys/key-001/public-key');
+      expect(stdoutSpy).toHaveBeenCalledWith(`${mockPublicKeyResponse.publicKeyPem}\n`);
+
+      stdoutSpy.mockRestore();
+    });
+
+    it('returns the base64 SPKI DER public key by default', async () => {
+      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      await program.parseAsync(['node', 'test', 'kms', 'public-key', 'key-001']);
+
+      expect(stdoutSpy).toHaveBeenCalledWith(`${mockPublicKeyResponse.publicKey}\n`);
+
+      stdoutSpy.mockRestore();
     });
   });
 });
