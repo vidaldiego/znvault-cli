@@ -283,7 +283,7 @@ export function registerCrudCommands(parent: Command, asSuperadmin = false): voi
     .option('-a, --alias <alias>', 'Key alias (e.g., my-key or alias/my-key)')
     .option('-d, --description <desc>', 'Key description')
     .option('--usage <usage>', 'Key usage (ENCRYPT_DECRYPT, SIGN_VERIFY)', 'ENCRYPT_DECRYPT')
-    .option('--spec <spec>', 'Key spec (AES_256, AES_128, RSA_2048, RSA_4096)', 'AES_256')
+    .option('--spec <spec>', 'Key spec (AES_256, AES_128, RSA_2048, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ED25519)', 'AES_256')
     .option('--tags <tags>', 'Comma-separated tags (key=value,...)')
     .option('--json', 'Output as JSON')
     .action((options: CreateOptions) => withKmsContext(asSuperadmin, () => createKey(options)));
