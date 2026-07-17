@@ -127,6 +127,50 @@ export interface GenerateDataKeyOptions {
   json?: boolean;
 }
 
+export interface SignOptions {
+  file?: string;
+  output?: string;
+  algorithm?: string;
+  json?: boolean;
+}
+
+export interface VerifyOptions {
+  file?: string;
+  signature?: string;
+  signatureFile?: string;
+  algorithm?: string;
+  json?: boolean;
+}
+
+export interface PublicKeyOptions {
+  pem?: boolean;
+  output?: string;
+  json?: boolean;
+}
+
+export interface SignResponse {
+  keyId: string;
+  keyVersion: number;
+  signature: string;
+  signingAlgorithm: string;
+}
+
+export interface VerifyResponse {
+  keyId: string;
+  signatureValid: boolean;
+  signingAlgorithm: string;
+}
+
+export interface PublicKeyResponse {
+  keyId: string;
+  keyVersion: number;
+  keySpec: string;
+  keyUsage: string;
+  publicKey: string;
+  publicKeyPem: string;
+  signingAlgorithms: string[];
+}
+
 export interface VersionsOptions {
   json?: boolean;
 }

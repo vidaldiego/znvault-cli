@@ -16,8 +16,14 @@ import type {
   EncryptOptions,
   DecryptOptions,
   GenerateDataKeyOptions,
+  SignOptions,
+  VerifyOptions,
+  PublicKeyOptions,
+  SignResponse,
+  VerifyResponse,
+  PublicKeyResponse,
 } from './types.js';
-import { parseContext } from './helpers.js';
+import { parseContext, resolveAlgorithm, readMessage } from './helpers.js';
 
 // ============================================================================
 // Command Implementations
@@ -189,6 +195,118 @@ async function generateDataKey(keyId: string, options: GenerateDataKeyOptions): 
   }
 }
 
+async function signMessage(keyId: string, data: string | undefined, options: SignOptions): Promise<void> {
+  const message = await readMessage(data, options.file);
+  const algorithm = await resolveAlgorithm(keyId, options.algorithm);
+
+  const spinner = output.spinner('Signing message...').start();
+
+  try {
+    const result = await client.post<SignResponse>('/v1/kms/sign', {
+      keyId,
+      message: message.toString('base64'),
+      signingAlgorithm: algorithm,
+    });
+    spinner.stop();
+
+    if (options.json) {
+      output.json(result);
+      return;
+    }
+
+    // Base64 by default: this drops straight into a version.json.sig sibling,
+    // which is exactly what the Kotlin verifier reads back -- no re-encoding.
+    if (options.output) {
+      const fs = await import('fs');
+      fs.writeFileSync(options.output, result.signature);
+      output.success(
+        `Signature written to ${options.output} (${result.signingAlgorithm}, key version ${result.keyVersion})`
+      );
+    } else {
+      process.stdout.write(`${result.signature}\n`);
+    }
+  } catch (error) {
+    spinner.fail('Failed to sign message');
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+async function verifySignature(keyId: string, data: string | undefined, options: VerifyOptions): Promise<void> {
+  const message = await readMessage(data, options.file);
+  const algorithm = await resolveAlgorithm(keyId, options.algorithm);
+
+  let signature = options.signature;
+  if (options.signatureFile) {
+    const fs = await import('fs');
+    if (!fs.existsSync(options.signatureFile)) {
+      output.error(`File not found: ${options.signatureFile}`);
+      process.exit(1);
+    }
+    signature = fs.readFileSync(options.signatureFile, 'utf8').trim();
+  }
+  if (!signature) {
+    output.error('No signature given: pass --signature or --signature-file');
+    process.exit(1);
+  }
+
+  const spinner = output.spinner('Verifying signature...').start();
+
+  try {
+    const result = await client.post<VerifyResponse>('/v1/kms/verify', {
+      keyId,
+      message: message.toString('base64'),
+      signature,
+      signingAlgorithm: algorithm,
+    });
+    spinner.stop();
+
+    if (options.json) {
+      output.json(result);
+    } else if (result.signatureValid) {
+      output.success(`Signature is VALID (${result.signingAlgorithm})`);
+    } else {
+      output.error(`Signature is INVALID (${result.signingAlgorithm})`);
+    }
+
+    // A bad signature is a failed verification, not a failed command -- but
+    // the exit code must let scripts branch on it.
+    process.exit(result.signatureValid ? 0 : 1);
+  } catch (error) {
+    spinner.fail('Verification request failed');
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+async function getPublicKey(keyId: string, options: PublicKeyOptions): Promise<void> {
+  const spinner = output.spinner('Fetching public key...').start();
+
+  try {
+    const result = await client.get<PublicKeyResponse>(`/v1/kms/keys/${keyId}/public-key`);
+    spinner.stop();
+
+    if (options.json) {
+      output.json(result);
+      return;
+    }
+
+    const value = options.pem ? result.publicKeyPem : result.publicKey;
+
+    if (options.output) {
+      const fs = await import('fs');
+      fs.writeFileSync(options.output, value);
+      output.success(`Public key written to ${options.output}`);
+    } else {
+      process.stdout.write(`${value}\n`);
+    }
+  } catch (error) {
+    spinner.fail('Failed to fetch public key');
+    output.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
 // ============================================================================
 // Command Registration
 // ============================================================================
@@ -222,4 +340,34 @@ export function registerCryptoCommands(parent: Command): void {
     .option('-o, --output <file>', 'Write plaintext key to file')
     .option('--json', 'Output as JSON')
     .action(generateDataKey);
+
+  // Sign a message
+  parent
+    .command('sign <keyId> [message]')
+    .description('Sign a message with a KMS signing key')
+    .option('-f, --file <file>', 'Read the message from a file')
+    .option('-o, --output <file>', 'Write the base64 signature to a file')
+    .option('--algorithm <alg>', 'Signing algorithm (inferred when the key spec allows only one)')
+    .option('--json', 'Output as JSON')
+    .action(signMessage);
+
+  // Verify a signature
+  parent
+    .command('verify <keyId> [message]')
+    .description('Verify a signature over a message')
+    .option('-f, --file <file>', 'Read the message from a file')
+    .option('-s, --signature <sig>', 'Base64 signature')
+    .option('--signature-file <file>', 'Read the base64 signature from a file')
+    .option('--algorithm <alg>', 'Signing algorithm (inferred when the key spec allows only one)')
+    .option('--json', 'Output as JSON')
+    .action(verifySignature);
+
+  // Fetch the public key (for pinning in a client)
+  parent
+    .command('public-key <keyId>')
+    .description("Fetch a signing key's public key, for pinning in a client")
+    .option('--pem', 'Output PEM instead of base64 SPKI DER')
+    .option('-o, --output <file>', 'Write to a file')
+    .option('--json', 'Output as JSON')
+    .action(getPublicKey);
 }
