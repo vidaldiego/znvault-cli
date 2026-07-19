@@ -15,7 +15,7 @@ import type {
   EnableDisableOptions,
   VersionsOptions,
 } from './types.js';
-import { formatDate } from './helpers.js';
+import { formatDate, encodeKeyId } from './helpers.js';
 import { kmsKeysPath, kmsKeysQuery, withKmsContext } from './routing.js';
 
 // ============================================================================
@@ -27,7 +27,7 @@ async function rotateKey(keyId: string, options: RotateOptions): Promise<void> {
 
   try {
     const result = await client.post<{ keyId: string; newVersionId: string; message: string }>(
-      kmsKeysPath(options.tenant, `/${keyId}/rotate`) + kmsKeysQuery(options.tenant),
+      kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}/rotate`) + kmsKeysQuery(options.tenant),
       {}
     );
     spinner.stop();
@@ -52,7 +52,7 @@ async function enableKey(keyId: string, options: EnableDisableOptions): Promise<
 
   try {
     const result = await client.post<{ keyId: string; message?: string }>(
-      kmsKeysPath(options.tenant, `/${keyId}/enable`) + kmsKeysQuery(options.tenant),
+      kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}/enable`) + kmsKeysQuery(options.tenant),
       {}
     );
     spinner.stop();
@@ -75,7 +75,7 @@ async function disableKey(keyId: string, options: EnableDisableOptions): Promise
 
   try {
     const result = await client.post<{ keyId: string; message?: string }>(
-      kmsKeysPath(options.tenant, `/${keyId}/disable`) + kmsKeysQuery(options.tenant),
+      kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}/disable`) + kmsKeysQuery(options.tenant),
       {}
     );
     spinner.stop();
@@ -97,7 +97,7 @@ async function listVersions(keyId: string, options: VersionsOptions): Promise<vo
   const spinner = output.spinner('Fetching key versions...').start();
 
   try {
-    const versions = await client.get<KeyVersion[]>(`/v1/kms/keys/${keyId}/versions`);
+    const versions = await client.get<KeyVersion[]>(`/v1/kms/keys/${encodeKeyId(keyId)}/versions`);
     spinner.stop();
 
     if (options.json) {

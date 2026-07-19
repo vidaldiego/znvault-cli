@@ -23,7 +23,7 @@ import type {
   VerifyResponse,
   PublicKeyResponse,
 } from './types.js';
-import { parseContext, resolveAlgorithm, readMessage } from './helpers.js';
+import { parseContext, resolveAlgorithm, readMessage, encodeKeyId } from './helpers.js';
 
 // ============================================================================
 // Command Implementations
@@ -283,7 +283,7 @@ async function getPublicKey(keyId: string, options: PublicKeyOptions): Promise<v
   const spinner = output.spinner('Fetching public key...').start();
 
   try {
-    const result = await client.get<PublicKeyResponse>(`/v1/kms/keys/${keyId}/public-key`);
+    const result = await client.get<PublicKeyResponse>(`/v1/kms/keys/${encodeKeyId(keyId)}/public-key`);
     spinner.stop();
 
     if (options.json) {

@@ -19,7 +19,7 @@ import type {
   CreateOptions,
   DeleteOptions,
 } from './types.js';
-import { formatDate, formatKeyState, formatPaginationInfo } from './helpers.js';
+import { formatDate, formatKeyState, formatPaginationInfo, encodeKeyId } from './helpers.js';
 
 import { kmsKeysPath, kmsKeysQuery, kmsIsAdminCall, withKmsContext } from './routing.js';
 
@@ -74,7 +74,7 @@ async function getKey(keyId: string, options: GetOptions): Promise<void> {
   try {
     // API returns { keyMetadata: { ... } }
     const response = await client.get<{ keyMetadata: KMSKey }>(
-      kmsKeysPath(options.tenant, `/${keyId}`) + kmsKeysQuery(options.tenant)
+      kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}`) + kmsKeysQuery(options.tenant)
     );
     const key = response.keyMetadata;
     spinner.stop();
@@ -132,6 +132,22 @@ async function createKey(options: CreateOptions): Promise<void> {
     process.exit(1);
   }
 
+  if (options.prehashAllowed) {
+    const usage = options.usage ?? 'ENCRYPT_DECRYPT';
+    const spec = options.spec ?? 'AES_256';
+    if (usage !== 'SIGN_VERIFY' || (spec !== 'RSA_2048' && spec !== 'RSA_4096')) {
+      output.error('--prehash-allowed requires --usage SIGN_VERIFY and --spec RSA_2048 or RSA_4096');
+      process.exit(1);
+    }
+    if (kmsIsAdminCall(options.tenant)) {
+      // The superadmin create route does not honor prehashAllowed; arming is a
+      // tenant operation. Warn and let the user arm afterward.
+      output.warn(
+        '--prehash-allowed is ignored on the superadmin route; arm the key afterward with `znvault kms prehash enable <keyId>`.'
+      );
+    }
+  }
+
   const spinner = output.spinner('Creating KMS key...').start();
 
   try {
@@ -155,6 +171,7 @@ async function createKey(options: CreateOptions): Promise<void> {
       }
       body.tags = tags;
     }
+    if (options.prehashAllowed) body.prehashAllowed = true;
 
     // Routing: if --tenant is cross-tenant (superadmin), use admin surface;
     // otherwise rely on JWT-derived tenant in /v1/kms/keys (server ignores
@@ -190,7 +207,7 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     const spinner = output.spinner('Fetching key...').start();
     try {
       const key = await client.get<KMSKey>(
-        kmsKeysPath(options.tenant, `/${keyId}`) + kmsKeysQuery(options.tenant)
+        kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}`) + kmsKeysQuery(options.tenant)
       );
       spinner.stop();
 
@@ -225,12 +242,12 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     let result: { keyId: string; deletionDate: string; message?: string };
     if (kmsIsAdminCall(options.tenant)) {
       result = await client.post<{ keyId: string; deletionDate: string; message?: string }>(
-        `/v1/superadmin/kms/keys/${keyId}/schedule-deletion?tenantId=${encodeURIComponent(options.tenant!)}`,
+        `/v1/superadmin/kms/keys/${encodeKeyId(keyId)}/schedule-deletion?tenantId=${encodeURIComponent(options.tenant!)}`,
         { pendingWindowInDays: days }
       );
     } else {
       result = await client.delete<{ keyId: string; deletionDate: string; message: string }>(
-        `/v1/kms/keys/${keyId}?pendingWindowInDays=${days}`
+        `/v1/kms/keys/${encodeKeyId(keyId)}?pendingWindowInDays=${days}`
       );
     }
     deleteSpinner.stop();
@@ -285,6 +302,10 @@ export function registerCrudCommands(parent: Command, asSuperadmin = false): voi
     .option('--usage <usage>', 'Key usage (ENCRYPT_DECRYPT, SIGN_VERIFY)', 'ENCRYPT_DECRYPT')
     .option('--spec <spec>', 'Key spec (AES_256, AES_128, RSA_2048, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ED25519)', 'AES_256')
     .option('--tags <tags>', 'Comma-separated tags (key=value,...)')
+    .option(
+      '--prehash-allowed',
+      'Arm this RSA SIGN_VERIFY key for prehashed (digest) signing (jsign/Authenticode). Requires kms:key:prehash-manage or tenant-admin; applies on the tenant route only.'
+    )
     .option('--json', 'Output as JSON')
     .action((options: CreateOptions) => withKmsContext(asSuperadmin, () => createKey(options)));
 

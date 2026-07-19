@@ -129,7 +129,13 @@ vi.mock('../../src/lib/client.js', () => ({
       if (path.includes('/disable')) return Promise.resolve({});
       return Promise.resolve(mockKeyDetails);
     }),
-    patch: vi.fn().mockResolvedValue(mockKeyDetails),
+    patch: vi.fn().mockImplementation((path: string, body: unknown) => {
+      if (path.includes('/prehash')) {
+        const enabled = (body as { enabled?: boolean } | undefined)?.enabled ?? false;
+        return Promise.resolve({ keyId: 'key-001', prehashAllowed: enabled });
+      }
+      return Promise.resolve(mockKeyDetails);
+    }),
     delete: vi.fn().mockResolvedValue({ keyId: 'key-001', deletionDate: new Date().toISOString(), message: 'Scheduled' }),
     configure: vi.fn(),
   },
@@ -274,6 +280,96 @@ describe('kms commands', () => {
           tags: [{ key: 'env', value: 'prod' }, { key: 'team', value: 'backend' }],
         })
       );
+    });
+  });
+
+  describe('alias key identifiers (must be URL-encoded as one path segment)', () => {
+    // An alias is stored as `alias/<name>`; interpolating it raw produces
+    // /v1/kms/keys/alias/foo/public-key, which does not match the server's
+    // single-segment :keyId route (404). encodeURIComponent fixes it:
+    // /v1/kms/keys/alias%2Ffoo/public-key -> param decodes back to alias/foo.
+    it('public-key encodes an alias keyId', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      // public-key exits the process on its success path; swallow that so the
+      // assertion below is what decides the test.
+      try {
+        await program.parseAsync(['node', 'test', 'kms', 'public-key', 'alias/foo']);
+      } catch {
+        /* process.exit mock throws — irrelevant here */
+      }
+
+      expect(client.get).toHaveBeenCalledWith('/v1/kms/keys/alias%2Ffoo/public-key');
+    });
+
+    it('get encodes an alias keyId', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'get', 'alias/foo']);
+
+      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('alias%2Ffoo'));
+    });
+
+    it('prehash enable encodes an alias keyId', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'prehash', 'enable', 'alias/foo']);
+
+      expect(client.patch).toHaveBeenCalledWith('/v1/kms/keys/alias%2Ffoo/prehash', { enabled: true });
+    });
+
+    it('leaves a plain UUID keyId unchanged', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'get', 'key-001']);
+
+      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('/kms/keys/key-001'));
+    });
+  });
+
+  describe('kms prehash (arming)', () => {
+    it('enable should PATCH the tenant prehash route with enabled:true', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'prehash', 'enable', 'key-001']);
+
+      expect(client.patch).toHaveBeenCalledWith('/v1/kms/keys/key-001/prehash', { enabled: true });
+    });
+
+    it('disable should PATCH the tenant prehash route with enabled:false', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'prehash', 'disable', 'key-001']);
+
+      expect(client.patch).toHaveBeenCalledWith('/v1/kms/keys/key-001/prehash', { enabled: false });
+    });
+  });
+
+  describe('kms create --prehash-allowed', () => {
+    it('threads prehashAllowed:true for an RSA SIGN_VERIFY key', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync([
+        'node', 'test', 'kms', 'create',
+        '--tenant', 'acme', '--usage', 'SIGN_VERIFY', '--spec', 'RSA_2048', '--prehash-allowed',
+      ]);
+
+      expect(client.post).toHaveBeenCalledWith(
+        expect.stringContaining('kms/keys'),
+        expect.objectContaining({ usage: 'SIGN_VERIFY', keySpec: 'RSA_2048', prehashAllowed: true })
+      );
+    });
+
+    it('rejects --prehash-allowed on a non-RSA / non-SIGN_VERIFY key before any request', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { error } = await import('../../src/lib/output.js');
+
+      await expect(
+        program.parseAsync(['node', 'test', 'kms', 'create', '--tenant', 'acme', '--prehash-allowed'])
+      ).rejects.toThrow(/process\.exit\(1\)/);
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('--prehash-allowed requires'));
+      expect(client.post).not.toHaveBeenCalled();
     });
   });
 

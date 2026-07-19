@@ -87,6 +87,13 @@ export interface CreateOptions {
   usage?: string;
   spec?: string;
   tags?: string;
+  /** Arm an RSA SIGN_VERIFY key for prehashed (digest) signing at create time (jsign/Authenticode). */
+  prehashAllowed?: boolean;
+  json?: boolean;
+}
+
+/** Options for the `kms prehash enable|disable` arming commands. */
+export interface PrehashOptions {
   json?: boolean;
 }
 
