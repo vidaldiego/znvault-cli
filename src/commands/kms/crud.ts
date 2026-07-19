@@ -132,6 +132,22 @@ async function createKey(options: CreateOptions): Promise<void> {
     process.exit(1);
   }
 
+  if (options.prehashAllowed) {
+    const usage = options.usage ?? 'ENCRYPT_DECRYPT';
+    const spec = options.spec ?? 'AES_256';
+    if (usage !== 'SIGN_VERIFY' || (spec !== 'RSA_2048' && spec !== 'RSA_4096')) {
+      output.error('--prehash-allowed requires --usage SIGN_VERIFY and --spec RSA_2048 or RSA_4096');
+      process.exit(1);
+    }
+    if (kmsIsAdminCall(options.tenant)) {
+      // The superadmin create route does not honor prehashAllowed; arming is a
+      // tenant operation. Warn and let the user arm afterward.
+      output.warn(
+        '--prehash-allowed is ignored on the superadmin route; arm the key afterward with `znvault kms prehash enable <keyId>`.'
+      );
+    }
+  }
+
   const spinner = output.spinner('Creating KMS key...').start();
 
   try {
@@ -155,6 +171,7 @@ async function createKey(options: CreateOptions): Promise<void> {
       }
       body.tags = tags;
     }
+    if (options.prehashAllowed) body.prehashAllowed = true;
 
     // Routing: if --tenant is cross-tenant (superadmin), use admin surface;
     // otherwise rely on JWT-derived tenant in /v1/kms/keys (server ignores
@@ -285,6 +302,10 @@ export function registerCrudCommands(parent: Command, asSuperadmin = false): voi
     .option('--usage <usage>', 'Key usage (ENCRYPT_DECRYPT, SIGN_VERIFY)', 'ENCRYPT_DECRYPT')
     .option('--spec <spec>', 'Key spec (AES_256, AES_128, RSA_2048, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ED25519)', 'AES_256')
     .option('--tags <tags>', 'Comma-separated tags (key=value,...)')
+    .option(
+      '--prehash-allowed',
+      'Arm this RSA SIGN_VERIFY key for prehashed (digest) signing (jsign/Authenticode). Requires kms:key:prehash-manage or tenant-admin; applies on the tenant route only.'
+    )
     .option('--json', 'Output as JSON')
     .action((options: CreateOptions) => withKmsContext(asSuperadmin, () => createKey(options)));
 

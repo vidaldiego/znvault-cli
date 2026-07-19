@@ -15,6 +15,7 @@ import { registerCrudCommands } from './crud.js';
 import { registerCryptoCommands } from './crypto.js';
 import { registerLifecycleCommands } from './lifecycle.js';
 import { registerPolicyCommands } from './policy.js';
+import { registerPrehashCommands } from './prehash.js';
 import {
   resolveContext,
   withRegisterContext,
@@ -40,6 +41,9 @@ export function registerKmsCommands(parent: Command, opts?: RegisterOptions): vo
     if (!asSuperadmin) {
       registerCryptoCommands(kms);
       registerPolicyCommands(kms);
+      // Prehash arming is a tenant-only op (server rejects superadmin), like
+      // crypto ops and policies — no /v1/superadmin/* counterpart.
+      registerPrehashCommands(kms);
     }
     registerLifecycleCommands(kms, asSuperadmin);
   });
