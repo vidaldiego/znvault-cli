@@ -283,6 +283,50 @@ describe('kms commands', () => {
     });
   });
 
+  describe('alias key identifiers (must be URL-encoded as one path segment)', () => {
+    // An alias is stored as `alias/<name>`; interpolating it raw produces
+    // /v1/kms/keys/alias/foo/public-key, which does not match the server's
+    // single-segment :keyId route (404). encodeURIComponent fixes it:
+    // /v1/kms/keys/alias%2Ffoo/public-key -> param decodes back to alias/foo.
+    it('public-key encodes an alias keyId', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      // public-key exits the process on its success path; swallow that so the
+      // assertion below is what decides the test.
+      try {
+        await program.parseAsync(['node', 'test', 'kms', 'public-key', 'alias/foo']);
+      } catch {
+        /* process.exit mock throws — irrelevant here */
+      }
+
+      expect(client.get).toHaveBeenCalledWith('/v1/kms/keys/alias%2Ffoo/public-key');
+    });
+
+    it('get encodes an alias keyId', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'get', 'alias/foo']);
+
+      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('alias%2Ffoo'));
+    });
+
+    it('prehash enable encodes an alias keyId', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'prehash', 'enable', 'alias/foo']);
+
+      expect(client.patch).toHaveBeenCalledWith('/v1/kms/keys/alias%2Ffoo/prehash', { enabled: true });
+    });
+
+    it('leaves a plain UUID keyId unchanged', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'kms', 'get', 'key-001']);
+
+      expect(client.get).toHaveBeenCalledWith(expect.stringContaining('/kms/keys/key-001'));
+    });
+  });
+
   describe('kms prehash (arming)', () => {
     it('enable should PATCH the tenant prehash route with enabled:true', async () => {
       const { client } = await import('../../src/lib/client.js');

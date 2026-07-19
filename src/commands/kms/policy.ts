@@ -37,6 +37,7 @@ import Table from 'cli-table3';
 
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
+import { encodeKeyId } from './helpers.js';
 import type {
   CreateGrantResponse,
   GrantCreateOptions,
@@ -53,11 +54,11 @@ import type {
 // of duties: cross-tenant superadmin surface deliberately excludes them — see
 // the comment in src/routes/admin/kms-keys.ts). All requests therefore go to
 // /v1/kms/* and do NOT use the routing.ts superadmin-surface helpers.
-const POLICIES_PATH = (keyId: string): string => `/v1/kms/keys/${keyId}/policies`;
-const POLICY_PATH = (keyId: string): string => `/v1/kms/keys/${keyId}/policy`;
+const POLICIES_PATH = (keyId: string): string => `/v1/kms/keys/${encodeKeyId(keyId)}/policies`;
+const POLICY_PATH = (keyId: string): string => `/v1/kms/keys/${encodeKeyId(keyId)}/policy`;
 const POLICY_SID_PATH = (keyId: string, sid: string): string =>
-  `/v1/kms/keys/${keyId}/policy/${encodeURIComponent(sid)}`;
-const GRANTS_PATH = (keyId: string): string => `/v1/kms/keys/${keyId}/grants`;
+  `/v1/kms/keys/${encodeKeyId(keyId)}/policy/${encodeURIComponent(sid)}`;
+const GRANTS_PATH = (keyId: string): string => `/v1/kms/keys/${encodeKeyId(keyId)}/grants`;
 
 // ============================================================================
 // Policy commands

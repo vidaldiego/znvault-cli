@@ -15,6 +15,7 @@ import type { Command } from 'commander';
 
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
+import { encodeKeyId } from './helpers.js';
 import type { PrehashOptions } from './types.js';
 
 interface PrehashResult {
@@ -30,7 +31,7 @@ async function setPrehash(keyId: string, enabled: boolean, options: PrehashOptio
   try {
     // Tenant-only route — no /v1/superadmin/* variant exists (separation of
     // duties: superadmins cannot arm tenant keys). Hardcode the tenant path.
-    const result = await client.patch<PrehashResult>(`/v1/kms/keys/${keyId}/prehash`, { enabled });
+    const result = await client.patch<PrehashResult>(`/v1/kms/keys/${encodeKeyId(keyId)}/prehash`, { enabled });
     spinner.stop();
 
     if (options.json) {

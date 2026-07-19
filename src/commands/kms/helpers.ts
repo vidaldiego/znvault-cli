@@ -15,6 +15,21 @@ export { formatDate, truncateId, formatPaginationInfo } from '../../lib/format-h
 const log = createDebugLogger('kms-helpers');
 
 /**
+ * URL-encode a key identifier for use as a SINGLE path segment.
+ *
+ * A KMS key may be addressed by UUID or by alias, and aliases are stored with
+ * an `alias/` prefix (see createKey). Interpolating an alias raw yields
+ * `/v1/kms/keys/alias/foo/public-key`, which does not match the server's
+ * single-segment `:keyId` route and 404s. Encoding gives
+ * `/v1/kms/keys/alias%2Ffoo/public-key`, which matches and decodes back to
+ * `alias/foo` server-side (the repo resolves `id = :keyId OR alias = :alias`).
+ * A UUID is unaffected (encodeURIComponent is identity for [A-Za-z0-9-]).
+ */
+export function encodeKeyId(keyId: string): string {
+  return encodeURIComponent(keyId);
+}
+
+/**
  * Format key state for display
  */
 export function formatKeyState(state: string): string {
@@ -61,7 +76,7 @@ export async function resolveAlgorithm(keyId: string, explicit?: string): Promis
 
   let key: PublicKeyResponse;
   try {
-    key = await client.get<PublicKeyResponse>(`/v1/kms/keys/${keyId}/public-key`);
+    key = await client.get<PublicKeyResponse>(`/v1/kms/keys/${encodeKeyId(keyId)}/public-key`);
   } catch (err) {
     output.error(`Could not read key ${keyId} to infer the signing algorithm: ${(err as Error).message}`);
     process.exit(1);

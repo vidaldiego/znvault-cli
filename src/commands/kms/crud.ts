@@ -19,7 +19,7 @@ import type {
   CreateOptions,
   DeleteOptions,
 } from './types.js';
-import { formatDate, formatKeyState, formatPaginationInfo } from './helpers.js';
+import { formatDate, formatKeyState, formatPaginationInfo, encodeKeyId } from './helpers.js';
 
 import { kmsKeysPath, kmsKeysQuery, kmsIsAdminCall, withKmsContext } from './routing.js';
 
@@ -74,7 +74,7 @@ async function getKey(keyId: string, options: GetOptions): Promise<void> {
   try {
     // API returns { keyMetadata: { ... } }
     const response = await client.get<{ keyMetadata: KMSKey }>(
-      kmsKeysPath(options.tenant, `/${keyId}`) + kmsKeysQuery(options.tenant)
+      kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}`) + kmsKeysQuery(options.tenant)
     );
     const key = response.keyMetadata;
     spinner.stop();
@@ -207,7 +207,7 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     const spinner = output.spinner('Fetching key...').start();
     try {
       const key = await client.get<KMSKey>(
-        kmsKeysPath(options.tenant, `/${keyId}`) + kmsKeysQuery(options.tenant)
+        kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}`) + kmsKeysQuery(options.tenant)
       );
       spinner.stop();
 
@@ -242,12 +242,12 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     let result: { keyId: string; deletionDate: string; message?: string };
     if (kmsIsAdminCall(options.tenant)) {
       result = await client.post<{ keyId: string; deletionDate: string; message?: string }>(
-        `/v1/superadmin/kms/keys/${keyId}/schedule-deletion?tenantId=${encodeURIComponent(options.tenant!)}`,
+        `/v1/superadmin/kms/keys/${encodeKeyId(keyId)}/schedule-deletion?tenantId=${encodeURIComponent(options.tenant!)}`,
         { pendingWindowInDays: days }
       );
     } else {
       result = await client.delete<{ keyId: string; deletionDate: string; message: string }>(
-        `/v1/kms/keys/${keyId}?pendingWindowInDays=${days}`
+        `/v1/kms/keys/${encodeKeyId(keyId)}?pendingWindowInDays=${days}`
       );
     }
     deleteSpinner.stop();
