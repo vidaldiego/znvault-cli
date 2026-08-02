@@ -163,6 +163,8 @@ export function getLocalConfig(): LocalConfig | null {
   if (serviceEnv.REDIS_URL) process.env.REDIS_URL = serviceEnv.REDIS_URL;
   if (serviceEnv.REDIS_SENTINEL_NODES) process.env.REDIS_SENTINEL_NODES = serviceEnv.REDIS_SENTINEL_NODES;
   if (serviceEnv.REDIS_SENTINEL_MASTER) process.env.REDIS_SENTINEL_MASTER = serviceEnv.REDIS_SENTINEL_MASTER;
+  if (serviceEnv.DATA_DIR) process.env.DATA_DIR = serviceEnv.DATA_DIR;
+  if (serviceEnv.LMK_PATH) process.env.LMK_PATH = serviceEnv.LMK_PATH;
 
   // Check for DATABASE_URL
   const databaseUrl = serviceEnv.DATABASE_URL;

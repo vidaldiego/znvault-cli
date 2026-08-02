@@ -231,6 +231,28 @@ znvault superadmin backup storage show
 znvault superadmin backup storage set-s3 --bucket my-bucket --region us-east-1
 ```
 
+### BSK/LMK Offline Escrow (local Vault node only)
+
+Create a cumulative custody bundle directly on a dedicated mounted device.
+The command reads the local BSK plus the PostgreSQL-wrapped LMK generations,
+writes no temporary file, and performs a read-back verification before it
+returns. Production snapshots require an encrypted backup record whose status
+is `VERIFIED`.
+
+```bash
+sudo znvault superadmin lmk escrow snapshot \
+  --mount /media/sysadmin/ZNVAULT-ESCROW-A \
+  --copy-label A \
+  --backup-id backup_...
+
+znvault superadmin lmk escrow verify \
+  /media/sysadmin/ZNVAULT-ESCROW-A/znvault-lmk-escrow-*.znlmk
+```
+
+The snapshot command does not export the BSK through the ZnVault API or print
+key material. Use the explicit `--allow-unbound-lab-snapshot` bypass only in an
+isolated lab.
+
 ### Schema Migrations
 
 Run schema migrations against a database through a short-lived dynamic-secrets lease.

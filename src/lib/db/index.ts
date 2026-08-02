@@ -12,9 +12,18 @@ import { UserOperations } from './users.js';
 import { LockdownOperations } from './lockdown.js';
 import { AuditOperations } from './audit.js';
 import { EmergencyOperations } from './emergency.js';
+import { LmkEscrowOperations } from './lmk-escrow.js';
+import type { LmkEscrowDatabaseSnapshot } from './lmk-escrow.js';
 
 // Re-export types
 export * from './types.js';
+export type {
+  LmkEscrowActiveRotation,
+  LmkEscrowAuditHead,
+  LmkEscrowBackupBinding,
+  LmkEscrowDatabaseSnapshot,
+  LmkEscrowVersionRow,
+} from './lmk-escrow.js';
 
 /**
  * Composite database client that combines all operation modules.
@@ -27,6 +36,7 @@ export class LocalDBClient {
   private lockdownOps: LockdownOperations;
   private auditOps: AuditOperations;
   private emergencyOps: EmergencyOperations;
+  private lmkEscrowOps: LmkEscrowOperations;
 
   constructor() {
     // All operations share the same connection strategy via BaseDBClient
@@ -36,6 +46,7 @@ export class LocalDBClient {
     this.lockdownOps = new LockdownOperations();
     this.auditOps = new AuditOperations();
     this.emergencyOps = new EmergencyOperations();
+    this.lmkEscrowOps = new LmkEscrowOperations();
   }
 
   // Connection management - delegate to health ops (or any op, they all have the same base)
@@ -52,6 +63,7 @@ export class LocalDBClient {
       this.lockdownOps.close(),
       this.auditOps.close(),
       this.emergencyOps.close(),
+      this.lmkEscrowOps.close(),
     ]);
   }
 
@@ -106,6 +118,10 @@ export class LocalDBClient {
     this.emergencyOps.unlockUser(username);
   disableTotp = (username: string) =>
     this.emergencyOps.disableTotp(username);
+
+  // ============ Local LMK Escrow (read-only DB capture) ============
+  captureLmkEscrow = (backupId?: string): Promise<LmkEscrowDatabaseSnapshot> =>
+    this.lmkEscrowOps.capture(backupId);
 }
 
 // ============ Legacy exports for backward compatibility ============

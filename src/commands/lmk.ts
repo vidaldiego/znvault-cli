@@ -16,6 +16,7 @@ import { type Command } from 'commander';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
 import { promptConfirm } from '../lib/prompts.js';
+import { registerLmkEscrowCommands } from './lmk-escrow.js';
 
 interface JsonOption {
   json?: boolean;
@@ -135,6 +136,8 @@ export function registerLmkCommands(program: Command): void {
   const lmk = program
     .command('lmk')
     .description('Local Master Key (LMK) management commands');
+
+  registerLmkEscrowCommands(lmk);
 
   const rotation = lmk
     .command('rotation')
@@ -483,9 +486,10 @@ async function runStart(options: RotateOptions): Promise<void> {
   if (options.force !== true) {
     output.warn(
       'LMK rotation is a cluster-wide cryptographic operation. The readiness ' +
-      'gate will refuse traffic with a 503 while DEK re-wrap runs. Existing ' +
-      'lmk.bin will be rotated to a new file (lmk.bin.v<N+1>) — back it up ' +
-      'before proceeding.'
+      'gate will refuse traffic with a 503 while DEK re-wrap runs. Since v1.40, ' +
+      'data/lmk.bin is the stable BSK and versioned LMKs live wrapped in ' +
+      'PostgreSQL; no lmk.bin.v<N> file is created. The current rotation API is ' +
+      'not yet automatically commit-gated on offline escrow.'
     );
     if (!automatic) {
       output.info(
@@ -544,8 +548,9 @@ async function runStart(options: RotateOptions): Promise<void> {
         );
       } else {
         output.success(
-          `LMK now at version ${String(result.newLmkVersion)}. Back up the new ` +
-          `lmk.bin file (data/lmk.bin.v${String(result.newLmkVersion)}) on all nodes.`
+          `LMK now at version ${String(result.newLmkVersion)}. Create and verify ` +
+          `a cumulative BSK + wrapped-LMK escrow snapshot; there is no versioned ` +
+          `lmk.bin file to copy.`
         );
       }
     } else {
