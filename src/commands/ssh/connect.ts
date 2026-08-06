@@ -32,6 +32,21 @@ export interface SignedSshBase {
 }
 
 /**
+ * Translate child-process close state into the CLI exit status.
+ *
+ * Node reports a null exit code when the child was terminated by a signal.
+ * Treat both that state and any explicit signal as failure: an interrupted SSH
+ * session must never be accepted as a successful remote operation.
+ */
+export function resolveSshExitCode(
+  code: number | null,
+  signal: NodeJS.Signals | null
+): number {
+  if (code === null || signal !== null) return 1;
+  return code;
+}
+
+/**
  * Resolve the SSH key, ensure a valid vault-CA certificate (auto-signing if
  * needed), and return the destination parts + base ssh args. No spawning,
  * no process.exit, no stdio side effects — safe to call from any command.
@@ -53,22 +68,27 @@ export async function ensureSignedSshBase(
   let identityOverride: string | undefined = options.identity;
   let principalsOverride: string | undefined = options.principals;
 
-  const bookmark = resolveBookmark(destination);
-  if (bookmark) {
-    host = bookmark.host;
-    user = bookmark.user;
-    if (bookmark.port) port = bookmark.port.toString();
-    if (bookmark.identity) identityOverride = bookmark.identity;
-    if (bookmark.principals && !options.principals) {
-      principalsOverride = bookmark.principals.join(',');
-    }
-  } else if (destination.includes('@')) {
+  // An explicit user@host destination is authoritative. In particular, do not
+  // let a same-named, mutable bookmark replace its host, user, or explicit -i
+  // identity before the vault signs the public key.
+  if (destination.includes('@')) {
     const parts = destination.split('@');
     user = parts[0];
     host = parts.slice(1).join('@');
   } else {
-    host = destination;
-    if (profile.sshUser) user = profile.sshUser;
+    const bookmark = resolveBookmark(destination);
+    if (bookmark) {
+      host = bookmark.host;
+      user = bookmark.user;
+      if (bookmark.port) port = bookmark.port.toString();
+      if (bookmark.identity) identityOverride = bookmark.identity;
+      if (bookmark.principals && !options.principals) {
+        principalsOverride = bookmark.principals.join(',');
+      }
+    } else {
+      host = destination;
+      if (profile.sshUser) user = profile.sshUser;
+    }
   }
 
   if (options.port && options.port !== '22') port = options.port;
@@ -155,7 +175,7 @@ export async function executeConnect(
   if (remoteCommand.length === 0) console.log();
 
   const sshProcess = spawn('ssh', sshArgs, { stdio: 'inherit', env: process.env });
-  sshProcess.on('close', (code) => process.exit(code ?? 0));
+  sshProcess.on('close', (code, signal) => process.exit(resolveSshExitCode(code, signal)));
   sshProcess.on('error', (err) => {
     output.error(`Failed to start SSH: ${err.message}`);
     process.exit(1);

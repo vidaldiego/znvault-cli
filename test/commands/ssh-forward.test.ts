@@ -7,6 +7,7 @@ const mockGetDefaultKeyPath = vi.fn();
 const mockGetCertificatePath = vi.fn();
 const mockIsCertificateValid = vi.fn();
 const mockSignCertificate = vi.fn();
+const mockResolveBookmark = vi.fn<(name: string) => unknown>();
 vi.mock('../../src/commands/ssh/helpers.js', () => ({
   getDefaultKeyPath: (...a: unknown[]) => mockGetDefaultKeyPath(...a),
   getCertificatePath: (...a: unknown[]) => mockGetCertificatePath(...a),
@@ -17,7 +18,7 @@ vi.mock('../../src/lib/config.js', () => ({
   getCurrentProfile: () => ({}),
 }));
 vi.mock('../../src/commands/ssh/bookmark.js', () => ({
-  resolveBookmark: () => undefined,
+  resolveBookmark: (name: string): unknown => mockResolveBookmark(name),
 }));
 // fs: pretend key + pubkey exist
 vi.mock('fs', () => ({
@@ -63,12 +64,13 @@ function makeFakeChild(pid: number): FakeChild {
   return child;
 }
 
-const { ensureSignedSshBase } = await import('../../src/commands/ssh/connect.js');
+const { ensureSignedSshBase, resolveSshExitCode } = await import('../../src/commands/ssh/connect.js');
 
 describe('ensureSignedSshBase', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetCertificatePath.mockResolvedValue('/home/u/.ssh/id_ed25519-cert.pub');
+    mockResolveBookmark.mockReturnValue(undefined);
   });
 
   it('reuses a valid cert without signing and returns base ssh args', async () => {
@@ -106,10 +108,55 @@ describe('ensureSignedSshBase', () => {
     expect(mockSignCertificate).toHaveBeenCalledOnce();
   });
 
+  it('treats an explicit user@host as authoritative over a same-named bookmark', async () => {
+    mockIsCertificateValid.mockResolvedValue({ valid: true });
+    mockResolveBookmark.mockReturnValue({
+      host: 'attacker.example',
+      user: 'root',
+      port: 2222,
+      identity: '/attacker/id_ed25519',
+      principals: ['attacker'],
+      createdAt: '2026-08-06T00:00:00.000Z',
+    });
+
+    const base = await ensureSignedSshBase('sysadmin@10.231.221.15', {
+      identity: '/home/u/.ssh/id_ed25519',
+      principals: 'admin',
+    });
+
+    expect(mockResolveBookmark).not.toHaveBeenCalled();
+    expect(base).toMatchObject({
+      keyPath: '/home/u/.ssh/id_ed25519',
+      user: 'sysadmin',
+      host: '10.231.221.15',
+      port: '22',
+    });
+    expect(base.baseSshArgs).toEqual([
+      '-i', '/home/u/.ssh/id_ed25519',
+      '-o', 'CertificateFile=/home/u/.ssh/id_ed25519-cert.pub',
+    ]);
+  });
+
   it('throws when no SSH key can be resolved', async () => {
     mockIsCertificateValid.mockResolvedValue({ valid: true });
     mockGetDefaultKeyPath.mockResolvedValue(null);
     await expect(ensureSignedSshBase('sysadmin@1.2.3.4', {})).rejects.toThrow(/No SSH key/i);
+  });
+});
+
+describe('resolveSshExitCode', () => {
+  it('preserves normal child exit codes', () => {
+    expect(resolveSshExitCode(0, null)).toBe(0);
+    expect(resolveSshExitCode(255, null)).toBe(255);
+  });
+
+  it('fails closed when SSH is terminated by a signal', () => {
+    expect(resolveSshExitCode(null, 'SIGTERM')).toBe(1);
+    expect(resolveSshExitCode(0, 'SIGKILL')).toBe(1);
+  });
+
+  it('fails closed for an ambiguous null code without a signal', () => {
+    expect(resolveSshExitCode(null, null)).toBe(1);
   });
 });
 

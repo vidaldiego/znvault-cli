@@ -56,7 +56,7 @@ import { setOutputMode, setQuietMode } from './lib/output-mode.js';
 import { profileIndicator } from './lib/output.js';
 import { configureContextHelp } from './lib/context-help.js';
 import { getVersion } from './lib/version.js';
-import { createCLIPluginLoader } from './plugins/loader.js';
+import { areCLIPluginsDisabled } from './plugins/policy.js';
 
 interface GlobalOptions {
   url?: string;
@@ -83,6 +83,7 @@ program
   .option('--profile <name>', 'Use a specific configuration profile')
   .option('--plain', 'Use plain text output (no colors or TUI)')
   .option('-q, --quiet', 'Suppress non-essential output (spinners, info messages, banners)')
+  .option('--no-plugins', 'Do not discover, import, or register configured CLI plugins')
   .hook('preAction', (thisCommand, actionCommand) => {
     // Apply global options
     const opts = thisCommand.opts<GlobalOptions>();
@@ -243,24 +244,29 @@ async function main(): Promise<void> {
     setQuietMode(true);
   }
 
-  // Load CLI plugins
-  const pluginConfigs = getPlugins();
-  if (pluginConfigs.length > 0) {
-    try {
-      const pluginLoader = await createCLIPluginLoader(
-        pluginConfigs,
-        client,
-        getConfig,
-        getActiveProfileName
-      );
-      pluginLoader.registerCommands(program);
-    } catch {
-      // Plugin loading errors are non-fatal - warnings already printed
+  // This raw-argv policy check must happen before getPlugins(): configured
+  // plugin modules execute during import and are outside the built-in CLI TCB.
+  if (!areCLIPluginsDisabled(process.argv.slice(2))) {
+    const pluginConfigs = getPlugins();
+    if (pluginConfigs.length > 0) {
+      try {
+        const { createCLIPluginLoader } = await import('./plugins/loader.js');
+        const pluginLoader = await createCLIPluginLoader(
+          pluginConfigs,
+          client,
+          getConfig,
+          getActiveProfileName
+        );
+        pluginLoader.registerCommands(program);
+      } catch {
+        // Plugin loading errors are non-fatal - warnings already printed
+      }
     }
   }
 
-  // Parse and execute
-  program.parse();
+  // Await asynchronous command actions so a rejected signing/transport path is
+  // observed by the top-level failure boundary rather than escaping it.
+  await program.parseAsync();
 }
 
 // Run main
