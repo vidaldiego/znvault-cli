@@ -206,20 +206,49 @@ export function registerCertCommands(program: Command): void {
         });
         spinner.stop();
 
-        const certData = Buffer.from(result.certificateData, 'base64').toString('utf-8');
+        // The server sends the certificate base64-encoded. Keep it as a Buffer: the previous
+        // `.toString('utf-8')` here silently destroyed every byte above 0x7F, replacing it with
+        // U+FFFD, so a downloaded P12 or DER came back corrupt AND inflated (a 4181-byte FNMT P12
+        // arrived as 7369 bytes of mojibake). PEM survived only because it is pure ASCII, which is
+        // why nobody noticed. Never stringify this before writing it.
+        const certBytes = Buffer.from(result.certificateData, 'base64');
+        const isText = result.certificateType === 'PEM';
 
         if (options.output) {
           const fs = await import('node:fs');
-          fs.writeFileSync(options.output, certData);
+          // Writing the Buffer is correct for all three types — for PEM it is byte-identical to
+          // writing the string.
+          fs.writeFileSync(options.output, certBytes);
           if (options.json) {
-            output.json({ success: true, file: options.output, id });
+            output.json({ success: true, file: options.output, id, bytes: certBytes.length });
           } else {
-            console.log(`Certificate written to ${options.output}`);
+            console.log(`Certificate written to ${options.output} (${certBytes.length} bytes)`);
           }
         } else if (options.json) {
-          output.json({ id, certificateData: certData });
+          // JSON cannot carry raw binary. PEM keeps its historical text form so existing consumers
+          // are unaffected; P12/DER are emitted base64, and `encoding` says which you got rather
+          // than leaving the caller to guess.
+          output.json(
+            isText
+              ? { id, certificateType: result.certificateType, encoding: 'utf-8', certificateData: certBytes.toString('utf-8') }
+              : { id, certificateType: result.certificateType, encoding: 'base64', certificateData: result.certificateData },
+          );
+        } else if (isText) {
+          console.log(certBytes.toString('utf-8'));
         } else {
-          console.log(certData);
+          // Binary never goes to stdout, piped or not.
+          //
+          // Not merely because dumping a P12 into a terminal is useless: this CLI unconditionally
+          // prints its `[znvault vX] [profile: ...]` banner to stdout, so `znvault cert decrypt ID
+          // > cert.p12` yields the banner followed by the certificate — measured at 4251 bytes for
+          // a 4181-byte P12. That is a silently corrupt file, which is the exact failure mode this
+          // whole fix exists to remove. `--output` writes the bytes and nothing else.
+          spinner.fail('Refusing to write binary to stdout');
+          output.error(
+            `Certificate ${id} is ${result.certificateType} (binary) and stdout carries this CLI's ` +
+              'banner, which would corrupt it. Use --output <file>, or --json for base64.',
+          );
+          process.exit(1);
         }
       } catch (err) {
         spinner.fail('Failed to decrypt certificate');
