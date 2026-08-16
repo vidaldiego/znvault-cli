@@ -78,6 +78,7 @@ export interface CreateOptions {
   password?: string;
   text?: string;
   data?: string;
+  dataStdin?: boolean;
   file?: string;
   enableReferences?: boolean;
   link?: string;

@@ -3,6 +3,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
 
+const { mockReadStdinUtf8 } = vi.hoisted(() => ({
+  mockReadStdinUtf8: vi.fn(),
+}));
+
+vi.mock('../../src/lib/stdin.js', () => ({
+  readStdinUtf8: mockReadStdinUtf8,
+}));
+
 // Mock dependencies
 vi.mock('inquirer', () => ({
   default: {
@@ -445,6 +453,56 @@ describe('secret commands', () => {
   });
 
   describe('secret create', () => {
+    it('reads JSON from stdin without placing the value in argv', async () => {
+      mockReadStdinUtf8.mockResolvedValueOnce(
+        '{"accessKey":"LAB_ACCESS","secretKey":"LAB_SECRET"}\n',
+      );
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'create', 'dr/lab/c2-writer', '--data-stdin',
+      ]);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        alias: 'dr/lab/c2-writer',
+        data: { accessKey: 'LAB_ACCESS', secretKey: 'LAB_SECRET' },
+      }));
+    });
+
+    it('rejects invalid JSON received through --data-stdin', async () => {
+      mockReadStdinUtf8.mockResolvedValueOnce('not-json');
+      const { client } = await import('../../src/lib/client.js');
+
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'dr/lab/c2-writer', '--data-stdin',
+      ])).rejects.toThrow(/exit:1/);
+
+      expect(client.post).not.toHaveBeenCalledWith('/v1/secrets', expect.anything());
+    });
+
+    it('rejects a non-object JSON value received through --data-stdin', async () => {
+      mockReadStdinUtf8.mockResolvedValueOnce('["not","an","object"]');
+      const { client } = await import('../../src/lib/client.js');
+
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'dr/lab/c2-writer', '--data-stdin',
+      ])).rejects.toThrow(/exit:1/);
+
+      expect(client.post).not.toHaveBeenCalledWith('/v1/secrets', expect.anything());
+    });
+
+    it('rejects --data-stdin combined with another data source', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'create', 'dr/lab/c2-writer',
+        '--data-stdin', '--data', '{}',
+      ])).rejects.toThrow(/exit:1/);
+
+      expect(mockReadStdinUtf8).not.toHaveBeenCalled();
+      expect(client.post).not.toHaveBeenCalledWith('/v1/secrets', expect.anything());
+    });
+
     it('builds a link secret from --link', async () => {
       const { client } = await import('../../src/lib/client.js');
       await program.parseAsync([

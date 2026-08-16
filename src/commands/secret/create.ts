@@ -10,6 +10,7 @@ import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { getAuthContext } from '../../lib/auth-context.js';
+import { readStdinUtf8 } from '../../lib/stdin.js';
 import type { CreateOptions, SecretMetadata, SuggestResult } from './types.js';
 import { formatBytes } from './helpers.js';
 import { analyzeFileForSuggestion, formatPemType, type FileAnalysisInfo } from './pem-analysis.js';
@@ -35,6 +36,7 @@ export function registerCreateCommand(secretCmd: Command): void {
     .option('--password <password>', 'Password for credential type (non-interactive)')
     .option('--text <text>', 'Text content (non-interactive)')
     .option('--data <json>', 'JSON data (non-interactive)')
+    .option('--data-stdin', 'Read JSON data from stdin (keeps secret values out of argv and files)')
     .option('--enable-references', 'Opt this secret in to ${ref:...} reference resolution')
     .option('--link <alias>', 'Create a link secret pointing at another secret (sets sub-type link)')
     .option('--link-field <path>', 'Narrow a --link to a single field (dot-path, e.g. password or db.host)')
@@ -52,14 +54,31 @@ Examples:
       let actualSubType = options.subType;
       let actualTags = options.tags;
 
+      if (options.dataStdin === true && (
+        options.data !== undefined
+        || options.text !== undefined
+        || options.username !== undefined
+        || options.password !== undefined
+        || options.file !== undefined
+      )) {
+        output.error(
+          '--data-stdin cannot be combined with --data/--text/--username/--password/--file.',
+        );
+        process.exit(1);
+      }
+
       // --- Link-secret construction and conflict gating (Secret References) ---
       let linkData: Record<string, unknown> | undefined;
       if (options.link !== undefined) {
-        const dataBearing = options.data || options.text || options.username
-          || options.password || options.file;
+        const dataBearing = options.data !== undefined
+          || options.text !== undefined
+          || options.username !== undefined
+          || options.password !== undefined
+          || options.file !== undefined
+          || options.dataStdin === true;
         if (dataBearing) {
           output.error(
-            '--link cannot be combined with --data/--text/--username/--password/--file '
+            '--link cannot be combined with --data/--data-stdin/--text/--username/--password/--file '
             + "(a link's value is its pointer).",
           );
           process.exit(1);
@@ -257,7 +276,12 @@ Examples:
       // Check for non-interactive data options first. A --link owns the value
       // (its pointer), so it bypasses both interactive and other non-interactive
       // data collection.
-      const hasNonInteractiveData = options.username || options.password || options.text || options.data || options.file;
+      const hasNonInteractiveData = options.username !== undefined
+        || options.password !== undefined
+        || options.text !== undefined
+        || options.data !== undefined
+        || options.file !== undefined
+        || options.dataStdin === true;
 
       if (linkData) {
         data = linkData;
@@ -271,6 +295,30 @@ Examples:
           };
         } else if (options.text) {
           data = { text: options.text };
+        } else if (options.dataStdin === true) {
+          let stdinData: string;
+          try {
+            stdinData = await readStdinUtf8();
+          } catch (error) {
+            output.error(`Failed to read --data-stdin: ${(error as Error).message}`);
+            process.exit(1);
+          }
+
+          if (stdinData.trim().length === 0) {
+            output.error('--data-stdin received empty input');
+            process.exit(1);
+          }
+
+          try {
+            const parsed: unknown = JSON.parse(stdinData);
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+              throw new Error('secret data must be a JSON object');
+            }
+            data = parsed as Record<string, unknown>;
+          } catch {
+            output.error('Invalid JSON received by --data-stdin');
+            process.exit(1);
+          }
         } else if (options.data) {
           try {
             data = JSON.parse(options.data);

@@ -157,6 +157,15 @@ Key ESLint rules:
 | `ZNVAULT_PLAIN_OUTPUT` | Force plain text output |
 | `ZNVAULT_INSECURE` | Skip TLS verification |
 | `ZNVAULT_NO_UPDATE_CHECK` | Disable auto-update checks |
+| `ZNVAULT_NO_PLUGINS` | Set to `1`/`true` to skip configured plugin discovery and import |
+
+For a constrained automation path, pass the global `--no-plugins` option
+before the command name as well as setting `ZNVAULT_NO_PLUGINS=1`. The
+raw-argument gate runs before configured plugin discovery or import. The main
+profile/config store is still read by built-in CLI initialization. An
+occurrence after the first `--` belongs to the child command and does not
+disable CLI plugins. This closes configured-plugin code loading only; use `CI=1` and
+`ZNVAULT_NO_UPDATE_CHECK=1` separately to suppress the background update path.
 
 ## Key Dependencies
 

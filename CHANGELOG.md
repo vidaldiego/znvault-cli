@@ -5,6 +5,15 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `secret create --data-stdin` accepts a bounded JSON object from piped stdin,
+  keeping credential values out of argv and regular staging files. It rejects
+  terminal input, payloads above 1 MiB, non-object JSON and combinations with
+  any other data-bearing create option.
+
 ## [4.16.0] - 2026-07-10
 
 ### Changed — ZincApp identity banner

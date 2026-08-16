@@ -28,6 +28,9 @@ function getStoreInstance(): Conf<ConfigStore> {
 
     _store = new Conf<ConfigStore>({
       projectName: 'znvault',
+      // Profiles contain rotating access/refresh tokens. Preserve 0600 on
+      // every atomic rewrite instead of inheriting a permissive process umask.
+      configFileMode: 0o600,
       // Use custom config directory if specified (for test isolation)
       ...(configDir ? { cwd: configDir } : {}),
       defaults: {

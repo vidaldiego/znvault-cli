@@ -120,12 +120,14 @@ znvault superadmin cluster takeover --yes   # Force leadership (HA, superadmin)
 ### Secret Management
 
 ```bash
-znvault secret list                              # List all secrets (your tenant)
-znvault secret get <alias>                       # Get secret value
-znvault secret create <alias> --value "secret"   # Create secret
-znvault secret create <alias> --json '{"k":"v"}' # Create JSON secret
-znvault secret update <alias> --value "new"      # Update secret
-znvault secret delete <alias>                    # Delete secret
+znvault secret list                                  # List metadata (your tenant)
+znvault secret get <alias>                           # Get metadata only
+znvault secret decrypt <alias>                       # Decrypt after unseal
+znvault secret create <alias> --text "secret"        # Create plain text
+printf '%s\n' '{"k":"v"}' | \
+  znvault secret create <alias> --data-stdin         # JSON without argv/files
+znvault secret update <alias> --data '{"k":"new"}' # Replace JSON data
+znvault secret delete <alias>                        # Delete secret
 ```
 
 ### KMS (Key Management Service)
