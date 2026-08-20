@@ -22,7 +22,7 @@ export function registerDecryptCommand(secretCmd: Command): void {
     .addHelpText('after', `
 Examples:
   znvault secret decrypt zn-admin/config             # by alias path
-  znvault secret decrypt alias:web/api-key           # with alias: prefix
+  znvault secret decrypt alias:web/api-key           # with alias: prefix  // gitleaks:allow reason=generic help-text example, not a real vault path
   znvault secret decrypt abc12345-...                # by UUID
   znvault secret decrypt certs/server-key -o key.pem # save to file
   znvault secret decrypt app/db-url --no-resolve     # raw template, tokens unexpanded

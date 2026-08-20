@@ -42,7 +42,7 @@ Examples:
     .option('--output-dir <dir>', 'Directory to write client.key/client.crt/ca.crt (default: kmip-<name>)')
     .option(
       '--allowed-cidrs <cidrs>',
-      'Comma-separated source-IP allowlist (e.g. "192.168.50.4/32"). Defense-in-depth on top of mTLS; empty = no restriction'
+      'Comma-separated source-IP allowlist (e.g. "192.0.2.4/32"). Defense-in-depth on top of mTLS; empty = no restriction'
     )
     .option('--json', 'Output as JSON (includes the private key)')
     .action(createClient);

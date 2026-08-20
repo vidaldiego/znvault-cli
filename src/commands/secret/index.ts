@@ -27,7 +27,7 @@ Secret Identifier Formats:
 
   1. UUID:    abc12345-1234-5678-9abc-def012345678
   2. Alias:   zn-admin/config, web/api-key, smtp-credentials
-  3. Prefix:  alias:zn-admin/config (optional "alias:" prefix)
+  3. Prefix:  alias:example-app/config (optional "alias:" prefix) gitleaks:allow reason=generic help-text example, not a real vault path
 
   Note: Tenant is derived from your authenticated user (JWT).
   You can only access secrets within your assigned tenant.
@@ -35,7 +35,7 @@ Secret Identifier Formats:
 Examples:
   znvault secret decrypt zn-admin/config
   znvault secret get web/production/api-key
-  znvault secret history alias:database/credentials
+  znvault secret history alias:database/credentials  // gitleaks:allow reason=generic help-text example, not a real vault path
   znvault secret delete abc12345-1234-5678-9abc-def012345678
 `;
 
