@@ -233,7 +233,7 @@ export async function selectAgentInteractively(): Promise<{ host: string; port: 
   if (!process.stdin.isTTY) {
     output.error('Interactive selection requires a TTY. Specify host:port directly.');
     console.log('Usage: znvault agent ping <host:port>');
-    console.log('Example: znvault agent ping 172.16.220.55:9100');
+    console.log('Example: znvault agent ping 192.0.2.55:9100');
     return null;
   }
 
@@ -311,7 +311,7 @@ export async function selectAgentInteractively(): Promise<{ host: string; port: 
         {
           type: 'input',
           name: 'manualHost',
-          message: 'Enter host:port (e.g., 192.168.1.100:9100):',
+          message: 'Enter host:port (e.g., 192.0.2.100:9100):',
           validate: (input: string) => {
             if (!input.trim()) return 'Host is required';
             return true;

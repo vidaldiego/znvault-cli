@@ -14,6 +14,7 @@ import {
   type LmkEscrowVerificationReport,
   type LmkEscrowWriteReceipt,
 } from '../lib/lmk-escrow.js';
+import { restoreBootstrapKeyFromBundle } from '../lib/lmk-escrow-restore.js';
 import { getLocalVaultVersion } from '../lib/local.js';
 import { getVersion } from '../lib/version.js';
 import * as output from '../lib/output.js';
@@ -24,6 +25,11 @@ interface SnapshotOptions {
   bskPath?: string;
   backupId?: string;
   allowUnboundLabSnapshot?: boolean;
+  json?: boolean;
+}
+
+interface RestoreOptions {
+  target: string;
   json?: boolean;
 }
 
@@ -175,5 +181,49 @@ export function registerLmkEscrowCommands(lmk: Command): void {
       output.section('LMK Escrow Verification Passed');
       printReport(report);
       output.success(`Verified directly from ${dirname(resolve(bundlePath))}`);
+    });
+
+  escrow
+    .command('restore <bundle>')
+    .description('Restore the bootstrap key from a verified escrow bundle to --target')
+    .requiredOption(
+      '--target <path>',
+      'Destination bootstrap key file, e.g. /var/lib/zn-vault/data/lmk.bin',
+    )
+    .option('--json', 'Output the redacted restore receipt as JSON')
+    .action((bundlePath: string, options: RestoreOptions) => {
+      const bundle = readFileSync(resolve(bundlePath));
+      let receipt;
+      try {
+        receipt = restoreBootstrapKeyFromBundle({
+          bundle,
+          targetPath: resolve(options.target),
+        });
+      } finally {
+        bundle.fill(0);
+      }
+
+      if (options.json === true) {
+        output.json(receipt);
+        return;
+      }
+
+      output.section(
+        receipt.outcome === 'RESTORED'
+          ? 'Bootstrap Key Restored'
+          : 'Bootstrap Key Already Present',
+      );
+      output.keyValue({
+        Target: receipt.targetPath,
+        Copy: receipt.copyLabel,
+        Bundle: receipt.bundleId,
+        'Active LMK version': receipt.activeLmkVersion,
+        'BSK fingerprint': receipt.bskSha256,
+      });
+      output.success(
+        receipt.outcome === 'RESTORED'
+          ? 'Written owner-only and read back. Record this receipt in the drill log.'
+          : 'The target already held this exact key. Nothing was changed.',
+      );
     });
 }

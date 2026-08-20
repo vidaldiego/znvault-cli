@@ -19,7 +19,7 @@ import * as output from '../lib/output.js';
  * This is the fallback key used when the remote key cannot be fetched.
  * It should be updated when the signing key is rotated.
  *
- * Key ID: 8E703B1277C29EEFADA1C7AF843C39536B732281
+ * Key ID: 8E703B1277C29EEFADA1C7AF843C39536B732281 gitleaks:allow reason=PGP public key fingerprint, published by design for release verification
  * Email: agent-releases@zincapp.com
  */
 const EMBEDDED_PUBLIC_KEY = `-----BEGIN PGP PUBLIC KEY BLOCK-----

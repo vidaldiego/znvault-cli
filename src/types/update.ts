@@ -150,7 +150,7 @@ export const DEFAULT_UPDATE_CONFIG: UpdateConfig = {
 /**
  * S3 base URL for manifests and artifacts
  */
-export const S3_BASE_URL = 'https://s3.zincapp.com/zn-releases-prod/vault-agent';
+export const S3_BASE_URL = 'https://s3.zincapp.com/zn-releases-prod/vault-agent'; // gitleaks:allow reason=public release endpoint fetched by field agents, not internal topology
 
 /**
  * Manifest URL for a specific channel

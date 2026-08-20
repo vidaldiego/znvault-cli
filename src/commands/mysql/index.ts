@@ -82,7 +82,7 @@ Examples:
   znvault mysql connect staging-rw
 
   # Save an alias for quick access
-  znvault mysql alias add staging-rw --connection staging-mysql --role app-rw
+  znvault mysql alias add staging-rw --connection staging-mysql --role app-rw  // gitleaks:allow reason=generic help-text example, not a real role id
 
   # Pass extra mysql flags after --
   znvault mysql connect my-connection -- --table
@@ -95,7 +95,7 @@ Examples:
   // <target> argument without being misread as excess positional args.
   //
   // With passThroughOptions(), Commander stops option-parsing at the first
-  // non-option token (the target), so `exec staging-mysql --role app-rw` was
+  // non-option token (the target), so `exec staging-mysql --role app-rw` was  gitleaks:allow reason=generic example in a code comment
   // rejected as "too many arguments" — the target consumed the stop-point and
   // --role/--sql were treated as excess positional args.
   //
