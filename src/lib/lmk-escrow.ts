@@ -536,9 +536,13 @@ function parseBundle(bundle: Buffer): ParsedBundle {
   }
 }
 
-export function verifyLmkEscrowBundleBuffer(bundle: Buffer): LmkEscrowVerificationReport {
-  const parsed = parseBundle(bundle);
-  try {
+function zeroiseParsedBundle(parsed: ParsedBundle): void {
+  parsed.bsk.fill(0);
+  parsed.bundleDigest.fill(0);
+  for (const row of parsed.wrappedLmks) row.wrapped?.fill(0);
+}
+
+function validateParsedBundle(parsed: ParsedBundle): LmkEscrowVerificationReport {
     if (parsed.metadata.bskSha256 !== sha256Hex(parsed.bsk)) {
       throw new Error('BSK fingerprint does not match the escrow metadata');
     }
@@ -604,10 +608,38 @@ export function verifyLmkEscrowBundleBuffer(bundle: Buffer): LmkEscrowVerificati
       backupId: parsed.metadata.backup.state === 'VERIFIED' ? parsed.metadata.backup.id : null,
       activeRotationId: parsed.metadata.activeRotation?.rotationId ?? null,
     };
+}
+
+export function verifyLmkEscrowBundleBuffer(bundle: Buffer): LmkEscrowVerificationReport {
+  const parsed = parseBundle(bundle);
+  try {
+    return validateParsedBundle(parsed);
   } finally {
-    parsed.bsk.fill(0);
-    parsed.bundleDigest.fill(0);
-    for (const row of parsed.wrappedLmks) row.wrapped?.fill(0);
+    zeroiseParsedBundle(parsed);
+  }
+}
+
+/**
+ * Run the full bundle verification and hand the live bootstrap key to `fn`.
+ *
+ * The key is never returned: it is valid only for the duration of the
+ * callback and is zeroised afterwards, on success and on failure alike.
+ * Callers must not copy it, log it, or let it escape the callback.
+ *
+ * Verification is not a formality here. It proves cryptographically that this
+ * BSK unwraps the LMK versions the bundle carries, so a bundle that passes has
+ * the right key, not merely a well-formed one.
+ */
+export function withVerifiedBootstrapKey<T>(
+  bundle: Buffer,
+  fn: (bsk: Buffer, report: LmkEscrowVerificationReport) => T,
+): T {
+  const parsed = parseBundle(bundle);
+  try {
+    const report = validateParsedBundle(parsed);
+    return fn(parsed.bsk, report);
+  } finally {
+    zeroiseParsedBundle(parsed);
   }
 }
 
