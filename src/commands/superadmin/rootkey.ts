@@ -32,6 +32,20 @@ interface RootKeyAttempt {
   error?: string;
 }
 
+interface RootKeyProbeResult {
+  providerId: string;
+  outcome: 'match' | 'mismatch' | 'no_material' | 'error';
+  kcv?: string;
+  latencyMs: number;
+  error?: string;
+}
+
+interface RootKeyProbeState {
+  at: string;
+  degraded: boolean;
+  results: RootKeyProbeResult[];
+}
+
 interface RootKeyResolutionState {
   resolvedAt: string;
   servedBy: string | null;
@@ -40,6 +54,8 @@ interface RootKeyResolutionState {
   totalLatencyMs: number;
   attempts: RootKeyAttempt[];
   configured: Array<{ id: string; type: string; priority: number }>;
+  /** Latest periodic post-boot provider probe, when the service has run one. */
+  lastProbe?: RootKeyProbeState;
 }
 
 interface RootKeyEnvelopeMetadata {
@@ -108,20 +124,28 @@ export async function rootkeyStatus(options: { json?: boolean }): Promise<void> 
     }
 
     const resolution = response.resolution;
+    // Effective degraded = boot resolution OR the latest periodic probe;
+    // status must never report last-boot nostalgia as current health.
+    const effectiveDegraded =
+      resolution !== null &&
+      (resolution.degraded || resolution.lastProbe?.degraded === true);
     output.section('Root Key Provider Status');
     output.keyValue({
-      'Degraded': resolution ? (resolution.degraded ? 'YES — investigate' : 'no') : 'unknown (no resolution)',
+      'Degraded': resolution ? (effectiveDegraded ? 'YES — investigate' : 'no') : 'unknown (no resolution)',
       'Served by (last boot)': resolution?.servedBy ?? '-',
       'Active KCV': resolution?.kcv ?? '-',
       'Resolved at': formatDate(resolution?.resolvedAt),
       'Total latency': resolution ? `${String(resolution.totalLatencyMs)}ms` : '-',
+      'Last probe': resolution?.lastProbe
+        ? `${formatDate(resolution.lastProbe.at)} — ${resolution.lastProbe.degraded ? 'DEGRADED' : 'healthy'}`
+        : 'never (probe has not run yet)',
       'Cleartext file on this node': response.localFile.present ? 'present' : 'absent',
     });
 
-    if (resolution?.degraded === true) {
+    if (effectiveDegraded) {
       output.warn(
-        'The chain is DEGRADED: a higher-priority provider failed or had no material ' +
-          'at the last resolution. The node is up, but redundancy is reduced.',
+        'The chain is DEGRADED: a configured provider failed or had no material ' +
+          'at the last resolution or probe. The node is up, but redundancy is reduced.',
       );
     }
 

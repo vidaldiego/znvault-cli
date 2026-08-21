@@ -83,6 +83,14 @@ const SAMPLE_STATUS = {
       { id: 'aws-kms', type: 'aws-kms', priority: 1 },
       { id: 'local-file', type: 'local-file', priority: 2 },
     ],
+    lastProbe: {
+      at: '2026-08-20T18:00:00.000Z',
+      degraded: true,
+      results: [
+        { providerId: 'aws-kms', outcome: 'error', latencyMs: 4, error: 'down' },
+        { providerId: 'local-file', outcome: 'match', kcv: 'kcv1:00112233445566778899aabbccddeeff', latencyMs: 1 },
+      ],
+    },
   },
   envelopes: [
     {
@@ -175,6 +183,20 @@ describe('superadmin rootkey commands', () => {
       const keyValueArg = vi.mocked(output.keyValue).mock.calls[0]?.[0] as Record<string, unknown>;
       expect(JSON.stringify(keyValueArg)).toContain('kcv1:');
       expect(JSON.stringify(keyValueArg)).toContain('local-file');
+    });
+
+    it('surfaces the periodic probe: a degraded lastProbe shows even when boot was clean', async () => {
+      // SAMPLE_STATUS: boot degraded=false but lastProbe.degraded=true —
+      // status must report the EFFECTIVE state, not last-boot nostalgia.
+      vi.mocked(client.get).mockResolvedValue(SAMPLE_STATUS);
+      const p = makeProgram();
+
+      await p.parseAsync(['node', 'test', 'superadmin', 'rootkey', 'status']);
+
+      const keyValueArg = vi.mocked(output.keyValue).mock.calls[0]?.[0] as Record<string, unknown>;
+      const rendered = JSON.stringify(keyValueArg);
+      expect(rendered).toContain('YES'); // effective degraded (probe-driven)
+      expect(Object.keys(keyValueArg).join(',')).toContain('Last probe');
     });
 
     it('exits 1 on request failure', async () => {
