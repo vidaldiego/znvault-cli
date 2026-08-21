@@ -288,6 +288,36 @@ describe('superadmin rootkey commands', () => {
       expect(output.json).toHaveBeenCalledWith(receipt);
     });
 
+    it('CRITICAL guard: an invalid --provider value is rejected BEFORE any output or request — never echoed', async () => {
+      // A pasted secret must not reach the terminal, CI logs or the wire.
+      const pasted = 'AAAAaaaa0011223344556677889900112233445566778899AABBccddeeff00';
+      const p = makeProgram();
+
+      await expect(
+        p.parseAsync([
+          'node', 'test', 'superadmin', 'rootkey', 'wrap', '--provider', pasted,
+        ]),
+      ).rejects.toThrow('process.exit(1)');
+
+      expect(client.post).not.toHaveBeenCalled();
+      const allOutput = [
+        ...vi.mocked(output.error).mock.calls,
+        ...vi.mocked(output.info).mock.calls,
+        ...vi.mocked(output.warn).mock.calls,
+        ...vi.mocked(output.success).mock.calls,
+      ]
+        .map((c) => String(c[0]))
+        .join(' ');
+      expect(allOutput).not.toContain(pasted);
+      expect(allOutput).toMatch(/provider id|invalid/i);
+      // The spinner (started before validation in the old code) must not
+      // have been given the raw value either.
+      const spinnerTexts = vi.mocked(output.spinner).mock.calls
+        .map((c) => String(c[0]))
+        .join(' ');
+      expect(spinnerTexts).not.toContain(pasted);
+    });
+
     it('requires --provider', async () => {
       const p = makeProgram();
 

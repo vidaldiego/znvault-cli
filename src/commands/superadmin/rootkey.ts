@@ -167,6 +167,22 @@ export async function rootkeyStatus(options: { json?: boolean }): Promise<void> 
       console.log(table.toString());
     }
 
+    if (resolution?.lastProbe) {
+      const probeTable = new Table({
+        head: ['Probe: Provider', 'Outcome', 'KCV', 'Latency'],
+        style: { head: ['cyan'] },
+      });
+      for (const result of resolution.lastProbe.results) {
+        probeTable.push([
+          result.providerId,
+          result.outcome + (result.error ? ` (${result.error})` : ''),
+          result.kcv ?? '-',
+          `${String(result.latencyMs)}ms`,
+        ]);
+      }
+      console.log(probeTable.toString());
+    }
+
     if (response.envelopes.length > 0) {
       const table = new Table({
         head: ['Envelope', 'Key ID', 'KCV', 'Updated'],
@@ -247,10 +263,25 @@ export async function rootkeyVerify(options: { json?: boolean }): Promise<void> 
   }
 }
 
+/**
+ * Mirror of the server's schema constraint. Enforced BEFORE any output or
+ * request: an operator who accidentally pastes a secret as --provider must
+ * see nothing echo it — not the spinner, not an error, not CI logs.
+ */
+const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
 export async function rootkeyWrap(options: {
   provider: string;
   json?: boolean;
 }): Promise<void> {
+  if (!PROVIDER_ID_PATTERN.test(options.provider)) {
+    output.error(
+      'Invalid provider id: expected 1-32 lowercase letters, digits or hyphens ' +
+        "(e.g. 'aws-kms'). The value you passed is not echoed on purpose.",
+    );
+    process.exit(1);
+  }
+
   const spinner = output.spinner(
     `Wrapping the bootstrap key into '${options.provider}'...`,
   ).start();
