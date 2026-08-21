@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "4.20.0",
+  "version": "4.21.0",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
