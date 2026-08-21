@@ -100,7 +100,7 @@ const SAMPLE_STATUS = {
 
 const VERIFY_OK = {
   activeKcv: 'kcv1:00112233445566778899aabbccddeeff',
-  allMatchOrEmpty: true,
+  allMatch: true,
   results: [
     { providerId: 'aws-kms', outcome: 'match', kcv: 'kcv1:00112233445566778899aabbccddeeff', latencyMs: 40 },
     { providerId: 'local-file', outcome: 'match', kcv: 'kcv1:00112233445566778899aabbccddeeff', latencyMs: 2 },
@@ -109,9 +109,21 @@ const VERIFY_OK = {
 
 const VERIFY_BAD = {
   activeKcv: 'kcv1:00112233445566778899aabbccddeeff',
-  allMatchOrEmpty: false,
+  allMatch: false,
   results: [
     { providerId: 'aws-kms', outcome: 'error', latencyMs: 40, error: 'KMS unreachable' },
+    { providerId: 'local-file', outcome: 'match', kcv: 'kcv1:00112233445566778899aabbccddeeff', latencyMs: 2 },
+  ],
+};
+
+// STRICT gate: an unprovisioned provider (no_material) is a FAILING
+// verify — a green here would let an operator reorder priorities onto a
+// provider that holds nothing.
+const VERIFY_NO_MATERIAL = {
+  activeKcv: 'kcv1:00112233445566778899aabbccddeeff',
+  allMatch: false,
+  results: [
+    { providerId: 'aws-kms', outcome: 'no_material', latencyMs: 5 },
     { providerId: 'local-file', outcome: 'match', kcv: 'kcv1:00112233445566778899aabbccddeeff', latencyMs: 2 },
   ],
 };
@@ -190,6 +202,17 @@ describe('superadmin rootkey commands', () => {
 
     it('exits 1 when any provider fails or mismatches (the migration gate)', async () => {
       vi.mocked(client.post).mockResolvedValue(VERIFY_BAD);
+      const p = makeProgram();
+
+      await expect(
+        p.parseAsync(['node', 'test', 'superadmin', 'rootkey', 'verify']),
+      ).rejects.toThrow('process.exit(1)');
+      const errText = vi.mocked(output.error).mock.calls.map((c) => c[0]).join(' ');
+      expect(errText).toContain('aws-kms');
+    });
+
+    it('exits 1 when a provider has NO MATERIAL (strict gate — unprovisioned is not green)', async () => {
+      vi.mocked(client.post).mockResolvedValue(VERIFY_NO_MATERIAL);
       const p = makeProgram();
 
       await expect(

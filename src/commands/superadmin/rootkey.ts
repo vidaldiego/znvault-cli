@@ -68,7 +68,8 @@ interface RootKeyVerifyResult {
 
 interface RootKeyVerifyResponse {
   activeKcv: string;
-  allMatchOrEmpty: boolean;
+  /** STRICT: true only when every configured provider reports 'match'. */
+  allMatch: boolean;
   results: RootKeyVerifyResult[];
 }
 
@@ -194,7 +195,7 @@ export async function rootkeyVerify(options: { json?: boolean }): Promise<void> 
       console.log(table.toString());
     }
 
-    if (response.allMatchOrEmpty) {
+    if (response.allMatch) {
       if (!options.json) {
         output.success(
           `All configured providers agree with the active key (KCV ${response.activeKcv}).`,
@@ -203,8 +204,11 @@ export async function rootkeyVerify(options: { json?: boolean }): Promise<void> 
       return;
     }
 
+    // STRICT gate: anything other than 'match' fails — including a
+    // provider with no material. A green result on an unprovisioned
+    // provider would let an operator reorder priorities onto nothing.
     const failing = response.results
-      .filter((r) => r.outcome !== 'match' && r.outcome !== 'no_material')
+      .filter((r) => r.outcome !== 'match')
       .map((r) => r.providerId);
     output.error(
       `Root key verification FAILED for: ${failing.join(', ')}. ` +
