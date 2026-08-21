@@ -44,6 +44,7 @@ import { registerHostCommands } from '../host/index.js';
 import { registerKmsCommands } from '../kms/index.js';
 import { registerKmipSuperadminCommands } from '../kmip/index.js';
 import { registerDynsecFenceCommands } from './dynsec-fence.js';
+import { registerRootkeyCommands } from './rootkey.js';
 import { registerPolicyCommands } from '../policy/index.js';
 import { registerQuarantineCommands } from '../quarantine.js';
 import { registerRoleCommands } from '../role.js';
@@ -84,6 +85,7 @@ export function registerSuperadminCommands(parent: Command, _opts?: RegisterOpti
     registerKmsCommands(superadmin, { context: 'superadmin' });
     registerKmipSuperadminCommands(superadmin);
     registerDynsecFenceCommands(superadmin);
+    registerRootkeyCommands(superadmin);
     registerPolicyCommands(superadmin, { context: 'superadmin' });
     registerQuarantineCommands(superadmin, { context: 'superadmin' });
     registerRoleCommands(superadmin, { context: 'superadmin' });
