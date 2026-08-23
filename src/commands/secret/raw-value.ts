@@ -23,12 +23,13 @@ export class RawSelectionError extends Error {
 }
 
 /** A file-based secret (or file-shaped field) stores `{ filename, content(base64) }`. */
-interface FileShaped {
+export interface FileShaped {
   filename: string;
   content: string;
 }
 
-function isFileShaped(value: unknown): value is FileShaped {
+/** True for `{ filename: string, content: string }` payloads (file secrets, keypair halves). */
+export function isFileShaped(value: unknown): value is FileShaped {
   return (
     typeof value === 'object' &&
     value !== null &&
