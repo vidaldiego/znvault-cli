@@ -322,7 +322,7 @@ Examples:
         } else if (options.data) {
           try {
             data = JSON.parse(options.data);
-          } catch (e) {
+          } catch {
             output.error('Invalid JSON in --data option');
             process.exit(1);
           }

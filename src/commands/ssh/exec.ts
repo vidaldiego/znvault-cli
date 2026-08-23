@@ -209,7 +209,6 @@ export function registerExecCommand(parent: Command): void {
 
       // Execute on hosts
       const results: HostResult[] = [];
-      let hasFailure = false;
 
       if (options.parallel) {
         // Parallel execution
@@ -247,12 +246,9 @@ export function registerExecCommand(parent: Command): void {
             }
           }
 
-          if (!result.success) {
-            hasFailure = true;
-            if (options.failFast) {
-              output.warn('Stopping due to --fail-fast');
-              break;
-            }
+          if (!result.success && options.failFast) {
+            output.warn('Stopping due to --fail-fast');
+            break;
           }
         }
         console.log();

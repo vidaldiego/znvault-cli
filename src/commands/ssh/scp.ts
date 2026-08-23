@@ -137,7 +137,7 @@ export function registerSCPCommand(parent: Command): void {
         user = profile.sshUser;
       }
 
-      const verbose = (msg: string) => {
+      const verbose = (msg: string): void => {
         if (options.verbose) output.info(msg);
       };
 
@@ -214,7 +214,7 @@ export function registerSCPCommand(parent: Command): void {
         if (options.verbose) scpArgs.push('-v');
 
         // Build remote path string
-        const buildRemotePath = (parsed: ReturnType<typeof parseSCPPath>) => {
+        const buildRemotePath = (parsed: ReturnType<typeof parseSCPPath>): string => {
           if (!parsed.isRemote) return parsed.path;
           const userPart = user ? `${user}@` : '';
           return `${userPart}${host}:${parsed.path}`;

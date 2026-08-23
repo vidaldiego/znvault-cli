@@ -1,5 +1,10 @@
 // Path: src/lib/db/index.ts
 
+/* eslint-disable @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types --
+   Delegating facade: every member is `x = (...) => this.sub.x(...)`, so its return type IS the
+   sub-client's and is inferred from it. Re-declaring it here would duplicate ~80 signatures that
+   could silently drift from the ones they wrap. Non-facade code in this file still needs types. */
+
 /**
  * Modular database client for direct PostgreSQL operations.
  * Used for local mode (running on vault nodes) and emergency operations.

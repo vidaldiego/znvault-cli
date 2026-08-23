@@ -5,7 +5,7 @@
  */
 
 import * as output from '../../lib/output.js';
-import { formatDate as formatDateBase, formatTtl as formatTtlBase } from '../../lib/format-helpers.js';
+import { formatTtl as formatTtlBase } from '../../lib/format-helpers.js';
 
 // Re-export formatDate from centralized location
 export { formatDate } from '../../lib/format-helpers.js';

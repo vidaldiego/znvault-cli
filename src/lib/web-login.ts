@@ -35,8 +35,6 @@ const CLI_VERSION = '2.20.2';
 
 // Configuration
 const CALLBACK_PATH = '/callback';
-const PORT_RANGE_START = 49152;
-const PORT_RANGE_END = 65535;
 const AUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 // PKCE parameters
@@ -222,7 +220,7 @@ function startCallbackServer(
     });
 
     // Helper to forcefully close server and all connections
-    const forceClose = () => {
+    const forceClose = (): void => {
       for (const socket of sockets) {
         socket.destroy();
       }
