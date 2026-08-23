@@ -19,6 +19,7 @@ import {
 } from 'node:crypto';
 import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import type { LmkEscrowDatabaseSnapshot } from './db/index.js';
+import { computeBskKcv } from './kcv.js';
 
 const MAGIC = Buffer.from('ZNVAULT-LMK-ESCROW\n', 'ascii');
 const FORMAT_VERSION = 1;
@@ -75,6 +76,18 @@ interface LmkEscrowMetadataV1 {
   } | {
     state: 'UNBOUND_LAB_ONLY';
   };
+  /**
+   * ON-DISK ONLY, and deliberately unchanged: this raw SHA-256 is what binds
+   * the metadata block to the key material carried in the same file, and every
+   * bundle already written to a datAshur contains it. It is NEVER republished
+   * — the verification report exposes `bskKcv` instead — so it stays inside the
+   * encrypted-at-rest medium it was written to and never enters a document
+   * that leaves the building.
+   *
+   * Debt, recorded rather than smuggled in: a formatVersion 2 should replace
+   * the linkage field itself with a KCV-based binding. That is a format change
+   * with a migration for existing media, not a rename.
+   */
   bskSha256: string;
   activeLmkVersion: number;
   allAvailableVersionsRecoverable: boolean;
@@ -123,7 +136,20 @@ export interface LmkEscrowVerificationReport {
   recoverability: 'COMPLETE' | 'KNOWN_HISTORICAL_GAPS';
   recoverableVersions: number[];
   unrecoverableVersions: number[];
-  bskSha256: string;
+  /**
+   * Publishable fingerprint of the bootstrap key inside the bundle:
+   * `kcv1:` + 128-bit truncated HMAC under a dedicated label.
+   *
+   * NOT the raw SHA-256 that the on-disk metadata stores. This report is the
+   * artefact that LEAVES the CPD — it goes to an auditor, a drill log, a
+   * ticket — and a full, untruncated digest of the key published in writing is
+   * a verification oracle: it makes any future partial exposure of the key
+   * confirmable, by anyone holding the document, for as long as it exists. The
+   * KCV answers the only question a receipt needs to answer ("is this the same
+   * key?") and is the same fingerprint every node publishes on /v1/health, so
+   * the two can actually be compared. See ROOT_OF_TRUST.md.
+   */
+  bskKcv: string;
   backupId: string | null;
   activeRotationId: string | null;
 }
@@ -604,7 +630,10 @@ function validateParsedBundle(parsed: ParsedBundle): LmkEscrowVerificationReport
       recoverability: complete ? 'COMPLETE' : 'KNOWN_HISTORICAL_GAPS',
       recoverableVersions,
       unrecoverableVersions,
-      bskSha256: parsed.metadata.bskSha256,
+      // Computed from the key the bundle actually carries, not copied out of
+      // the metadata block: a receipt that echoes the file it just read
+      // confirms nothing about the key inside it.
+      bskKcv: computeBskKcv(parsed.bsk),
       backupId: parsed.metadata.backup.state === 'VERIFIED' ? parsed.metadata.backup.id : null,
       activeRotationId: parsed.metadata.activeRotation?.rotationId ?? null,
     };

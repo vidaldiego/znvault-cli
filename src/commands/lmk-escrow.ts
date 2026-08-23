@@ -71,7 +71,7 @@ function printReport(report: LmkEscrowVerificationReport | LmkEscrowWriteReceipt
     'Historical gaps': report.unrecoverableVersions.length === 0
       ? 'none'
       : report.unrecoverableVersions.join(', '),
-    'BSK fingerprint': `sha256:${report.bskSha256}`,
+    'BSK fingerprint': report.bskKcv,
     'Backup binding': report.backupId ?? 'UNBOUND — LAB ONLY',
     'Active rotation': report.activeRotationId ?? 'none',
     ...('path' in report ? {
@@ -218,7 +218,7 @@ export function registerLmkEscrowCommands(lmk: Command): void {
         Copy: receipt.copyLabel,
         Bundle: receipt.bundleId,
         'Active LMK version': receipt.activeLmkVersion,
-        'BSK fingerprint': receipt.bskSha256,
+        'BSK fingerprint': receipt.bskKcv,
       });
       output.success(
         receipt.outcome === 'RESTORED'

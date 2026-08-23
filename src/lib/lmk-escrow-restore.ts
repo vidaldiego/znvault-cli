@@ -52,8 +52,12 @@ export interface RestoreBootstrapKeyReport {
   bundleId: string;
   copyLabel: string;
   activeLmkVersion: number;
-  /** Publishable fingerprint. Safe for logs, receipts and drill records. */
-  bskSha256: string;
+  /**
+   * Publishable fingerprint (`kcv1:`), safe for logs, receipts and drill
+   * records — and, unlike the raw digest it replaces, safe to publish in a
+   * document that outlives the drill. See LmkEscrowVerificationReport.bskKcv.
+   */
+  bskKcv: string;
 }
 
 /**
@@ -137,7 +141,7 @@ function describe(
     bundleId: report.bundleId,
     copyLabel: report.copyLabel,
     activeLmkVersion: report.activeLmkVersion,
-    bskSha256: report.bskSha256,
+    bskKcv: report.bskKcv,
   };
 }
 

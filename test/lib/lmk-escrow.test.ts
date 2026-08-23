@@ -23,6 +23,7 @@ import {
   verifyLmkEscrowBundleBuffer,
   writeLmkEscrowBundleDirect,
 } from '../../src/lib/lmk-escrow.js';
+import { computeBskKcv, isBskKcv } from '../../src/lib/kcv.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -356,6 +357,100 @@ describe('direct escrow write', () => {
       expect(() => readAndVerifyLmkEscrowBundle(file)).toThrow(/checksum|truncated/i);
     } finally {
       bundle.fill(0);
+    }
+  });
+});
+
+describe('what the receipt publishes about the bootstrap key', () => {
+  // The escrow receipt is the one artefact in this whole procedure that LEAVES
+  // the CPD: it goes to an auditor, into a drill log, into a ticket. Until now
+  // it carried `bskSha256` — a RAW, untruncated SHA-256 of the bootstrap key —
+  // and printed it in human output and in `--json` under the label "BSK
+  // fingerprint".
+  //
+  // That is a verification oracle handed out in writing. The BSK itself stays
+  // secret, but any future partial exposure — a memory dump, a stale backup, a
+  // decommissioned disk, a candidate reconstructed from fragments — becomes
+  // CONFIRMABLE against a document archived outside the building, by anyone
+  // holding it, for as long as it exists. A truncated KCV under a dedicated
+  // label gives an auditor the same "is this the same key?" answer and gives a
+  // future attacker 128 bits of a purpose-separated MAC instead of the full
+  // digest of the key.
+  //
+  // It also contradicted ROOT_OF_TRUST.md, which fixes `kcv1:` as the only
+  // admissible fingerprint of the BSK, and it disagreed with what every node
+  // publishes on /v1/health — so the two could not even be compared.
+
+  /** Build a bundle and KEEP the key, so the expected KCV can be computed. */
+  function buildBundleKeepingKey(): { bundle: Buffer; bsk: Buffer } {
+    const bsk = randomBytes(32);
+    const bundle = buildLmkEscrowBundle({
+      snapshot: makeSnapshot(bsk, false),
+      bsk,
+      copyLabel: 'A',
+      operator: 'test-operator',
+      hostname: 'vault-test',
+      vaultVersion: '1.63.0',
+      cliVersion: '4.18.1',
+      allowUnboundBackup: false,
+    });
+    return { bundle, bsk };
+  }
+
+  it('publishes the kcv1: fingerprint of the key inside the bundle', () => {
+    const { bundle, bsk } = buildBundleKeepingKey();
+    try {
+      const report = verifyLmkEscrowBundleBuffer(bundle);
+
+      expect(isBskKcv(report.bskKcv)).toBe(true);
+      // Computed from the key the bundle actually carries, not copied out of
+      // the metadata: a receipt that merely echoes the file it read would
+      // confirm nothing about the key.
+      expect(report.bskKcv).toBe(computeBskKcv(bsk));
+    } finally {
+      bundle.fill(0);
+      bsk.fill(0);
+    }
+  });
+
+  it('publishes NOTHING from which the raw digest of the key can be read', () => {
+    const { bundle, bsk } = buildBundleKeepingKey();
+    const rawDigest = createHash('sha256').update(bsk).digest('hex');
+    try {
+      const report = verifyLmkEscrowBundleBuffer(bundle);
+      const serialised = JSON.stringify(report);
+
+      expect(serialised).not.toContain(rawDigest);
+      // Belt and braces against a differently-named field carrying it: the
+      // only 64-hex value the receipt may contain is the digest of the BUNDLE
+      // FILE, which is not derived from the key.
+      for (const [field, value] of Object.entries(report)) {
+        if (typeof value !== 'string' || field === 'bundleId') continue;
+        expect(value).not.toMatch(/[a-f0-9]{64}/);
+      }
+    } finally {
+      bundle.fill(0);
+      bsk.fill(0);
+    }
+  });
+
+  it('leaves the ON-DISK format alone, digest binding included', () => {
+    // The bytes are not touched by this change — only what the receipt says
+    // about them. The stored SHA-256 is what binds the metadata block to the
+    // key material in the same file, and it must keep failing on tampering.
+    // (The debt — a formatVersion 2 that replaces the stored linkage field
+    // itself — is recorded in the runbook, not smuggled in here.)
+    const { bundle, bsk } = buildBundleKeepingKey();
+    const rawDigest = createHash('sha256').update(bsk).digest('hex');
+    try {
+      expect(bundle.includes(Buffer.from(rawDigest, 'utf8'))).toBe(true);
+
+      const forged = createHash('sha256').update(Buffer.alloc(32, 0x11)).digest('hex');
+      replaceBundleBytes(bundle, rawDigest, forged);
+      expect(() => verifyLmkEscrowBundleBuffer(bundle)).toThrow();
+    } finally {
+      bundle.fill(0);
+      bsk.fill(0);
     }
   });
 });
