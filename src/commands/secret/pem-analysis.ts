@@ -28,7 +28,12 @@ export interface FileAnalysisInfo {
   pemInfo?: PEMInfo;
 }
 
-const PEM_HEADER_MAP: Record<string, { type: PEMInfo['type']; algorithm?: PEMInfo['algorithm'] }> = {
+interface PemHeaderInfo {
+  type: PEMInfo['type'];
+  algorithm?: PEMInfo['algorithm'];
+}
+
+const PEM_HEADER_MAP: Record<string, PemHeaderInfo> = {
   'PRIVATE KEY': { type: 'private-key' },
   'RSA PRIVATE KEY': { type: 'private-key', algorithm: 'rsa' },
   'EC PRIVATE KEY': { type: 'private-key', algorithm: 'ec' },
@@ -139,13 +144,15 @@ export function analyzePEMContent(content: string, filename: string): PEMInfo | 
     type = 'bundle';
   } else if (privateKeyHeaders.length > 0) {
     const keyHeader = privateKeyHeaders[0];
-    const mapping = PEM_HEADER_MAP[keyHeader];
+    // Index access is typed non-optional; unknown headers really yield undefined.
+    const mapping = PEM_HEADER_MAP[keyHeader] as PemHeaderInfo | undefined;
     type = mapping?.type ?? 'private-key';
     algorithm = mapping?.algorithm;
     if (keyHeader.includes('ENCRYPTED')) type = 'encrypted-key';
   } else if (publicKeyHeaders.length > 0) {
     const keyHeader = publicKeyHeaders[0];
-    const mapping = PEM_HEADER_MAP[keyHeader];
+    // Index access is typed non-optional; unknown headers really yield undefined.
+    const mapping = PEM_HEADER_MAP[keyHeader] as PemHeaderInfo | undefined;
     type = mapping?.type ?? 'public-key';
     algorithm = mapping?.algorithm;
   } else if (csrHeaders.length > 0) {

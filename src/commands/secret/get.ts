@@ -96,7 +96,7 @@ export function registerGetCommand(secretCmd: Command): void {
           table.push(['Tags', secret.tags.join(', ')]);
         }
         table.push(
-          ['Created By', secret.createdBy || '-'],
+          ['Created By', secret.createdBy ?? '-'],
           ['Created At', formatDate(secret.createdAt)],
           ['Updated At', formatDate(secret.updatedAt)],
         );

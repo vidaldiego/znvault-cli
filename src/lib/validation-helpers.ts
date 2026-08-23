@@ -6,6 +6,8 @@
  * with clear error messages.
  */
 
+import { readFileSync, existsSync } from 'node:fs';
+
 export interface ValidationResult {
   valid: boolean;
   error?: string;
@@ -378,8 +380,6 @@ export function readJsonFile(
   fieldName: string
 ): ValidationResult & { value?: unknown } {
   try {
-    const { readFileSync, existsSync } = require('node:fs') as typeof import('node:fs');
-
     if (!existsSync(filePath)) {
       return { valid: false, error: `${fieldName}: File not found: ${filePath}` };
     }

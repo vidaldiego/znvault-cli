@@ -8,6 +8,12 @@ import inquirer from 'inquirer';
 import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
 
+/** Treat an empty/blank string the same as "not provided" (optional free-text inputs). */
+function nonEmpty(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  return value.trim() === '' ? undefined : value;
+}
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -218,7 +224,7 @@ async function setupConfig(options: SetupOptions): Promise<void> {
         type: 'input',
         name: 'fromName',
         message: 'From Name (optional):',
-        default: fromName || 'ZnVault',
+        default: nonEmpty(fromName) ?? 'ZnVault',
       },
     ]);
 
@@ -256,7 +262,7 @@ async function setupConfig(options: SetupOptions): Promise<void> {
         pass: password,
       },
       from,
-      fromName: fromName || undefined,
+      fromName: nonEmpty(fromName),
     };
 
     const result = await client.patch<{ message: string; configured: boolean }>('/v1/admin/notifications/config', body);

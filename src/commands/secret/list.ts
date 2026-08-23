@@ -65,7 +65,7 @@ export function registerListCommand(secretCmd: Command): void {
             secret.tenant.slice(0, 10),
             formatType(secret.type, secret.subType),
             String(secret.version),
-            formatExpiry(secret.expiresAt || secret.ttlUntil),
+            formatExpiry(secret.expiresAt ?? secret.ttlUntil),
             formatTags(secret.tags),
             formatDate(secret.updatedAt).split(',')[0], // Just date
           ]);

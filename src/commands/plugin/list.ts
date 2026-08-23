@@ -35,7 +35,7 @@ export function registerListCommand(parent: Command): void {
       }
 
       const pluginList = plugins.map(p => {
-        const packageName = p.package || p.path || 'unknown';
+        const packageName = p.package ?? p.path ?? 'unknown';
         const shortName = getShortName(packageName);
         const version = p.package ? getInstalledVersion(p.package, pluginsDir) : null;
         const enabled = p.enabled !== false;
@@ -43,7 +43,7 @@ export function registerListCommand(parent: Command): void {
         return {
           name: shortName,
           package: packageName,
-          version: version || 'unknown',
+          version: version ?? 'unknown',
           enabled,
           source: p.path ? 'local' : 'npm',
         };

@@ -39,7 +39,7 @@ export function registerUpdateCommand(secretCmd: Command): void {
       if (options.data) {
         // Non-interactive mode: parse JSON data from CLI
         try {
-          newData = JSON.parse(options.data);
+          newData = JSON.parse(options.data) as Record<string, unknown>;
         } catch {
           output.error('Invalid JSON in --data option');
           process.exit(1);
@@ -99,7 +99,7 @@ export function registerUpdateCommand(secretCmd: Command): void {
                 },
               ]);
               try {
-                newData = JSON.parse(dataJson);
+                newData = JSON.parse(dataJson) as Record<string, unknown>;
               } catch {
                 output.error('Invalid JSON data');
                 process.exit(1);

@@ -18,6 +18,35 @@ import { pathToFileURL } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 
+/** The subset of a plugin's package.json the loader reads. Targets may be strings or condition maps. */
+type ExportTarget = string | { import?: string; default?: string };
+interface PluginPackageJson {
+  main?: string;
+  exports?: Record<string, ExportTarget | undefined>;
+}
+
+/**
+ * Pick the module the CLI should import for a plugin package:
+ * the `./cli` export (string, or its `import`/`default` condition), else the
+ * root export's `import` condition, else `main`, else `dist/index.js`.
+ * A `./cli` condition map with neither target is a packaging error — say so
+ * instead of letting `join()` blow up on `undefined`.
+ */
+export function resolveCliEntryPoint(pkg: PluginPackageJson, packageName: string): string {
+  const cli = pkg.exports?.['./cli'];
+  if (cli !== undefined) {
+    if (typeof cli === 'string') return cli;
+    const target = cli.import ?? cli.default;
+    if (target === undefined) {
+      throw new Error(`Plugin package '${packageName}': './cli' export has no 'import' or 'default' target`);
+    }
+    return target;
+  }
+  const root = pkg.exports?.['.'];
+  if (typeof root === 'object' && root.import !== undefined) return root.import;
+  return pkg.main ?? 'dist/index.js';
+}
+
 /**
  * Get the plugins directory path (alongside config.json)
  */
@@ -64,7 +93,7 @@ export class CLIPluginLoader {
         await this.loadPlugin(config);
       } catch (err) {
         // Don't fail CLI startup on plugin error - just warn
-        const source = config.package || config.path || 'unknown';
+        const source = config.package ?? config.path ?? 'unknown';
         console.warn(`Failed to load plugin ${source}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
@@ -76,7 +105,7 @@ export class CLIPluginLoader {
   async loadPlugin(config: CLIPluginConfig): Promise<void> {
     const { package: packageName, path: localPath, config: pluginOptions } = config;
 
-    const source = packageName || localPath || 'unknown';
+    const source = packageName ?? localPath ?? 'unknown';
 
     try {
       let module: { default: CLIPlugin | CLIPluginFactory };
@@ -104,22 +133,8 @@ export class CLIPluginLoader {
             throw new Error(`Package ${packageName} found but missing package.json`);
           }
 
-          const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-
-          // Determine the CLI entry point
-          // Try ./cli export first, then main/default export
-          let entryPoint: string;
-          if (pkgJson.exports?.['./cli']?.import) {
-            entryPoint = pkgJson.exports['./cli'].import;
-          } else if (pkgJson.exports?.['./cli']) {
-            entryPoint = typeof pkgJson.exports['./cli'] === 'string'
-              ? pkgJson.exports['./cli']
-              : pkgJson.exports['./cli'].default || pkgJson.exports['./cli'].import;
-          } else if (pkgJson.exports?.['.']?.import) {
-            entryPoint = pkgJson.exports['.'].import;
-          } else {
-            entryPoint = pkgJson.main || 'dist/index.js';
-          }
+          const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf-8')) as PluginPackageJson;
+          const entryPoint = resolveCliEntryPoint(pkgJson, packageName);
 
           const modulePath = join(packagePath, entryPoint);
           const fileUrl = pathToFileURL(modulePath).href;
@@ -134,16 +149,15 @@ export class CLIPluginLoader {
         throw new Error('Plugin config must specify package or path');
       }
 
-      // Support both direct export and factory function
-      let plugin: CLIPlugin;
-      if (typeof module.default === 'function') {
-        plugin = (module.default)(pluginOptions);
-      } else {
-        plugin = module.default;
-      }
+      // Support both direct export and factory function. The module is untrusted
+      // code: treat what it hands us as unknown until validatePlugin() has checked it.
+      const candidate: unknown = typeof module.default === 'function'
+        ? module.default(pluginOptions)
+        : module.default;
 
       // Validate plugin interface
-      this.validatePlugin(plugin, source);
+      this.validatePlugin(candidate, source);
+      const plugin = candidate;
 
       // Check for duplicate names
       if (this.plugins.has(plugin.name)) {
@@ -161,7 +175,11 @@ export class CLIPluginLoader {
     } catch (err) {
       // Store error state for reporting
       const errorEntry: LoadedCLIPlugin = {
-        plugin: { name: source, version: '0.0.0', registerCommands: () => {} },
+        plugin: {
+          name: source,
+          version: '0.0.0',
+          registerCommands: () => { /* placeholder: the plugin failed to load, nothing to register */ },
+        },
         source,
         status: 'error',
         error: err instanceof Error ? err : new Error(String(err)),
@@ -172,16 +190,21 @@ export class CLIPluginLoader {
   }
 
   /**
-   * Validate that a plugin has required fields
+   * Validate that a value exported by a plugin module has the required CLIPlugin shape.
+   * Runtime check over untrusted input — hence `unknown` in, assertion out.
    */
-  private validatePlugin(plugin: CLIPlugin, source: string): void {
-    if (!plugin.name || typeof plugin.name !== 'string') {
+  private validatePlugin(plugin: unknown, source: string): asserts plugin is CLIPlugin {
+    if (typeof plugin !== 'object' || plugin === null) {
+      throw new Error(`Invalid CLI plugin from ${source}: export is not an object`);
+    }
+    const candidate = plugin as Record<string, unknown>;
+    if (typeof candidate.name !== 'string' || candidate.name === '') {
       throw new Error(`Invalid CLI plugin from ${source}: missing or invalid 'name'`);
     }
-    if (!plugin.version || typeof plugin.version !== 'string') {
+    if (typeof candidate.version !== 'string' || candidate.version === '') {
       throw new Error(`Invalid CLI plugin from ${source}: missing or invalid 'version'`);
     }
-    if (!plugin.registerCommands || typeof plugin.registerCommands !== 'function') {
+    if (typeof candidate.registerCommands !== 'function') {
       throw new Error(`Invalid CLI plugin from ${source}: missing or invalid 'registerCommands' function`);
     }
   }

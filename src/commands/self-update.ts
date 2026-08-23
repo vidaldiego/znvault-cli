@@ -199,7 +199,7 @@ export function registerSelfUpdateCommands(program: Command): void {
 
         spinner.stop();
 
-        const hasCliUpdate = cliResult.updateAvailable || options.force;
+        const hasCliUpdate = cliResult.updateAvailable || options.force === true;
         const hasPluginUpdates = pluginUpdates.length > 0;
 
         // JSON output for check mode or when no updates

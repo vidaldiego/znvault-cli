@@ -212,7 +212,7 @@ export function registerExecCommand(parent: Command): void {
 
       if (options.parallel) {
         // Parallel execution
-        const spinner = output.spinner('Executing on ' + resolvedHosts.length + ' hosts...').start();
+        const spinner = output.spinner(`Executing on ${resolvedHosts.length} hosts...`).start();
         
         const promises = resolvedHosts.map(hostInfo => 
           executeOnHost(command, hostInfo, keyPath, certPath, options)
@@ -225,7 +225,7 @@ export function registerExecCommand(parent: Command): void {
         spinner.stop();
         
         if (!options.quiet) {
-          output.info('Completed: ' + successCount + '/' + results.length + ' succeeded');
+          output.info(`Completed: ${successCount}/${results.length} succeeded`);
           console.log();
         }
       } else {
@@ -242,7 +242,7 @@ export function registerExecCommand(parent: Command): void {
             if (result.success) {
               console.log('\x1b[32m✓\x1b[0m');
             } else {
-              console.log('\x1b[31m✗\x1b[0m (exit ' + result.exitCode + ')');
+              console.log(`\x1b[31m✗\x1b[0m (exit ${result.exitCode})`);
             }
           }
 
@@ -275,10 +275,10 @@ export function registerExecCommand(parent: Command): void {
       const failCount = results.filter(r => !r.success).length;
 
       if (failCount > 0) {
-        output.warn('Summary: ' + successCount + ' succeeded, ' + failCount + ' failed');
+        output.warn(`Summary: ${successCount} succeeded, ${failCount} failed`);
         process.exit(1);
       } else {
-        output.success('All ' + successCount + ' hosts completed successfully');
+        output.success(`All ${successCount} hosts completed successfully`);
       }
     });
 }
