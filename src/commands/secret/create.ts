@@ -321,7 +321,7 @@ Examples:
           }
         } else if (options.data) {
           try {
-            data = JSON.parse(options.data);
+            data = JSON.parse(options.data) as Record<string, unknown>;
           } catch {
             output.error('Invalid JSON in --data option');
             process.exit(1);

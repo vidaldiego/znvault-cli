@@ -241,8 +241,15 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
     //   with body { pendingWindowInDays: N }.
     let result: { keyId: string; deletionDate: string; message?: string };
     if (kmsIsAdminCall(options.tenant)) {
+      // The admin route needs an explicit tenant; kmsIsAdminCall can be true without one
+      // (--as-superadmin), which previously interpolated the literal string "undefined".
+      if (options.tenant === undefined) {
+        deleteSpinner.fail('Missing --tenant');
+        output.error('--tenant <id> is required to schedule a key deletion as superadmin');
+        process.exit(1);
+      }
       result = await client.post<{ keyId: string; deletionDate: string; message?: string }>(
-        `/v1/superadmin/kms/keys/${encodeKeyId(keyId)}/schedule-deletion?tenantId=${encodeURIComponent(options.tenant!)}`,
+        `/v1/superadmin/kms/keys/${encodeKeyId(keyId)}/schedule-deletion?tenantId=${encodeURIComponent(options.tenant)}`,
         { pendingWindowInDays: days }
       );
     } else {

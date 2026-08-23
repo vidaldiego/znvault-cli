@@ -7,6 +7,7 @@
 
 export {
   LocalDBClient,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- compat shim: this file exists to keep old import paths working, including the deprecated alias
   EmergencyDBClient,
   isEmergencyDbAvailable,
   isLocalDbAvailable,

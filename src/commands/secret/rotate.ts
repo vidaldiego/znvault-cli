@@ -62,7 +62,7 @@ export function registerRotateCommand(secretCmd: Command): void {
             },
           ]);
           try {
-            newData = JSON.parse(dataJson);
+            newData = JSON.parse(dataJson) as Record<string, unknown>;
           } catch {
             output.error('Invalid JSON data');
             process.exit(1);

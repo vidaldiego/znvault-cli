@@ -267,7 +267,7 @@ async function main(): Promise<void> {
 }
 
 // Run main
-main().catch((err) => {
+main().catch((err: unknown) => {
   console.error('CLI error:', err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

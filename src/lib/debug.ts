@@ -15,6 +15,18 @@ const isDebugEnabled = (): boolean => {
 /**
  * Log a debug message (only when ZNVAULT_DEBUG is enabled)
  */
+/** Render an unknown error-ish value legibly (String() on an object gives '[object Object]'). */
+function describeUnknown(value: unknown): string {
+  if (typeof value === 'string') return value;
+  try {
+    // JSON.stringify's lib type claims `string`, but functions/symbols really yield undefined.
+    const json: string | undefined = JSON.stringify(value);
+    return json ?? String(value);
+  } catch {
+    return '[unserializable value]';
+  }
+}
+
 export function debug(context: string, message: string, error?: unknown): void {
   if (!isDebugEnabled()) return;
 
@@ -22,7 +34,7 @@ export function debug(context: string, message: string, error?: unknown): void {
   const errorInfo = error instanceof Error
     ? `: ${error.message}`
     : error !== undefined
-      ? `: ${String(error)}`
+      ? `: ${describeUnknown(error)}`
       : '';
 
   console.error(`[DEBUG ${timestamp}] [${context}] ${message}${errorInfo}`);

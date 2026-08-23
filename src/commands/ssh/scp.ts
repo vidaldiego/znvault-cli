@@ -109,7 +109,11 @@ export function registerSCPCommand(parent: Command): void {
 
       // Get the remote part
       const remotePart = srcParsed.isRemote ? srcParsed : dstParsed;
-      let host = remotePart.host!;
+      if (remotePart.host === undefined) {
+        output.error('Internal error: remote path parsed without a host');
+        process.exit(1);
+      }
+      let host = remotePart.host;
       let user = remotePart.user;
       let port = options.port ?? '22';
       let identityOverride = options.identity;

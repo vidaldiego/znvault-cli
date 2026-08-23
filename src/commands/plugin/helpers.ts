@@ -86,7 +86,7 @@ export function isValidPackageName(name: string): boolean {
 /**
  * Check if a package exists on npm
  */
-export async function packageExists(packageName: string): Promise<boolean> {
+export function packageExists(packageName: string): boolean {
   if (!isValidPackageName(packageName)) {
     return false;
   }
@@ -173,7 +173,7 @@ export function runNpm(args: string[], pluginsDir: string): Promise<{ success: b
 /**
  * Validate that a package is a valid znvault CLI plugin
  */
-export async function validatePlugin(packageName: string, pluginsDir: string): Promise<{ valid: boolean; error?: string }> {
+export function validatePlugin(packageName: string, pluginsDir: string): { valid: boolean; error?: string } {
   try {
     const packageJsonPath = join(pluginsDir, 'node_modules', packageName, 'package.json');
     if (!existsSync(packageJsonPath)) {

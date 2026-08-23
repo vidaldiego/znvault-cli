@@ -22,7 +22,7 @@ export function registerBookmarkCommands(parent: Command): void {
     .alias('ls')
     .description('List all bookmarks')
     .option('--json', 'Output as JSON')
-    .action(async (options: { json?: boolean }) => {
+    .action((options: { json?: boolean }) => {
       const profile = getCurrentProfile();
       const bookmarks = profile.sshBookmarks ?? {};
 
@@ -198,7 +198,7 @@ export function registerBookmarkCommands(parent: Command): void {
     .command('show <name>')
     .description('Show bookmark details')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: { json?: boolean }) => {
+    .action((name: string, options: { json?: boolean }) => {
       const profile = getCurrentProfile();
 
       if (!profile.sshBookmarks?.[name]) {
@@ -232,7 +232,7 @@ export function registerBookmarkCommands(parent: Command): void {
   bookmark
     .command('rename <oldName> <newName>')
     .description('Rename a bookmark')
-    .action(async (oldName: string, newName: string) => {
+    .action((oldName: string, newName: string) => {
       const profile = getCurrentProfile();
       const profileName = getActiveProfileName();
 

@@ -18,7 +18,7 @@ export function registerConfigCommands(parent: Command): void {
     .command('show')
     .description('Show current SSH configuration')
     .option('--json', 'Output as JSON')
-    .action(async (options: { json?: boolean }) => {
+    .action((options: { json?: boolean }) => {
       const profile = getCurrentProfile();
       const profileName = getActiveProfileName();
 
@@ -88,7 +88,7 @@ export function registerConfigCommands(parent: Command): void {
   config
     .command('unset <key>')
     .description('Clear SSH configuration value')
-    .action(async (key: string) => {
+    .action((key: string) => {
       const profile = getCurrentProfile();
       const profileName = getActiveProfileName();
 

@@ -39,10 +39,10 @@ export function registerInstallCommand(parent: Command): void {
 
         // Check if @zincapp prefixed version exists
         if (packageName.startsWith(ZINCAPP_PREFIX)) {
-          const exists = await packageExists(packageName);
+          const exists = packageExists(packageName);
           if (!exists) {
             // Try the original name directly
-            const directExists = await packageExists(name);
+            const directExists = packageExists(name);
             if (directExists) {
               packageName = name;
               foundWithPrefix = false;
@@ -88,7 +88,7 @@ export function registerInstallCommand(parent: Command): void {
 
         // Validate it's a valid plugin
         spinner.text = 'Validating plugin...';
-        const validation = await validatePlugin(packageName, pluginsDir);
+        const validation = validatePlugin(packageName, pluginsDir);
 
         if (!validation.valid) {
           spinner.fail(`Invalid plugin: ${validation.error}`);

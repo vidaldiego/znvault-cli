@@ -55,6 +55,7 @@ export function safeReadFile(filePath: string): string {
 /**
  * Safely parse JSON with proper error handling
  */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- cast helper: T names the caller's expected shape; returning `unknown` would push an `as` cast to every call site
 export function safeParseJson<T>(content: string, context: string): T {
   try {
     return JSON.parse(content) as T;
