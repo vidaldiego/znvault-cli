@@ -98,10 +98,10 @@ async function getApp(id: string, options: GetOptions): Promise<void> {
 
     output.section('OAuth Configuration');
     output.keyValue({
-      'Redirect URIs': app.redirect_uris?.join('\n                  ') || '-',
-      'Allowed Origins': app.allowed_origins?.join(', ') || '-',
-      'Grant Types': app.allowed_grant_types?.join(', ') || '-',
-      'Scopes': app.allowed_scopes?.join(', ') || '-',
+      'Redirect URIs': app.redirect_uris.join('\n                  ') || '-',
+      'Allowed Origins': app.allowed_origins.join(', ') || '-',
+      'Grant Types': app.allowed_grant_types.join(', ') || '-',
+      'Scopes': app.allowed_scopes.join(', ') || '-',
       'PKCE Required': app.require_pkce ? 'Yes' : 'No',
       'Access Token TTL': formatTtl(app.access_token_ttl_seconds),
       'Refresh Token TTL': formatTtl(app.refresh_token_ttl_seconds),
@@ -109,7 +109,7 @@ async function getApp(id: string, options: GetOptions): Promise<void> {
 
     output.section('Roles');
     output.keyValue({
-      'Available Roles': app.roles?.join(', ') || '-',
+      'Available Roles': app.roles.join(', ') || '-',
       'Default Role': app.default_role || '-',
     });
 

@@ -83,8 +83,8 @@ export function formatConfigSummary(item: HostListItem | HostConfig['config']): 
   // Check if this is a list item (has certTargetCount) or full config (has targets)
   if ('certTargetCount' in item) {
     // List item format
-    const certCount = item.certTargetCount ?? 0;
-    const secretCount = item.secretTargetCount ?? 0;
+    const certCount = item.certTargetCount;
+    const secretCount = item.secretTargetCount;
 
     if (certCount > 0) parts.push(`${certCount} cert(s)`);
     if (secretCount > 0) parts.push(`${secretCount} secret(s)`);

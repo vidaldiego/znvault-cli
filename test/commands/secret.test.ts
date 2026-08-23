@@ -7,6 +7,17 @@ const { mockReadStdinUtf8 } = vi.hoisted(() => ({
   mockReadStdinUtf8: vi.fn(),
 }));
 
+// Default `client.get` behaviour. Kept as a named function so afterEach can
+// reinstall it: tests that stub `client.get` with a persistent
+// mockImplementation (see stubMeta) must not leak into later tests —
+// vi.clearAllMocks() clears calls, not implementations.
+function defaultClientGet(path: string): Promise<unknown> {
+  if (path.includes('/v1/secrets?')) return Promise.resolve({ items: mockSecrets, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
+  if (path.includes('/meta')) return Promise.resolve(mockSecretMetadata);
+  if (path.includes('/history')) return Promise.resolve({ items: [{ version: 1, createdAt: new Date().toISOString() }], pagination: { total: 1, limit: 50, offset: 0, hasMore: false } });
+  return Promise.resolve(mockSecretMetadata);
+}
+
 vi.mock('../../src/lib/stdin.js', () => ({
   readStdinUtf8: mockReadStdinUtf8,
 }));
@@ -66,12 +77,7 @@ const mockDecryptedSecret = {
 
 vi.mock('../../src/lib/client.js', () => ({
   client: {
-    get: vi.fn().mockImplementation((path: string) => {
-      if (path.includes('/v1/secrets?')) return Promise.resolve({ items: mockSecrets, pagination: { total: 2, page: 1, pageSize: 20, totalPages: 1 } });
-      if (path.includes('/meta')) return Promise.resolve(mockSecretMetadata);
-      if (path.includes('/history')) return Promise.resolve([{ version: 1, createdAt: new Date().toISOString() }]);
-      return Promise.resolve(mockSecretMetadata);
-    }),
+    get: vi.fn().mockImplementation((path: string) => defaultClientGet(path)),
     post: vi.fn().mockImplementation((path: string) => {
       if (path.includes('/decrypt')) return Promise.resolve(mockDecryptedSecret);
       if (path.includes('/rotate')) return Promise.resolve({ ...mockSecretMetadata, version: 2 });
@@ -119,10 +125,12 @@ describe('secret commands', () => {
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     consoleSpy.mockRestore();
     exitSpy.mockRestore();
     vi.clearAllMocks();
+    const { client } = await import('../../src/lib/client.js');
+    vi.mocked(client.get).mockImplementation((path: string) => defaultClientGet(path));
   });
 
   describe('secret list', () => {

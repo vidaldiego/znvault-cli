@@ -186,7 +186,7 @@ export async function validatePlugin(packageName: string, pluginsDir: string): P
     };
 
     // Check for CLI plugin export
-    const hasCliExport = pkg.exports?.['./cli'] ?? pkg.main;
+    const hasCliExport = pkg.exports?.['./cli'] !== undefined || pkg.main !== undefined;
     if (!hasCliExport) {
       return { valid: false, error: 'Package does not export a CLI plugin' };
     }
@@ -195,7 +195,7 @@ export async function validatePlugin(packageName: string, pluginsDir: string): P
     try {
       const modulePath = join(pluginsDir, 'node_modules', packageName);
       const cliExport = pkg.exports?.['./cli'];
-      const cliPath = typeof cliExport === 'object' ? cliExport?.import : cliExport;
+      const cliPath = typeof cliExport === 'object' ? cliExport.import : cliExport;
       const resolvedCliPath = cliPath ?? './dist/cli.js';
       const fullPath = join(modulePath, resolvedCliPath);
 
@@ -203,7 +203,7 @@ export async function validatePlugin(packageName: string, pluginsDir: string): P
       if (!existsSync(fullPath.replace(/\.js$/, '.js')) && !existsSync(fullPath)) {
         // Try without ./cli export - main export might have createPayaraCLIPlugin
         const mainExport = pkg.exports?.['.'];
-        const mainPath = join(modulePath, (typeof mainExport === 'object' ? mainExport?.import : mainExport) ?? pkg.main ?? 'dist/index.js');
+        const mainPath = join(modulePath, (typeof mainExport === 'object' ? mainExport.import : mainExport) ?? pkg.main ?? 'dist/index.js');
         if (!existsSync(mainPath)) {
           return { valid: false, error: 'CLI module not found' };
         }

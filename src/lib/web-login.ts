@@ -92,7 +92,7 @@ async function findAvailablePort(): Promise<number> {
 
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
-      if (address && typeof address === 'object') {
+      if (address !== null && typeof address === 'object') {
         const port = address.port;
         server.close(() => { resolve(port); });
       } else {

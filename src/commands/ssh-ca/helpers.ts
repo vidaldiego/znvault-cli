@@ -44,7 +44,7 @@ export function formatKeyType(keyType: string | undefined): string {
  * Format principals array
  */
 export function formatPrincipals(principals: string[]): string {
-  if (!principals || principals.length === 0) return '-';
+  if (principals.length === 0) return '-';
   if (principals.length <= 3) return principals.join(', ');
   return `${principals.slice(0, 3).join(', ')} (+${principals.length - 3})`;
 }

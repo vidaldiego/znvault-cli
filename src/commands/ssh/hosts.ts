@@ -53,14 +53,7 @@ export function registerHostsCommand(parent: Command): void {
         spinner.stop();
 
         // Handle both array and paginated response formats
-        let agents: Agent[];
-        if (Array.isArray(response)) {
-          agents = response;
-        } else if (response && 'items' in response) {
-          agents = response.items ?? [];
-        } else {
-          agents = [];
-        }
+        let agents: Agent[] = Array.isArray(response) ? response : response.items;
 
         // Filter online only if requested
         if (options.onlineOnly) {

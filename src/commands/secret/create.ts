@@ -374,7 +374,7 @@ Examples:
           data = { text: text.trim() };
         } else if (dataType === 'keyvalue') {
           console.log('Enter key-value pairs (empty key to finish):');
-          while (true) {
+          for (;;) {
             const { key } = await inquirer.prompt<{ key: string }>([
               { type: 'input', name: 'key', message: 'Key:' },
             ]);

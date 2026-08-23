@@ -237,7 +237,8 @@ export function parseTtl(ttl: string): number {
     throw new Error(`Invalid TTL format: ${ttl}. Use format like 8h, 30m, 1d, or 3600`);
   }
   const value = parseInt(match[1]);
-  const unit = match[2]?.toLowerCase() ?? 's';
+  // Optional capture group: the index type says `string`, the regex says `string | undefined`.
+  const unit = (match[2] as string | undefined)?.toLowerCase() ?? 's';
   switch (unit) {
     case 's': return value;
     case 'm': return value * 60;

@@ -29,7 +29,7 @@ export function pickFreePort(): Promise<number> {
     srv.once('error', reject);
     srv.listen(0, '127.0.0.1', () => {
       const addr = srv.address();
-      if (addr && typeof addr === 'object') {
+      if (addr !== null && typeof addr === 'object') {
         const port = addr.port;
         srv.close(() => { resolve(port); });
       } else {
@@ -150,7 +150,8 @@ export async function runForward(
     env: process.env,
   });
 
-  let exited = false;
+  // Set from the child's event callbacks; `as boolean` stops TS narrowing it to the literal `false`.
+  let exited = false as boolean;
   sshProcess.on('error', (err) => {
     exited = true;
     process.stderr.write(`Failed to start SSH: ${err.message}\n`);

@@ -73,7 +73,7 @@ export function registerBookmarkCommands(parent: Command): void {
 
       profile.sshBookmarks ??= {};
 
-      if (profile.sshBookmarks[name]) {
+      if (name in profile.sshBookmarks) {
         output.error(`Bookmark '${name}' already exists`);
         output.info('Use "znvault ssh bookmark update" to modify it');
         process.exit(1);
@@ -241,7 +241,7 @@ export function registerBookmarkCommands(parent: Command): void {
         process.exit(1);
       }
 
-      if (profile.sshBookmarks[newName]) {
+      if (newName in profile.sshBookmarks) {
         output.error(`Bookmark '${newName}' already exists`);
         process.exit(1);
       }
