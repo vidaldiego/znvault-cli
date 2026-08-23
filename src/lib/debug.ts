@@ -19,8 +19,9 @@ const isDebugEnabled = (): boolean => {
 function describeUnknown(value: unknown): string {
   if (typeof value === 'string') return value;
   try {
-    // JSON.stringify's lib type claims `string`, but functions/symbols really yield undefined.
-    const json: string | undefined = JSON.stringify(value);
+    // JSON.stringify's lib type claims `string`, but functions/symbols really yield undefined;
+    // the cast (an annotation gets narrowed away) makes the ?? fallback type-visible.
+    const json = JSON.stringify(value) as string | undefined;
     return json ?? String(value);
   } catch {
     return '[unserializable value]';
