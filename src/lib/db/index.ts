@@ -14,9 +14,13 @@ import { AuditOperations } from './audit.js';
 import { EmergencyOperations } from './emergency.js';
 import { LmkEscrowOperations } from './lmk-escrow.js';
 import type { LmkEscrowDatabaseSnapshot } from './lmk-escrow.js';
+import { PreflightOperations } from './preflight.js';
+import type { PreflightDatabaseSnapshot } from './preflight.js';
 
 // Re-export types
 export * from './types.js';
+export type { PreflightDatabaseSnapshot } from './preflight.js';
+export { PreflightOperations } from './preflight.js';
 export type {
   LmkEscrowActiveRotation,
   LmkEscrowAuditHead,
@@ -37,6 +41,7 @@ export class LocalDBClient {
   private auditOps: AuditOperations;
   private emergencyOps: EmergencyOperations;
   private lmkEscrowOps: LmkEscrowOperations;
+  private preflightOps: PreflightOperations;
 
   constructor() {
     // All operations share the same connection strategy via BaseDBClient
@@ -47,6 +52,7 @@ export class LocalDBClient {
     this.auditOps = new AuditOperations();
     this.emergencyOps = new EmergencyOperations();
     this.lmkEscrowOps = new LmkEscrowOperations();
+    this.preflightOps = new PreflightOperations();
   }
 
   // Connection management - delegate to health ops (or any op, they all have the same base)
@@ -64,6 +70,7 @@ export class LocalDBClient {
       this.auditOps.close(),
       this.emergencyOps.close(),
       this.lmkEscrowOps.close(),
+      this.preflightOps.close(),
     ]);
   }
 
@@ -122,6 +129,9 @@ export class LocalDBClient {
   // ============ Local LMK Escrow (read-only DB capture) ============
   captureLmkEscrow = (backupId?: string): Promise<LmkEscrowDatabaseSnapshot> =>
     this.lmkEscrowOps.capture(backupId);
+
+  capturePreflight = (): Promise<PreflightDatabaseSnapshot> =>
+    this.preflightOps.capture();
 }
 
 // ============ Legacy exports for backward compatibility ============
