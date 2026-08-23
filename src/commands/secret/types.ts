@@ -60,6 +60,10 @@ export interface DecryptOptions {
   output?: string;
   json?: boolean;
   resolve?: boolean;
+  /** Print only the value (no metadata) — for `$(...)` / env-var injection and `> file`. */
+  raw?: boolean;
+  /** Print only this field of the data payload; implies `raw`. */
+  field?: string;
 }
 
 export interface CreateOptions {

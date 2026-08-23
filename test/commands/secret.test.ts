@@ -361,6 +361,139 @@ describe('secret commands', () => {
     });
   });
 
+  describe('secret decrypt --raw / --field', () => {
+    let stdoutSpy: ReturnType<typeof vi.spyOn>;
+    let ttyDescriptor: PropertyDescriptor | undefined;
+
+    beforeEach(() => {
+      stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      // Tests run piped (not a TTY); pin it so the "TTY adds a newline" rule is deterministic.
+      ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+      Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true });
+    });
+
+    afterEach(() => {
+      stdoutSpy.mockRestore();
+      if (ttyDescriptor) Object.defineProperty(process.stdout, 'isTTY', ttyDescriptor);
+      else delete (process.stdout as unknown as Record<string, unknown>).isTTY;
+    });
+
+    it('--raw writes only the value of a single-field secret, no metadata', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce({ ...mockSecretMetadata, data: { text: 'sk-123' } } as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--raw']);
+
+      expect(stdoutSpy).toHaveBeenCalledTimes(1);
+      expect(stdoutSpy).toHaveBeenCalledWith('sk-123');
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it('--raw appends a newline only when stdout is a TTY', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce({ ...mockSecretMetadata, data: { text: 'sk-123' } } as never);
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--raw']);
+
+      const written = stdoutSpy.mock.calls.map((c) => String(c[0])).join('');
+      expect(written).toBe('sk-123\n');
+    });
+
+    it('--field <name> prints that field and implies --raw', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce({
+        ...mockSecretMetadata,
+        type: 'credential',
+        data: { username: 'app', password: 'p@ss' },
+      } as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--field', 'password']);
+
+      expect(stdoutSpy).toHaveBeenCalledWith('p@ss');
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it('--raw on a file-based secret writes the decoded bytes', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const content = Buffer.from('-----BEGIN KEY-----\n').toString('base64');
+      vi.mocked(client.post).mockResolvedValueOnce({
+        ...mockSecretMetadata,
+        data: { filename: 'key.pem', content, contentType: 'application/x-pem-file' },
+      } as never);
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--raw']);
+
+      expect(stdoutSpy).toHaveBeenCalledTimes(1);
+      const [arg] = stdoutSpy.mock.calls[0];
+      expect(Buffer.isBuffer(arg)).toBe(true);
+      expect((arg as Buffer).toString()).toBe('-----BEGIN KEY-----\n'); // no extra newline, even on TTY
+    });
+
+    it('--raw on a multi-field secret fails and names --field', async () => {
+      const { error } = await import('../../src/lib/output.js');
+      // default mock data has two fields: apiKey + endpoint
+
+      await expect(
+        program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--raw']),
+      ).rejects.toThrow('exit:1');
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('--field'));
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('apiKey, endpoint'));
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    });
+
+    it('--field with an unknown name fails and lists the available fields', async () => {
+      const { error } = await import('../../src/lib/output.js');
+
+      await expect(
+        program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--field', 'nope']),
+      ).rejects.toThrow('exit:1');
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("'nope'"));
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('apiKey, endpoint'));
+    });
+
+    it('--raw and --json are mutually exclusive (checked before any request)', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { error } = await import('../../src/lib/output.js');
+
+      await expect(
+        program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--raw', '--json']),
+      ).rejects.toThrow('exit:1');
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('--json'));
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('--raw still honours --no-resolve', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      vi.mocked(client.post).mockResolvedValueOnce({ ...mockSecretMetadata, data: { text: '${ref:a#b}' } } as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--raw', '--no-resolve']);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
+      expect(stdoutSpy).toHaveBeenCalledWith('${ref:a#b}');
+    });
+
+    it('--raw -o <file> writes the exact value to the file and nothing to stdout', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { success } = await import('../../src/lib/output.js');
+      const fs = await import('fs');
+      const os = await import('os');
+      const path = await import('path');
+      const target = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'znvault-raw-')), 'out.txt');
+      vi.mocked(client.post).mockResolvedValueOnce({ ...mockSecretMetadata, data: { text: 'sk-123' } } as never);
+
+      await program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1', '--raw', '-o', target]);
+
+      expect(fs.readFileSync(target, 'utf8')).toBe('sk-123');
+      expect(stdoutSpy).not.toHaveBeenCalled();
+      expect(success).toHaveBeenCalledWith(expect.stringContaining(target));
+    });
+  });
+
   describe('secret delete', () => {
     it('should delete secret with confirmation', async () => {
       const { client } = await import('../../src/lib/client.js');

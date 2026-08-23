@@ -11,6 +11,20 @@ import * as output from '../../lib/output.js';
 import type { DecryptOptions, DecryptedSecret } from './types.js';
 import { formatType, formatBytes } from './helpers.js';
 import { resolveSecretId } from './resolve.js';
+import { selectRawValue, RawSelectionError, type RawPayload } from './raw-value.js';
+
+/**
+ * Emit a raw payload to stdout. Text gets a trailing newline only on a TTY
+ * (so an interactive prompt isn't glued to the value) — piped/redirected
+ * output is byte-exact, which is what `$(...)`, `> file` and `| base64` want.
+ * Bytes (decoded files) are always written as-is.
+ */
+function writeRawToStdout(payload: RawPayload): void {
+  process.stdout.write(payload.value);
+  if (payload.kind === 'text' && process.stdout.isTTY) {
+    process.stdout.write('\n');
+  }
+}
 
 export function registerDecryptCommand(secretCmd: Command): void {
   secretCmd
@@ -18,6 +32,8 @@ export function registerDecryptCommand(secretCmd: Command): void {
     .description('Decrypt and show secret value (supports UUID or tenant/alias format)')
     .option('-o, --output <file>', 'Write content to file')
     .option('--json', 'Output as JSON')
+    .option('--raw', 'Print only the value, no metadata (for env vars / files). Multi-field secrets need --field')
+    .option('--field <name>', 'Print only this field of the secret data (implies --raw)')
     .option('--no-resolve', 'Return the raw, unresolved template/pointer (skip reference resolution)')
     .addHelpText('after', `
 Examples:
@@ -26,8 +42,22 @@ Examples:
   znvault secret decrypt abc12345-...                # by UUID
   znvault secret decrypt certs/server-key -o key.pem # save to file
   znvault secret decrypt app/db-url --no-resolve     # raw template, tokens unexpanded
+
+Raw output (value only — nothing else on stdout):
+  export API_KEY=$(znvault secret decrypt web/api-key --raw)          # single-value secret
+  export DB_PASSWORD=$(znvault secret decrypt db/creds --field password) # one field of a credential
+  znvault secret decrypt certs/server-key --raw > key.pem             # file secret → decoded bytes
+  znvault secret decrypt ssh/deploy --field privateKey -o id_ed25519  # file-shaped field → file
+  Strings are printed verbatim; objects/numbers as compact JSON. A trailing
+  newline is added only when stdout is a terminal.
 `)
     .action(async (idOrAlias: string, options: DecryptOptions) => {
+      const raw = options.raw === true || options.field !== undefined;
+      if (raw && options.json === true) {
+        output.error('--raw/--field cannot be combined with --json');
+        process.exit(1);
+      }
+
       const spinner = output.spinner('Resolving secret...').start();
 
       try {
@@ -44,6 +74,29 @@ Examples:
 
         if (options.json) {
           output.json(secret);
+          return;
+        }
+
+        if (raw) {
+          let payload: RawPayload;
+          try {
+            payload = selectRawValue(secret.data, options.field);
+          } catch (err) {
+            if (err instanceof RawSelectionError) {
+              output.error(err.message);
+              process.exit(1);
+            }
+            throw err;
+          }
+
+          if (options.output) {
+            const fs = await import('fs');
+            fs.writeFileSync(options.output, payload.value);
+            output.success(`Value written to: ${options.output}`);
+            return;
+          }
+
+          writeRawToStdout(payload);
           return;
         }
 
