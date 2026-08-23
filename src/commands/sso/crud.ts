@@ -138,7 +138,7 @@ async function createApp(name: string, slug: string, options: CreateOptions): Pr
       slug,
       description: options.description,
       redirect_uris: options.redirectUri,
-      allowed_origins: options.origin || [],
+      allowed_origins: options.origin ?? [],
       allowed_scopes: options.scope,
       allowed_grant_types: options.grantType,
       access_token_ttl_seconds: parseInt(String(options.tokenTtl)) || 3600,

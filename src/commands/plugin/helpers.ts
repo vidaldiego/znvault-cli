@@ -186,7 +186,7 @@ export async function validatePlugin(packageName: string, pluginsDir: string): P
     };
 
     // Check for CLI plugin export
-    const hasCliExport = pkg.exports?.['./cli'] || pkg.main;
+    const hasCliExport = pkg.exports?.['./cli'] ?? pkg.main;
     if (!hasCliExport) {
       return { valid: false, error: 'Package does not export a CLI plugin' };
     }

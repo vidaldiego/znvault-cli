@@ -173,7 +173,7 @@ export function registerSCPCommand(parent: Command): void {
         // Step 2: Check certificate validity
         const certPath = await getCertificatePath(keyPath);
         const certStatus = await isCertificateValid(certPath);
-        const needsSign = options.forceSign || !certStatus.valid;
+        const needsSign = options.forceSign === true || !certStatus.valid;
 
         if (options.verbose && !certStatus.valid) {
           output.warn(`Certificate needs signing: ${certStatus.reason}`);

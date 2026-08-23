@@ -178,7 +178,7 @@ async function listRoles(options: ListOptions): Promise<void> {
         role.is_system ? 'Yes' : 'No',
         String(role.user_count ?? 0),
         formatPermissions(role.permissions),
-        truncate(role.description || '-'),
+        truncate(role.description ?? '-'),
       ]);
     }
 
@@ -209,9 +209,9 @@ async function getRole(roleId: string, options: GetOptions): Promise<void> {
     table.push(
       ['ID', role.id],
       ['Name', role.name],
-      ['Description', role.description || '-'],
+      ['Description', role.description ?? '-'],
       ['System Role', role.is_system ? 'Yes' : 'No'],
-      ['Tenant', role.tenant_id || 'System'],
+      ['Tenant', role.tenant_id ?? 'System'],
       ['Created', formatDate(role.created_at)],
       ['Updated', formatDate(role.updated_at)],
     );
@@ -436,7 +436,7 @@ async function getUserRoles(userId: string, options: { json?: boolean }): Promis
         role.id,
         role.name,
         role.is_system ? 'Yes' : 'No',
-        truncate(role.description || '-', 38),
+        truncate(role.description ?? '-', 38),
       ]);
     }
 

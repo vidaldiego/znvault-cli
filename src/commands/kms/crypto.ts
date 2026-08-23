@@ -156,7 +156,7 @@ async function generateDataKey(keyId: string, options: GenerateDataKeyOptions): 
   try {
     const body = {
       keyId,
-      keySpec: options.spec || 'AES_256',
+      keySpec: options.spec ?? 'AES_256',
       context: parseContext(options.context),
     };
 
@@ -180,7 +180,7 @@ async function generateDataKey(keyId: string, options: GenerateDataKeyOptions): 
 
     console.log('\n--- Generated Data Key ---');
     console.log(`Key ID: ${result.keyId}`);
-    console.log(`Key Spec: ${options.spec || 'AES_256'}`);
+    console.log(`Key Spec: ${options.spec ?? 'AES_256'}`);
     if (result.plaintext) {
       console.log(`\nPlaintext Data Key (base64):`);
       console.log(result.plaintext);

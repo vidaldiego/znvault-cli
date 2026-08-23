@@ -21,7 +21,7 @@ export function registerTokenListCommand(parentCmd: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (managedKeyArg: string | undefined, options: TokenListOptions) => {
       // Support both positional argument and -k flag for backwards compatibility
-      const managedKey = managedKeyArg || options.managedKey;
+      const managedKey = managedKeyArg ?? options.managedKey;
 
       if (!managedKey) {
         output.error('Managed key name is required');

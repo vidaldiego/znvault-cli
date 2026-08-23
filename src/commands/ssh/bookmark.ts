@@ -71,9 +71,7 @@ export function registerBookmarkCommands(parent: Command): void {
       const profile = getCurrentProfile();
       const profileName = getActiveProfileName();
 
-      if (!profile.sshBookmarks) {
-        profile.sshBookmarks = {};
-      }
+      profile.sshBookmarks ??= {};
 
       if (profile.sshBookmarks[name]) {
         output.error(`Bookmark '${name}' already exists`);

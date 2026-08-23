@@ -178,7 +178,7 @@ Examples:
           output.keyValue({
             'Suggested Alias': result.alias,
             'Type': result.type,
-            'Sub-Type': result.subType || '-',
+            'Sub-Type': result.subType ?? '-',
             'Tags': result.tags.join(', ') || 'none',
             'Confidence': `${Math.round(result.confidence * 100)}%`,
           });
@@ -198,7 +198,7 @@ Examples:
           // Let user confirm or modify
           const aliasChoices = [
             { name: `${result.alias} (suggested)`, value: result.alias },
-            ...(result.alternativeAliases || []).map(a => ({ name: a, value: a })),
+            ...(result.alternativeAliases ?? []).map(a => ({ name: a, value: a })),
             { name: 'Enter custom alias', value: '__custom__' },
           ];
 
@@ -290,8 +290,8 @@ Examples:
         if (options.username || options.password) {
           actualType = 'credential';
           data = {
-            username: options.username || '',
-            password: options.password || '',
+            username: options.username ?? '',
+            password: options.password ?? '',
           };
         } else if (options.text) {
           data = { text: options.text };
@@ -341,7 +341,7 @@ Examples:
           data = {
             filename,
             content: content.toString('base64'),
-            contentType: options.contentType || 'application/octet-stream',
+            contentType: options.contentType ?? 'application/octet-stream',
           };
         }
       } else {
@@ -403,7 +403,7 @@ Examples:
           data = {
             filename,
             content: content.toString('base64'),
-            contentType: options.contentType || 'application/octet-stream',
+            contentType: options.contentType ?? 'application/octet-stream',
           };
         }
       }

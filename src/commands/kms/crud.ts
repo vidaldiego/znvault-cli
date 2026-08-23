@@ -125,7 +125,7 @@ async function getKey(keyId: string, options: GetOptions): Promise<void> {
 async function createKey(options: CreateOptions): Promise<void> {
   // Resolve tenant: use explicit option, or get from stored credentials
   const authContext = getAuthContext();
-  const tenantId = options.tenant || authContext.tenantId;
+  const tenantId = options.tenant ?? authContext.tenantId;
 
   if (!tenantId) {
     output.error('Tenant is required. Use --tenant <id> or login to a tenant account.');
@@ -216,7 +216,7 @@ async function deleteKey(keyId: string, options: DeleteOptions): Promise<void> {
         {
           type: 'confirm',
           name: 'confirm',
-          message: `Schedule deletion of key "${key.alias || keyId}" in ${days} days? This cannot be undone after the waiting period.`,
+          message: `Schedule deletion of key "${key.alias ?? keyId}" in ${days} days? This cannot be undone after the waiting period.`,
           default: false,
         },
       ]);

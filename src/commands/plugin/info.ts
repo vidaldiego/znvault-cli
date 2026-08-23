@@ -107,7 +107,7 @@ export function registerInfoCommand(parent: Command): void {
           console.log();
           console.log(chalk.dim('Local Installation:'));
           console.log(`  Installed:   ${chalk.green('Yes')}`);
-          console.log(`  Version:     ${localVersion || 'unknown'}`);
+          console.log(`  Version:     ${localVersion ?? 'unknown'}`);
           console.log(`  Enabled:     ${installed.enabled !== false ? chalk.green('Yes') : chalk.yellow('No')}`);
 
           if (npmInfo && localVersion && localVersion !== npmInfo.version) {

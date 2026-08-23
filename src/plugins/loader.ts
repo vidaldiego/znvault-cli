@@ -64,7 +64,7 @@ export class CLIPluginLoader {
         await this.loadPlugin(config);
       } catch (err) {
         // Don't fail CLI startup on plugin error - just warn
-        const source = config.package || config.path || 'unknown';
+        const source = config.package ?? config.path ?? 'unknown';
         console.warn(`Failed to load plugin ${source}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
@@ -76,7 +76,7 @@ export class CLIPluginLoader {
   async loadPlugin(config: CLIPluginConfig): Promise<void> {
     const { package: packageName, path: localPath, config: pluginOptions } = config;
 
-    const source = packageName || localPath || 'unknown';
+    const source = packageName ?? localPath ?? 'unknown';
 
     try {
       let module: { default: CLIPlugin | CLIPluginFactory };
@@ -114,11 +114,11 @@ export class CLIPluginLoader {
           } else if (pkgJson.exports?.['./cli']) {
             entryPoint = typeof pkgJson.exports['./cli'] === 'string'
               ? pkgJson.exports['./cli']
-              : pkgJson.exports['./cli'].default || pkgJson.exports['./cli'].import;
+              : pkgJson.exports['./cli'].default ?? pkgJson.exports['./cli'].import;
           } else if (pkgJson.exports?.['.']?.import) {
             entryPoint = pkgJson.exports['.'].import;
           } else {
-            entryPoint = pkgJson.main || 'dist/index.js';
+            entryPoint = pkgJson.main ?? 'dist/index.js';
           }
 
           const modulePath = join(packagePath, entryPoint);
