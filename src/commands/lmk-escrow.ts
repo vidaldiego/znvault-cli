@@ -15,6 +15,8 @@ import {
   type LmkEscrowWriteReceipt,
 } from '../lib/lmk-escrow.js';
 import { restoreBootstrapKeyFromBundle } from '../lib/lmk-escrow-restore.js';
+import { resolveBskFromProvider } from '../lib/bsk-source.js';
+import { createSentinelClient } from '../lib/sentinel-client.js';
 import { getLocalVaultVersion } from '../lib/local.js';
 import { getVersion } from '../lib/version.js';
 import * as output from '../lib/output.js';
@@ -23,9 +25,78 @@ interface SnapshotOptions {
   mount: string;
   copyLabel: string;
   bskPath?: string;
+  fromProvider?: string;
+  sentinelUrl?: string;
+  sentinelCa?: string;
+  sentinelCert?: string;
+  sentinelKey?: string;
+  sentinelTimeoutMs?: string;
   backupId?: string;
   allowUnboundLabSnapshot?: boolean;
   json?: boolean;
+}
+
+/**
+ * Obtain the bootstrap key for a snapshot, from a file or from the hardware
+ * root, and say which in the receipt.
+ *
+ * The provider path exists so the ceremony does not have to run wherever the
+ * cleartext key happens to live — in practice a production application node —
+ * and so that retiring `lmk.bin` does not permanently end the ability to take
+ * another escrow. See src/lib/bsk-source.ts.
+ */
+async function obtainBsk(
+  options: SnapshotOptions,
+  database: LocalDBClient,
+): Promise<{ bsk: Buffer; source: string }> {
+  if (options.fromProvider === undefined) {
+    const bskPath = resolveBskPath(options.bskPath);
+    return { bsk: readBsk(bskPath), source: `file:${bskPath}` };
+  }
+
+  if (options.bskPath !== undefined) {
+    throw new Error('--from-provider and --bsk-path are mutually exclusive: pick one source.');
+  }
+  if (options.fromProvider !== 'sentinel') {
+    // aws-kms is deliberately not offered. It would need AWS credentials on the
+    // ceremony host, which is a materially different trust story from an mTLS
+    // client certificate to an appliance sitting in the same room.
+    throw new Error(
+      `--from-provider currently supports only 'sentinel', not ` +
+      `${JSON.stringify(options.fromProvider)}.`,
+    );
+  }
+
+  const envelope = await database.getRootKeyEnvelope('sentinel');
+  if (!envelope) {
+    const available = await database.listRootKeyEnvelopeProviders();
+    throw new Error(
+      'No root-key envelope recorded for provider \'sentinel\'. Providers with an ' +
+      `envelope: ${available.length > 0 ? available.join(', ') : '(none)'}.`,
+    );
+  }
+
+  const client = createSentinelClient({
+    url: requireOption(options.sentinelUrl, '--sentinel-url', 'ROOT_KEY_SENTINEL_URL'),
+    caPath: requireOption(options.sentinelCa, '--sentinel-ca', 'ROOT_KEY_SENTINEL_CA'),
+    certPath: requireOption(options.sentinelCert, '--sentinel-cert', 'ROOT_KEY_SENTINEL_CERT'),
+    keyPath: requireOption(options.sentinelKey, '--sentinel-key', 'ROOT_KEY_SENTINEL_KEY'),
+    timeoutMs: options.sentinelTimeoutMs === undefined
+      ? undefined
+      : Number(options.sentinelTimeoutMs),
+  });
+
+  const bsk = await resolveBskFromProvider(envelope, (ciphertext) => client.unwrap(ciphertext));
+  return { bsk, source: `provider:sentinel (${envelope.kcv})` };
+}
+
+/** A ceremony fails loudly on a missing input, never on a silent default. */
+function requireOption(value: string | undefined, flag: string, envVar: string): string {
+  const resolved = value ?? process.env[envVar];
+  if (resolved === undefined || resolved === '') {
+    throw new Error(`${flag} is required with --from-provider (or set ${envVar}).`);
+  }
+  return resolved;
 }
 
 interface RestoreOptions {
@@ -71,7 +142,7 @@ function printReport(report: LmkEscrowVerificationReport | LmkEscrowWriteReceipt
     'Historical gaps': report.unrecoverableVersions.length === 0
       ? 'none'
       : report.unrecoverableVersions.join(', '),
-    'BSK fingerprint': `sha256:${report.bskSha256}`,
+    'BSK fingerprint': report.bskKcv,
     'Backup binding': report.backupId ?? 'UNBOUND — LAB ONLY',
     'Active rotation': report.activeRotationId ?? 'none',
     ...('path' in report ? {
@@ -96,6 +167,17 @@ export function registerLmkEscrowCommands(lmk: Command): void {
     .requiredOption('--mount <path>', 'Root of the mounted removable escrow device')
     .requiredOption('--copy-label <label>', 'Physical copy label, for example A or B')
     .option('--bsk-path <path>', 'Override LMK_PATH/DATA_DIR/lmk.bin')
+    .option(
+      '--from-provider <name>',
+      "Source the BSK from a root-key provider instead of a file ('sentinel'). " +
+      'Lets the ceremony run on a dedicated host, and keeps escrow possible ' +
+      'after lmk.bin is retired.',
+    )
+    .option('--sentinel-url <url>', 'Sentinel base URL (https only)')
+    .option('--sentinel-ca <path>', 'CA bundle that must issue the appliance certificate')
+    .option('--sentinel-cert <path>', 'Client certificate presented to the appliance')
+    .option('--sentinel-key <path>', 'Its private key')
+    .option('--sentinel-timeout-ms <ms>', 'Request timeout (default 5000)')
     .option('--backup-id <id>', 'Bind the snapshot to a VERIFIED ZnVault backup record')
     .option(
       '--allow-unbound-lab-snapshot',
@@ -119,11 +201,13 @@ export function registerLmkEscrowCommands(lmk: Command): void {
       const database = new LocalDBClient();
       let bsk: Buffer | null = null;
       let bundle: Buffer | null = null;
+      let bskSource = '';
       try {
         // getLocalConfig(), called by LocalDBClient, loads DATA_DIR/LMK_PATH from
         // the service environment before this path is resolved.
-        const bskPath = resolveBskPath(options.bskPath);
-        bsk = readBsk(bskPath);
+        const obtained = await obtainBsk(options, database);
+        bsk = obtained.bsk;
+        bskSource = obtained.source;
         const snapshot = await database.captureLmkEscrow(options.backupId);
         bundle = buildLmkEscrowBundle({
           snapshot,
@@ -144,11 +228,15 @@ export function registerLmkEscrowCommands(lmk: Command): void {
         spinner.stop();
 
         if (options.json === true) {
-          output.json(receipt);
+          // The source belongs in the machine-readable receipt too: an acta
+          // that cannot distinguish a file-sourced ceremony from a
+          // hardware-root one records the wrong control.
+          output.json({ ...receipt, bskSource });
           return;
         }
         output.section('LMK Escrow Snapshot Written and Read-Back Verified');
         printReport(receipt);
+        output.keyValue({ 'BSK source': bskSource });
         if (receipt.backupId === null) {
           output.warn('This snapshot is not bound to a verified database backup and is LAB-ONLY evidence.');
         }
@@ -218,7 +306,7 @@ export function registerLmkEscrowCommands(lmk: Command): void {
         Copy: receipt.copyLabel,
         Bundle: receipt.bundleId,
         'Active LMK version': receipt.activeLmkVersion,
-        'BSK fingerprint': receipt.bskSha256,
+        'BSK fingerprint': receipt.bskKcv,
       });
       output.success(
         receipt.outcome === 'RESTORED'

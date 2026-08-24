@@ -38,6 +38,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { LmkEscrowDatabaseSnapshot } from '../../src/lib/db/lmk-escrow.js';
 import { buildLmkEscrowBundle } from '../../src/lib/lmk-escrow.js';
 import { restoreBootstrapKeyFromBundle } from '../../src/lib/lmk-escrow-restore.js';
+import { computeBskKcv } from '../../src/lib/kcv.js';
 
 const dirs: string[] = [];
 
@@ -143,7 +144,12 @@ describe('restoreBootstrapKeyFromBundle', () => {
     const serialised = JSON.stringify(report);
     expect(serialised).not.toContain(bsk.toString('hex'));
     expect(serialised).not.toContain(bsk.toString('base64'));
-    expect(report.bskSha256).toBe(createHash('sha256').update(bsk).digest('hex'));
+    // The drill record publishes the KCV, never the raw digest of the key —
+    // a drill log is archived, shared and long-lived.
+    expect(report.bskKcv).toBe(computeBskKcv(bsk));
+    expect(JSON.stringify(report)).not.toContain(
+      createHash('sha256').update(bsk).digest('hex'),
+    );
   });
 
   it('is a no-op when the target already holds the same key', () => {

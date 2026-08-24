@@ -17,6 +17,8 @@ import { client } from '../lib/client.js';
 import * as output from '../lib/output.js';
 import { promptConfirm } from '../lib/prompts.js';
 import { registerLmkEscrowCommands } from './lmk-escrow.js';
+import { registerLmkRestoreDrillCommands } from './lmk-restore-drill.js';
+import { registerLmkPreflightCommand } from './lmk-preflight.js';
 
 interface JsonOption {
   json?: boolean;
@@ -138,6 +140,8 @@ export function registerLmkCommands(program: Command): void {
     .description('Local Master Key (LMK) management commands');
 
   registerLmkEscrowCommands(lmk);
+  registerLmkRestoreDrillCommands(lmk);
+  registerLmkPreflightCommand(lmk);
 
   const rotation = lmk
     .command('rotation')
