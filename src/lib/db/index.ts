@@ -13,10 +13,11 @@ import { LockdownOperations } from './lockdown.js';
 import { AuditOperations } from './audit.js';
 import { EmergencyOperations } from './emergency.js';
 import { LmkEscrowOperations } from './lmk-escrow.js';
-import type { LmkEscrowDatabaseSnapshot } from './lmk-escrow.js';
+import type { LmkEscrowDatabaseSnapshot, RootKeyEnvelopeRow } from './lmk-escrow.js';
 
 // Re-export types
 export * from './types.js';
+export type { RootKeyEnvelopeRow } from './lmk-escrow.js';
 export type {
   LmkEscrowActiveRotation,
   LmkEscrowAuditHead,
@@ -122,6 +123,12 @@ export class LocalDBClient {
   // ============ Local LMK Escrow (read-only DB capture) ============
   captureLmkEscrow = (backupId?: string): Promise<LmkEscrowDatabaseSnapshot> =>
     this.lmkEscrowOps.capture(backupId);
+
+  getRootKeyEnvelope = (providerId: string): Promise<RootKeyEnvelopeRow | null> =>
+    this.lmkEscrowOps.getRootKeyEnvelope(providerId);
+
+  listRootKeyEnvelopeProviders = (): Promise<string[]> =>
+    this.lmkEscrowOps.listRootKeyEnvelopeProviders();
 }
 
 // ============ Legacy exports for backward compatibility ============

@@ -44,6 +44,14 @@ export interface LmkEscrowActiveRotation {
   startedAt: Date | null;
 }
 
+export interface RootKeyEnvelopeRow {
+  providerId: string;
+  providerType: string;
+  keyId: string | null;
+  ciphertext: Buffer;
+  kcv: string;
+}
+
 export interface LmkEscrowDatabaseSnapshot {
   capturedAt: Date;
   databaseName: string;
@@ -81,6 +89,38 @@ interface LmkEscrowBackupRow {
  * This class never unwraps LMKs and never writes to PostgreSQL.
  */
 export class LmkEscrowOperations extends BaseDBClient {
+  /**
+   * Read one root-key envelope, for sourcing the BSK from the hardware root
+   * instead of a cleartext file.
+   *
+   * `kcv` is the load-bearing column: it is what the returned key is checked
+   * against, and the appliance neither supplies it nor can influence it at read
+   * time. See `resolveBskFromProvider`.
+   */
+  async getRootKeyEnvelope(providerId: string): Promise<RootKeyEnvelopeRow | null> {
+    await this.connect();
+    const result = await this.getRawClient().query<RootKeyEnvelopeRow>(
+      `SELECT provider_id AS "providerId",
+              provider_type AS "providerType",
+              key_id AS "keyId",
+              ciphertext,
+              kcv
+         FROM root_key_envelopes
+        WHERE provider_id = $1`,
+      [providerId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Provider ids that have an envelope, for a useful "did you mean" on error. */
+  async listRootKeyEnvelopeProviders(): Promise<string[]> {
+    await this.connect();
+    const result = await this.getRawClient().query<{ providerId: string }>(
+      `SELECT provider_id AS "providerId" FROM root_key_envelopes ORDER BY provider_id`,
+    );
+    return result.rows.map((r) => r.providerId);
+  }
+
   async capture(backupId?: string): Promise<LmkEscrowDatabaseSnapshot> {
     await this.connect();
     const client = this.getRawClient();
