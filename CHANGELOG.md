@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.22.1] - 2026-08-24
+
+### Security
+
+- Dependency refresh clearing all 15 npm audit findings (2 critical, 11 high,
+  2 moderate) with no major-version jumps. Runtime: `ws` 8.21.3 (high, direct),
+  `yaml` 2.9.0 (stack overflow via nested collections), `pg` 8.23.0. Dev chain:
+  `vitest`/`@vitest/coverage-v8` 4.1.11 (critical advisories via vite/rollup),
+  `typescript-eslint` 8.67, plus transitive fixes (brace-expansion, fast-uri,
+  js-yaml, minimatch, nanoid, picomatch, postcss). `npm audit`: 0 findings.
+
+### Changed
+
+- Updated typescript-eslint flagged 8 now-redundant type assertions (the typed
+  client facade made them unnecessary); removed them and the type imports and
+  local response interfaces they alone justified.
+
+## [4.22.0] - 2026-08-23
+
+### Added
+
+- `secret decrypt --raw` prints **only the value** — no metadata, nothing else on
+  stdout — so it can be injected directly: `export API_KEY=$(znvault secret
+  decrypt web/api-key --raw)`. `--field <name>` selects one field of a
+  multi-field secret (credential `password`, a key-value entry, a keypair's
+  `privateKey`) and implies `--raw`. Strings are printed verbatim, file-based
+  secrets / file-shaped fields as decoded bytes (`--raw > key.pem`), anything
+  else as compact JSON; a trailing newline is added only when stdout is a TTY.
+  `--raw -o <file>` writes the exact value to the file. Multi-field secrets
+  without `--field`, unknown fields, and `--raw --json` fail closed with exit 1.
+
+### Fixed
+
+- The per-command profile banner (`[znvault vX] [profile: … -> …]`) is no longer
+  printed on stdout when a command runs with `--json` (or the new `--raw`/
+  `--field`). Previously `znvault … --json | jq` failed unless `-q` was added,
+  because the banner preceded the JSON document. The skip rule lives in
+  `src/lib/banner-policy.ts` (unit-tested) alongside the existing completion and
+  `ssh forward --print-port` cases.
+
+## [4.20.0] - 2026-08-20
+
 ### Added
 
 - `secret create --data-stdin` accepts a bounded JSON object from piped stdin,

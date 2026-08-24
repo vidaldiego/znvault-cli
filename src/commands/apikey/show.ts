@@ -9,7 +9,7 @@ import type { Command } from 'commander';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { APIKey } from '../../types/index.js';
-import type { ShowOptions, ApiKeyConditions } from './types.js';
+import type { ShowOptions } from './types.js';
 import { apiKeyAsSuperadmin, formatDate, getDaysUntilExpiry, displayConditions } from './helpers.js';
 
 export function registerShowCommand(apiKeyCmd: Command): void {
@@ -74,7 +74,7 @@ export function registerShowCommand(apiKeyCmd: Command): void {
         }
 
         // Display conditions if any
-        const keyConditions = key.conditions as ApiKeyConditions | undefined;
+        const keyConditions = key.conditions;
         if (keyConditions && Object.keys(keyConditions).length > 0) {
           console.log('\nConditions:');
           displayConditions(keyConditions);

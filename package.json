@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "4.21.0",
+  "version": "4.22.1",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -22,7 +22,7 @@
     "test:unit:watch": "vitest",
     "test:integration": "ZNVAULT_INTEGRATION=true vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src --ext .ts --max-warnings 0",
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit"
   },

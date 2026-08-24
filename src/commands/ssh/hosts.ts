@@ -53,14 +53,7 @@ export function registerHostsCommand(parent: Command): void {
         spinner.stop();
 
         // Handle both array and paginated response formats
-        let agents: Agent[];
-        if (Array.isArray(response)) {
-          agents = response;
-        } else if (response && 'items' in response) {
-          agents = response.items ?? [];
-        } else {
-          agents = [];
-        }
+        let agents: Agent[] = Array.isArray(response) ? response : response.items;
 
         // Filter online only if requested
         if (options.onlineOnly) {
@@ -101,15 +94,15 @@ export function registerHostsCommand(parent: Command): void {
           ])
         );
 
-        output.info('Total: ' + agents.length + ' host(s)');
+        output.info(`Total: ${agents.length} host(s)`);
         
         // Show connection hint
         if (agents.some(a => a.ip)) {
           console.log();
-          const firstWithIp = agents.find(a => a.ip);
-          if (firstWithIp) {
-            output.info('Connect: znvault ssh connect ' + firstWithIp.ip);
-            output.info('Or add a bookmark: znvault ssh bookmark add ' + firstWithIp.name + ' ' + firstWithIp.ip);
+          const firstIp = agents.map(a => ({ name: a.name, ip: a.ip })).find((a): a is { name: string; ip: string } => typeof a.ip === 'string' && a.ip !== '');
+          if (firstIp) {
+            output.info(`Connect: znvault ssh connect ${firstIp.ip}`);
+            output.info(`Or add a bookmark: znvault ssh bookmark add ${firstIp.name} ${firstIp.ip}`);
           }
         }
       } catch (err) {
@@ -130,8 +123,8 @@ function formatLastSeen(lastSeen: string): string {
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
   if (minutes < 1) return 'just now';
-  if (minutes < 60) return minutes + 'm ago';
-  if (hours < 24) return hours + 'h ago';
-  if (days < 7) return days + 'd ago';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
   return date.toLocaleDateString();
 }

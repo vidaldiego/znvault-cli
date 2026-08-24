@@ -34,7 +34,12 @@ export function registerUninstallCommand(parent: Command): void {
           process.exit(1);
         }
 
-        const actualPackage = found.package!;
+        const actualPackage = found.package;
+        if (actualPackage === undefined) {
+          spinner.fail(`Plugin '${name}' is a local-path plugin`);
+          output.error('Path-based plugins are not npm-installed; remove the entry from the CLI config instead.');
+          process.exit(1);
+        }
 
         // Remove from plugins directory
         const pluginsDir = getPluginsDir();

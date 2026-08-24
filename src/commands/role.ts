@@ -178,7 +178,7 @@ async function listRoles(options: ListOptions): Promise<void> {
         role.is_system ? 'Yes' : 'No',
         String(role.user_count ?? 0),
         formatPermissions(role.permissions),
-        truncate(role.description || '-'),
+        truncate(role.description ?? '-'),
       ]);
     }
 
@@ -209,9 +209,9 @@ async function getRole(roleId: string, options: GetOptions): Promise<void> {
     table.push(
       ['ID', role.id],
       ['Name', role.name],
-      ['Description', role.description || '-'],
+      ['Description', role.description ?? '-'],
       ['System Role', role.is_system ? 'Yes' : 'No'],
-      ['Tenant', role.tenant_id || 'System'],
+      ['Tenant', role.tenant_id ?? 'System'],
       ['Created', formatDate(role.created_at)],
       ['Updated', formatDate(role.updated_at)],
     );
@@ -436,7 +436,7 @@ async function getUserRoles(userId: string, options: { json?: boolean }): Promis
         role.id,
         role.name,
         role.is_system ? 'Yes' : 'No',
-        truncate(role.description || '-', 38),
+        truncate(role.description ?? '-', 38),
       ]);
     }
 
@@ -445,13 +445,14 @@ async function getUserRoles(userId: string, options: { json?: boolean }): Promis
     if (response.permissions.length > 0) {
       console.log(`\nEffective Permissions (${response.permissions.length}):`);
       // Group permissions by category
-      const grouped: Record<string, string[]> = {};
+      const grouped = new Map<string, string[]>();
       for (const perm of response.permissions) {
         const category = perm.split(':')[0] || 'other';
-        if (!grouped[category]) grouped[category] = [];
-        grouped[category].push(perm);
+        const list = grouped.get(category) ?? [];
+        list.push(perm);
+        grouped.set(category, list);
       }
-      for (const [category, perms] of Object.entries(grouped)) {
+      for (const [category, perms] of grouped) {
         console.log(`  ${category}:`);
         for (const p of perms) {
           console.log(`    - ${p}`);
@@ -485,14 +486,15 @@ async function getUserPermissions(userId: string, options: { json?: boolean }): 
     console.log(`Permissions (${response.permissions.length}):`);
 
     // Group by category
-    const grouped: Record<string, string[]> = {};
+    const grouped = new Map<string, string[]>();
     for (const perm of response.permissions) {
       const category = perm.split(':')[0] || 'other';
-      if (!grouped[category]) grouped[category] = [];
-      grouped[category].push(perm);
+      const list = grouped.get(category) ?? [];
+      list.push(perm);
+      grouped.set(category, list);
     }
 
-    for (const [category, perms] of Object.entries(grouped).sort()) {
+    for (const [category, perms] of [...grouped].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
       console.log(`\n  ${category}:`);
       for (const p of perms.sort()) {
         console.log(`    - ${p}`);

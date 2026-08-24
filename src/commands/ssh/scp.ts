@@ -109,7 +109,11 @@ export function registerSCPCommand(parent: Command): void {
 
       // Get the remote part
       const remotePart = srcParsed.isRemote ? srcParsed : dstParsed;
-      let host = remotePart.host!;
+      if (remotePart.host === undefined) {
+        output.error('Internal error: remote path parsed without a host');
+        process.exit(1);
+      }
+      let host = remotePart.host;
       let user = remotePart.user;
       let port = options.port ?? '22';
       let identityOverride = options.identity;
@@ -137,7 +141,7 @@ export function registerSCPCommand(parent: Command): void {
         user = profile.sshUser;
       }
 
-      const verbose = (msg: string) => {
+      const verbose = (msg: string): void => {
         if (options.verbose) output.info(msg);
       };
 
@@ -173,7 +177,7 @@ export function registerSCPCommand(parent: Command): void {
         // Step 2: Check certificate validity
         const certPath = await getCertificatePath(keyPath);
         const certStatus = await isCertificateValid(certPath);
-        const needsSign = options.forceSign || !certStatus.valid;
+        const needsSign = options.forceSign === true || !certStatus.valid;
 
         if (options.verbose && !certStatus.valid) {
           output.warn(`Certificate needs signing: ${certStatus.reason}`);
@@ -214,7 +218,7 @@ export function registerSCPCommand(parent: Command): void {
         if (options.verbose) scpArgs.push('-v');
 
         // Build remote path string
-        const buildRemotePath = (parsed: ReturnType<typeof parseSCPPath>) => {
+        const buildRemotePath = (parsed: ReturnType<typeof parseSCPPath>): string => {
           if (!parsed.isRemote) return parsed.path;
           const userPart = user ? `${user}@` : '';
           return `${userPart}${host}:${parsed.path}`;

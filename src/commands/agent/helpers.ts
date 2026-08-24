@@ -14,7 +14,6 @@ import {
   AGENT_HEALTH_TIMEOUT_MS,
   AGENT_PLUGIN_UPDATE_TIMEOUT_MS,
   AGENT_UPDATE_TIMEOUT_MS,
-  AGENT_RESTART_WAIT_MS,
 } from '../../lib/constants.js';
 import type {
   RemoteAgent,

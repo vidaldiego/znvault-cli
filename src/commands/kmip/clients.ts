@@ -110,9 +110,9 @@ export async function setSourceCidrs(
       return;
     }
     if (allowedSourceCidrs.length > 0) {
-      output.success(`Source-IP allowlist set for '${response.name ?? id}': ${allowedSourceCidrs.join(', ')}`);
+      output.success(`Source-IP allowlist set for '${response.name}': ${allowedSourceCidrs.join(', ')}`);
     } else {
-      output.success(`Source-IP allowlist cleared for '${response.name ?? id}' (no restriction)`);
+      output.success(`Source-IP allowlist cleared for '${response.name}' (no restriction)`);
     }
   } catch (err) {
     spinner.fail('Failed to set KMIP client source-IP allowlist');
@@ -130,7 +130,7 @@ export async function revokeClient(id: string, options: { json?: boolean }): Pro
       output.json(response);
       return;
     }
-    output.success(`KMIP client '${response.name ?? id}' revoked`);
+    output.success(`KMIP client '${response.name}' revoked`);
   } catch (err) {
     spinner.fail('Failed to revoke KMIP client');
     output.error(err instanceof Error ? err.message : String(err));

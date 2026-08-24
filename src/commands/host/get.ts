@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import * as mode from '../../lib/mode.js';
 import * as output from '../../lib/output.js';
 import type { GetOptions, HostConfig, OutdatedAgentsResponse } from './types.js';
-import { printHostDetails, formatRelativeTime, hostPermissionHint } from './helpers.js';
+import { printHostDetails, hostPermissionHint } from './helpers.js';
 
 /**
  * Register the get command

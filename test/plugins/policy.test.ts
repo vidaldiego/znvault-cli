@@ -7,9 +7,11 @@ import { areCLIPluginsDisabled } from '../../src/plugins/policy.js';
 
 const temporaryDirectories: string[] = [];
 
+// Building the whole CLI takes well over vitest's default 10s hookTimeout on a
+// cold CI runner (it passes locally only because the tsc cache is warm).
 beforeAll(() => {
   execFileSync('npm', ['run', 'build'], { cwd: process.cwd(), stdio: 'pipe' });
-});
+}, 180_000);
 
 function createTemporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), 'znvault-no-plugins-'));

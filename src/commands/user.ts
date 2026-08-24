@@ -250,7 +250,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
       try {
         const result = await client.updateUser(
           id,
-          updates as Parameters<typeof client.updateUser>[1],
+          updates,
           { asSuperadmin }
         );
         spinner.succeed('User updated successfully');

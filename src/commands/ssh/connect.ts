@@ -136,7 +136,7 @@ export async function executeConnect(
   options: ConnectOptions
 ): Promise<void> {
   const { spawn } = await import('child_process');
-  const verbose = (msg: string) => { if (options.verbose) output.info(msg); };
+  const verbose = (msg: string): void => { if (options.verbose) output.info(msg); };
 
   let base: SignedSshBase;
   try {
@@ -154,7 +154,7 @@ export async function executeConnect(
   if (options.t) sshArgs.push('-t');
   else if (options.T) sshArgs.push('-T');
   sshArgs.push(base.user ? `${base.user}@${base.host}` : base.host);
-  if (remoteCommand && remoteCommand.length > 0) sshArgs.push(...remoteCommand);
+  if (remoteCommand.length > 0) sshArgs.push(...remoteCommand);
 
   if (options.dryRun) {
     output.section('Dry Run');

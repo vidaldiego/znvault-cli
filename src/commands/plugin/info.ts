@@ -25,7 +25,7 @@ export function registerInfoCommand(parent: Command): void {
     .command('info <name>')
     .description('Show plugin information')
     .option('--json', 'Output as JSON')
-    .action(async (name: string, options: PluginInfoOptions) => {
+    .action((name: string, options: PluginInfoOptions) => {
       const spinner = output.spinner('Fetching plugin info...').start();
 
       try {
@@ -103,11 +103,11 @@ export function registerInfoCommand(parent: Command): void {
         }
 
         if (installed) {
-          const localVersion = getInstalledVersion(installed.package!, pluginsDir);
+          const localVersion = installed.package !== undefined ? getInstalledVersion(installed.package, pluginsDir) : null;
           console.log();
           console.log(chalk.dim('Local Installation:'));
           console.log(`  Installed:   ${chalk.green('Yes')}`);
-          console.log(`  Version:     ${localVersion || 'unknown'}`);
+          console.log(`  Version:     ${localVersion ?? 'unknown'}`);
           console.log(`  Enabled:     ${installed.enabled !== false ? chalk.green('Yes') : chalk.yellow('No')}`);
 
           if (npmInfo && localVersion && localVersion !== npmInfo.version) {

@@ -287,7 +287,7 @@ export function richTable(
         return JSON.stringify(val);
       })
     );
-    tablePlain(headers, rows as CellValue[][]);
+    tablePlain(headers, rows);
     return;
   }
 

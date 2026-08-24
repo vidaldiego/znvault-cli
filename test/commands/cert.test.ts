@@ -211,40 +211,87 @@ describe('cert commands', () => {
   });
 
   // ===== cert decrypt =====
+  // Contract since 6b0251e: the server sends certificateData base64-encoded; the CLI keeps it
+  // as bytes. PEM (text) may go to stdout; P12/DER (binary) only via --output or --json base64.
   describe('cert decrypt', () => {
-    it('should decrypt certificate', async () => {
-      const { apiPost } = await import('../../src/lib/mode.js');
+    const pemText = '-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----';
+    const pemResponse = {
+      certificateType: 'PEM',
+      certificateData: Buffer.from(pemText).toString('base64'),
+    };
+    // Includes bytes above 0x7F — exactly the ones a UTF-8 round trip would destroy.
+    const p12Bytes = Buffer.from([0x30, 0x82, 0x10, 0x51, 0xff, 0xfe, 0x00, 0x7f, 0x80, 0xc3]);
+    const p12Response = {
+      certificateType: 'P12',
+      certificateData: p12Bytes.toString('base64'),
+    };
 
-      vi.mocked(apiPost).mockResolvedValue({
-        certificateData: Buffer.from('-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----').toString('base64'),
-      });
+    it('decrypts a PEM certificate and prints its text to stdout', async () => {
+      const { apiPost } = await import('../../src/lib/mode.js');
+      vi.mocked(apiPost).mockResolvedValue(pemResponse);
 
       await program.parseAsync(['node', 'test', 'cert', 'decrypt', 'cert-123']);
 
       expect(apiPost).toHaveBeenCalledWith('/v1/certificates/cert-123/decrypt', {
         purpose: 'CLI access',
       });
+      expect(consoleSpy).toHaveBeenCalledWith(pemText);
     });
 
-    it('should write to file when --output specified', async () => {
+    it('writes the exact decoded bytes (not a UTF-8 string) with --output', async () => {
       const { apiPost } = await import('../../src/lib/mode.js');
       const fs = await import('node:fs');
+      vi.mocked(apiPost).mockResolvedValue(p12Response);
 
-      vi.mocked(apiPost).mockResolvedValue({
-        certificateData: Buffer.from('test cert data').toString('base64'),
-      });
+      await program.parseAsync(['node', 'test', 'cert', 'decrypt', 'cert-123', '--output', '/tmp/cert.p12']);
 
-      await program.parseAsync(['node', 'test', 'cert', 'decrypt', 'cert-123', '--output', '/tmp/cert.pem']);
-
-      expect(fs.writeFileSync).toHaveBeenCalledWith('/tmp/cert.pem', 'test cert data');
+      expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+      const [file, data] = vi.mocked(fs.writeFileSync).mock.calls[0];
+      expect(file).toBe('/tmp/cert.p12');
+      expect(Buffer.isBuffer(data)).toBe(true);
+      expect(Buffer.compare(data as Buffer, p12Bytes)).toBe(0);
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining(`(${p12Bytes.length} bytes)`));
     });
 
-    it('should pass custom purpose', async () => {
+    it('refuses to write a binary (P12) certificate to stdout and points at --output/--json', async () => {
       const { apiPost } = await import('../../src/lib/mode.js');
+      const { error } = await import('../../src/lib/output.js');
+      vi.mocked(apiPost).mockResolvedValue(p12Response);
 
-      vi.mocked(apiPost).mockResolvedValue({
-        certificateData: Buffer.from('test').toString('base64'),
+      await expect(
+        program.parseAsync(['node', 'test', 'cert', 'decrypt', 'cert-123']),
+      ).rejects.toThrow('process.exit called');
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('--output'));
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it('--json emits base64 for binary and utf-8 text for PEM, labelled by `encoding`', async () => {
+      const { apiPost } = await import('../../src/lib/mode.js');
+      const { json } = await import('../../src/lib/output.js');
+
+      vi.mocked(apiPost).mockResolvedValueOnce(p12Response);
+      await program.parseAsync(['node', 'test', 'cert', 'decrypt', 'cert-123', '--json']);
+      expect(json).toHaveBeenCalledWith({
+        id: 'cert-123',
+        certificateType: 'P12',
+        encoding: 'base64',
+        certificateData: p12Bytes.toString('base64'),
       });
+
+      vi.mocked(apiPost).mockResolvedValueOnce(pemResponse);
+      await program.parseAsync(['node', 'test', 'cert', 'decrypt', 'cert-123', '--json']);
+      expect(json).toHaveBeenCalledWith({
+        id: 'cert-123',
+        certificateType: 'PEM',
+        encoding: 'utf-8',
+        certificateData: pemText,
+      });
+    });
+
+    it('passes a custom --purpose to the server', async () => {
+      const { apiPost } = await import('../../src/lib/mode.js');
+      vi.mocked(apiPost).mockResolvedValue(pemResponse);
 
       await program.parseAsync(['node', 'test', 'cert', 'decrypt', 'cert-123', '--purpose', 'backup']);
 

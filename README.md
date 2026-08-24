@@ -123,6 +123,8 @@ znvault superadmin cluster takeover --yes   # Force leadership (HA, superadmin)
 znvault secret list                                  # List metadata (your tenant)
 znvault secret get <alias>                           # Get metadata only
 znvault secret decrypt <alias>                       # Decrypt after unseal
+znvault secret decrypt <alias> --raw                 # Value only (env vars, $(...))
+znvault secret decrypt <alias> --field password      # One field of a multi-field secret
 znvault secret create <alias> --text "secret"        # Create plain text
 printf '%s\n' '{"k":"v"}' | \
   znvault secret create <alias> --data-stdin         # JSON without argv/files

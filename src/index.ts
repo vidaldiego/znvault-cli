@@ -6,7 +6,7 @@ import { registerAuthCommands } from './commands/auth.js';
 
 // Apply the global Commander patch that gates `--tenant` options by registration
 // context. Must run before any command registration.
-applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
+applyTenantContextPatch(Command.prototype);
 import { registerHealthCommands } from './commands/health.js';
 import { registerUserCommands } from './commands/user.js';
 import { registerSuperadminCommands } from './commands/superadmin/index.js';
@@ -54,6 +54,7 @@ import { cliBanner, helpHint, cliStatusDisplay, quickCommands, type CLIStatusInf
 import { runBackgroundUpdateCheck } from './lib/cli-update.js';
 import { setOutputMode, setQuietMode } from './lib/output-mode.js';
 import { profileIndicator } from './lib/output.js';
+import { shouldSkipProfileIndicator } from './lib/banner-policy.js';
 import { configureContextHelp } from './lib/context-help.js';
 import { getVersion } from './lib/version.js';
 import { areCLIPluginsDisabled } from './plugins/policy.js';
@@ -108,19 +109,15 @@ program
       client.configure(opts.url, opts.insecure);
     }
 
-    // Skip profile indicator for completion commands (output is evaluated by shell)
-    const cmdPath = actionCommand.name();
-    const parentName = actionCommand.parent?.name();
-    if (parentName === 'completion' || cmdPath === 'completion') {
-      return;
-    }
-
-    // Skip profile indicator for `ssh forward --print-port` — its stdout is a
-    // machine channel (JSON contract line) consumed by the deploy tunnel manager.
+    // Skip the profile indicator when stdout is a machine channel (`--json`,
+    // shell completion, `ssh forward --print-port`, `secret decrypt --raw/--field`).
+    // The policy lives in lib/banner-policy.ts so it can be unit-tested.
     if (
-      cmdPath === 'forward' &&
-      parentName === 'ssh' &&
-      actionCommand.opts().printPort === true
+      shouldSkipProfileIndicator({
+        name: actionCommand.name(),
+        parent: actionCommand.parent?.name(),
+        opts: actionCommand.opts(),
+      })
     ) {
       return;
     }
@@ -270,7 +267,7 @@ async function main(): Promise<void> {
 }
 
 // Run main
-main().catch((err) => {
+main().catch((err: unknown) => {
   console.error('CLI error:', err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

@@ -35,8 +35,6 @@ const CLI_VERSION = '2.20.2';
 
 // Configuration
 const CALLBACK_PATH = '/callback';
-const PORT_RANGE_START = 49152;
-const PORT_RANGE_END = 65535;
 const AUTH_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 // PKCE parameters
@@ -94,7 +92,7 @@ async function findAvailablePort(): Promise<number> {
 
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
-      if (address && typeof address === 'object') {
+      if (address !== null && typeof address === 'object') {
         const port = address.port;
         server.close(() => { resolve(port); });
       } else {
@@ -222,7 +220,7 @@ function startCallbackServer(
     });
 
     // Helper to forcefully close server and all connections
-    const forceClose = () => {
+    const forceClose = (): void => {
       for (const socket of sockets) {
         socket.destroy();
       }

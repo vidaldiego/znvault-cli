@@ -6,7 +6,6 @@
 
 import * as output from '../../../lib/output.js';
 import type { ManagedAPIKey, RotationMode } from '../../../types/index.js';
-import type { ApiKeyConditions } from '../types.js';
 import { formatDate, displayConditions } from '../helpers.js';
 
 export function formatRotationMode(mode: RotationMode): string {
@@ -71,7 +70,7 @@ export function displayManagedKeyDetails(key: ManagedAPIKey): void {
     }
   }
 
-  const keyConditions = key.conditions as ApiKeyConditions | undefined;
+  const keyConditions = key.conditions;
   if (keyConditions && Object.keys(keyConditions).length > 0) {
     console.log('\nConditions:');
     displayConditions(keyConditions);

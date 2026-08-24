@@ -1,5 +1,10 @@
 // Path: src/lib/client/index.ts
 
+/* eslint-disable @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types --
+   Delegating facade: every member is `x = (...) => this.sub.x(...)`, so its return type IS the
+   sub-client's and is inferred from it. Re-declaring it here would duplicate ~80 signatures that
+   could silently drift from the ones they wrap. Non-facade code in this file still needs types. */
+
 /**
  * VaultClient facade
  *
@@ -19,7 +24,6 @@ import { PoliciesClient, PermissionsClient } from './policies.js';
 import { QuarantineClient } from './quarantine.js';
 
 import type { LoginResponse } from '../../types/index.js';
-import type { ClientConfig } from './types.js';
 
 // Re-export domain clients for direct use
 export { HttpClient } from './http.js';

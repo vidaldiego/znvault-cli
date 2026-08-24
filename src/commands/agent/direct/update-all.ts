@@ -16,7 +16,6 @@ import {
   fetchPluginVersions,
   triggerAgentUpdate,
   triggerPluginUpdate,
-  waitForAgentRestart,
 } from '../helpers.js';
 import { withAgentConnection } from '../../../lib/ssh-tunnel.js';
 
@@ -96,8 +95,8 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
               agentInfo.push({
                 agent,
                 ip,
-                currentVersion: agent.version || 'unknown',
-                latestVersion: agent.version || 'unknown',
+                currentVersion: agent.version ?? 'unknown',
+                latestVersion: agent.version ?? 'unknown',
                 updateAvailable: updatesNeeded > 0,
                 pluginUpdates: updatesNeeded,
               });
@@ -120,7 +119,7 @@ export function registerUpdateAllCommand(parentCmd: Command): void {
             agentInfo.push({
               agent,
               ip,
-              currentVersion: agent.version || 'unknown',
+              currentVersion: agent.version ?? 'unknown',
               latestVersion: 'unreachable',
               updateAvailable: false,
             });
