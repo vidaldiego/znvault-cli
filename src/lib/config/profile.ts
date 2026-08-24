@@ -75,6 +75,7 @@ export function listProfiles(): ProfileInfo[] {
  * Names of every configured profile, sorted.
  */
 export function listProfileNames(): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- needed for test mocks
   const profiles = store.get('profiles') ?? {};
   return Object.keys(profiles).sort();
 }
@@ -89,6 +90,7 @@ export function listProfileNames(): string[] {
  * typed `--profile <name>` for a remote deployment.
  */
 export function profileExists(name: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- needed for test mocks
   const profiles = store.get('profiles') ?? {};
   return Object.prototype.hasOwnProperty.call(profiles, name);
 }
