@@ -519,7 +519,7 @@ function registerQuarantineCommandsInner(parent: Command, ctx: 'tenant' | 'super
       try {
         if (!options.yes) {
           output.section('Configuration Changes');
-          output.keyValue(updates as Record<string, string | number | boolean>);
+          output.keyValue(updates);
 
           const confirmed = await promptConfirm('Apply these changes?');
           if (!confirmed) {

@@ -8,7 +8,7 @@ import type { Command } from 'commander';
 
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
-import type { CreateOptions, ApiKeyConditions } from './types.js';
+import type { CreateOptions } from './types.js';
 import { apiKeyAsSuperadmin, formatDate, displayConditions, parseConditionsFromOptions } from './helpers.js';
 
 export function registerCreateCommand(apiKeyCmd: Command): void {
@@ -115,7 +115,7 @@ export function registerCreateCommand(apiKeyCmd: Command): void {
         }
 
         // Display conditions if any
-        const apiKeyConditions = result.apiKey.conditions as ApiKeyConditions | undefined;
+        const apiKeyConditions = result.apiKey.conditions;
         if (apiKeyConditions && Object.keys(apiKeyConditions).length > 0) {
           console.log('\nConditions:');
           displayConditions(apiKeyConditions);

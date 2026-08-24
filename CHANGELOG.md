@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.22.1] - 2026-08-24
+
+### Security
+
+- Dependency refresh clearing all 15 npm audit findings (2 critical, 11 high,
+  2 moderate) with no major-version jumps. Runtime: `ws` 8.21.3 (high, direct),
+  `yaml` 2.9.0 (stack overflow via nested collections), `pg` 8.23.0. Dev chain:
+  `vitest`/`@vitest/coverage-v8` 4.1.11 (critical advisories via vite/rollup),
+  `typescript-eslint` 8.67, plus transitive fixes (brace-expansion, fast-uri,
+  js-yaml, minimatch, nanoid, picomatch, postcss). `npm audit`: 0 findings.
+
+### Changed
+
+- Updated typescript-eslint flagged 8 now-redundant type assertions (the typed
+  client facade made them unnecessary); removed them and the type imports and
+  local response interfaces they alone justified.
+
 ## [4.22.0] - 2026-08-23
 
 ### Added

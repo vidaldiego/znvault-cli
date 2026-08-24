@@ -237,7 +237,7 @@ export function registerTenantCommands(program: Command): void {
       const spinner = output.spinner('Updating tenant...').start();
 
       try {
-        const result = await client.updateTenant(id, updates as Parameters<typeof client.updateTenant>[1]);
+        const result = await client.updateTenant(id, updates);
         spinner.succeed('Tenant updated successfully');
 
         if (options.json) {

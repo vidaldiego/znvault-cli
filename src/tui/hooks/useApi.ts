@@ -89,9 +89,9 @@ export function useDashboard(refreshInterval = 5000): DashboardData & { refresh:
       ]);
 
       setData({
-        health: healthResult.status === 'fulfilled' ? healthResult.value as HealthData : null,
-        cluster: clusterResult.status === 'fulfilled' ? clusterResult.value as ClusterData : null,
-        lockdown: lockdownResult.status === 'fulfilled' ? lockdownResult.value as LockdownData : null,
+        health: healthResult.status === 'fulfilled' ? healthResult.value : null,
+        cluster: clusterResult.status === 'fulfilled' ? clusterResult.value : null,
+        lockdown: lockdownResult.status === 'fulfilled' ? lockdownResult.value : null,
         audit: [], // Audit requires separate API call with auth
         loading: false,
         error: null,

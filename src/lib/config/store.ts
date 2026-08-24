@@ -50,6 +50,7 @@ function getStoreInstance(): Conf<ConfigStore> {
 export const store: Conf<ConfigStore> = new Proxy({} as Conf<ConfigStore>, {
   get(_target, prop: keyof Conf<ConfigStore>) {
     const instance = getStoreInstance();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- the very next lines bind any function to `instance` before returning it; that binding is this proxy's purpose
     const value = instance[prop];
     if (typeof value === 'function') {
       return value.bind(instance);

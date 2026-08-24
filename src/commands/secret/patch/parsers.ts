@@ -249,7 +249,7 @@ const tomlParser: FormatParser = {
   parse(content: string): Record<string, unknown> {
     try {
       const parsed = TOML.parse(content);
-      return parsed as Record<string, unknown>;
+      return parsed;
     } catch (err) {
       throw new PatchError(
         `Invalid TOML: ${(err as Error).message}`,

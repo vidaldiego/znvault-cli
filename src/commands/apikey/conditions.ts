@@ -54,7 +54,7 @@ export function registerConditionsCommand(apiKeyCmd: Command): void {
           return;
         }
 
-        const keyConditions = key.conditions as ApiKeyConditions | undefined;
+        const keyConditions = key.conditions;
         if (keyConditions && Object.keys(keyConditions).length > 0) {
           console.log('\nUpdated conditions:');
           displayConditions(keyConditions);

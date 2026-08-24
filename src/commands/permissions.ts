@@ -13,18 +13,6 @@ interface Permission {
   category: string;
 }
 
-interface PermissionsResponse {
-  permissions: Permission[];
-  categories: string[];
-  total: number;
-}
-
-interface ValidatePermissionsResponse {
-  valid: string[];
-  invalid: string[];
-  allValid: boolean;
-}
-
 // Command option interfaces
 interface ListOptions {
   category?: string;
@@ -59,7 +47,7 @@ export function registerPermissionsCommands(program: Command): void {
       const spinner = output.spinner('Fetching permissions...').start();
 
       try {
-        const result = await client.getPermissions(options.category) as PermissionsResponse;
+        const result = await client.getPermissions(options.category);
         spinner.stop();
 
         if (options.json) {
@@ -106,7 +94,7 @@ export function registerPermissionsCommands(program: Command): void {
       const spinner = output.spinner('Fetching categories...').start();
 
       try {
-        const result = await client.getPermissions() as PermissionsResponse;
+        const result = await client.getPermissions();
         spinner.stop();
 
         if (options.json) {
@@ -137,7 +125,7 @@ export function registerPermissionsCommands(program: Command): void {
       const spinner = output.spinner('Validating permissions...').start();
 
       try {
-        const result = await client.validatePermissions(permissions) as ValidatePermissionsResponse;
+        const result = await client.validatePermissions(permissions);
         spinner.stop();
 
         if (options.json) {
@@ -188,7 +176,7 @@ export function registerPermissionsCommands(program: Command): void {
       const spinner = output.spinner('Searching permissions...').start();
 
       try {
-        const result = await client.getPermissions() as PermissionsResponse;
+        const result = await client.getPermissions();
         spinner.stop();
 
         const searchLower = query.toLowerCase();

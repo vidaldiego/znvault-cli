@@ -6,7 +6,7 @@ import { registerAuthCommands } from './commands/auth.js';
 
 // Apply the global Commander patch that gates `--tenant` options by registration
 // context. Must run before any command registration.
-applyTenantContextPatch(Command.prototype as unknown as Parameters<typeof applyTenantContextPatch>[0]);
+applyTenantContextPatch(Command.prototype);
 import { registerHealthCommands } from './commands/health.js';
 import { registerUserCommands } from './commands/user.js';
 import { registerSuperadminCommands } from './commands/superadmin/index.js';
