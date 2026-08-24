@@ -43,6 +43,8 @@ import { registerMigrationCommands } from './commands/migration.js';
 import { client } from './lib/client.js';
 import {
   setRuntimeProfile,
+  listProfileNames,
+  profileExists,
   getActiveProfileName,
   getConfig,
   getPlugins,
@@ -65,6 +67,19 @@ interface GlobalOptions {
   profile?: string;
   plain?: boolean;
   quiet?: boolean;
+}
+
+/**
+ * Name of the top-level command group an action belongs to — `profile` for
+ * `znvault profile create`, `superadmin` for `znvault superadmin rootkey
+ * verify` — or null when the action is the root command itself.
+ */
+function topLevelCommandName(actionCommand: Command): string | null {
+  let cmd = actionCommand;
+  while (cmd.parent?.parent) {
+    cmd = cmd.parent;
+  }
+  return cmd.parent ? cmd.name() : null;
 }
 
 const program = new Command();
@@ -99,8 +114,31 @@ program
       setQuietMode(true);
     }
 
-    // Set profile override (before any config access)
+    // Set profile override (before any config access).
+    //
+    // Fail closed on a profile that does not exist. getCurrentProfile() falls
+    // back to CONFIG_DEFAULTS (https://localhost:8443) for an unknown name so
+    // a fresh install works out of the box; applied to an explicit
+    // `--profile <name>` that default silently retargets the command at the
+    // operator's own machine. A runbook step like
+    // `znvault --profile prod superadmin rootkey verify` would then report on
+    // localhost, and a verification that answers about the wrong host is worse
+    // than one that refuses to answer.
+    //
+    // The `profile` command group is exempt so profile management itself is
+    // never locked out by its own guard.
     if (opts.profile) {
+      const commandGroup = topLevelCommandName(actionCommand);
+      if (commandGroup !== 'profile' && !profileExists(opts.profile)) {
+        const known = listProfileNames();
+        throw new Error(
+          `unknown profile '${opts.profile}'. ` +
+            (known.length > 0
+              ? `Configured profiles: ${known.join(', ')}.`
+              : 'No profiles are configured.') +
+            " Create one with `znvault profile create <name> --vault-url <url>`, or run without --profile to use the active profile."
+        );
+      }
       setRuntimeProfile(opts.profile);
     }
 
