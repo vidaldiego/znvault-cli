@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.23.0] - 2026-08-24
+
+Escrow ceremony work: the receipt stops publishing a raw digest of the root
+key, the ceremony no longer has to run on a machine that holds the cleartext
+key, and the isolated-restore drill gains gates that a healthy-looking failure
+cannot pass.
+
+### Security
+
+- **The escrow receipt publishes `kcv1:`, never the raw SHA-256 of the
+  bootstrap key.** The receipt is the one artefact of the procedure that leaves
+  the datacentre — an auditor, a drill log, a ticket — and a full untruncated
+  digest of the root key written into it is a verification oracle: any future
+  partial exposure of the key becomes confirmable against an archived document,
+  by anyone holding it, for as long as it exists. The truncated KCV answers the
+  only question a receipt needs to answer and matches what every node publishes
+  on `/v1/health`. The on-disk bundle format is unchanged.
+
+  **Breaking for scripts** that parse the `BSK fingerprint` field of
+  `lmk escrow snapshot|verify|restore` output, including `--json`. The value
+  changes from 64 hex characters to `kcv1:` plus 32.
+
+### Added
+
+- `lmk escrow snapshot --from-provider sentinel` — source the bootstrap key
+  from the Archon Sentinel appliance over mTLS instead of a cleartext file.
+  Two consequences: the ceremony can run on a dedicated host that stores
+  nothing, and escrow stays possible after `lmk.bin` is retired from the fleet,
+  which until now would have permanently ended the ability to take another
+  snapshot. The key returned by the appliance is checked against the KCV
+  PostgreSQL recorded at wrap time before anything is built around it.
+- `lmk restore-drill pre|post` — gates for an isolated restore drill. A vault
+  started against an empty database does not fail: it mints a new LMK and
+  reports a healthy start with a root-key fingerprint that matches the escrow
+  bundle. These read state and compare it against the bundle, never an exit
+  code or an HTTP status.
+- `lmk preflight` — read-only inventory of the key hierarchy with pass/fail
+  gates, in a `REPEATABLE READ READ ONLY` transaction. Writes nothing, and goes
+  to PostgreSQL directly because the superadmin root-key endpoints each write an
+  audit row.
+- `computeBskKcv` / `isBskKcv`, pinned to frozen golden vectors shared with the
+  vault server so the two implementations cannot drift silently apart.
+
+
 ## [4.22.1] - 2026-08-24
 
 ### Security
