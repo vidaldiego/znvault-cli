@@ -22,7 +22,7 @@
     "test:unit:watch": "vitest",
     "test:integration": "ZNVAULT_INTEGRATION=true vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src --ext .ts --max-warnings 0",
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit"
   },
