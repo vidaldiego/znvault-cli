@@ -38,6 +38,8 @@ export {
   getCurrentProfile,
   saveProfile,
   listProfiles,
+  listProfileNames,
+  profileExists,
   createProfile,
   deleteProfile,
   switchProfile,

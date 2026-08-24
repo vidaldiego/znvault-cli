@@ -72,6 +72,28 @@ export function listProfiles(): ProfileInfo[] {
 }
 
 /**
+ * Names of every configured profile, sorted.
+ */
+export function listProfileNames(): string[] {
+  const profiles = store.get('profiles') ?? {};
+  return Object.keys(profiles).sort();
+}
+
+/**
+ * Whether a profile with this exact name is configured.
+ *
+ * Used to fail closed on an explicitly requested profile that does not exist.
+ * `getCurrentProfile()` deliberately falls back to CONFIG_DEFAULTS for a
+ * missing profile so a fresh install still works; that fallback points at
+ * localhost, which is the right default and the wrong answer when an operator
+ * typed `--profile <name>` for a remote deployment.
+ */
+export function profileExists(name: string): boolean {
+  const profiles = store.get('profiles') ?? {};
+  return Object.prototype.hasOwnProperty.call(profiles, name);
+}
+
+/**
  * Create a new profile
  */
 export function createProfile(name: string, options: { url?: string; insecure?: boolean; copyFrom?: string }): void {
