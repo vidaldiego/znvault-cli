@@ -48,10 +48,26 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The ceremony's exclusion, append-only history and crash-resumability are
+      # properties of the DATABASE (zn-vault migration 093), so the schema has to
+      # exist for the proof to run.
+      #
+      # The fixture is a VERBATIM COPY of the server's migration, which is a
+      # second copy of a contract and therefore a drift risk. It is copied rather
+      # than fetched because this package publishes to npm on its own and CI has
+      # no access to the server repo. The drift is caught by
+      # `test/lib/db/schema-fixture-drift.test.ts`, which compares the two byte
+      # for byte whenever both repos are checked out side by side.
+      - name: Apply key-lifecycle schema (093_key_lifecycle_operations)
+        run: |
+          PGPASSWORD=test_password_123 psql -h localhost -p 5433 -U znvault_test \
+            -d znvault_test -v ON_ERROR_STOP=1 -f test/fixtures/093_key_lifecycle_operations.sql
+
       - name: Run Tests
         run: npm test
         env:
           PREFLIGHT_TEST_DATABASE_URL: postgres://znvault_test:test_password_123@localhost:5433/znvault_test
+          CEREMONY_TEST_DATABASE_URL: postgres://znvault_test:test_password_123@localhost:5433/znvault_test
 
       - name: Typecheck
         run: npm run typecheck
