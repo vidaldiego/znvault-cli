@@ -55,6 +55,7 @@ import {
 import { cliBanner, helpHint, cliStatusDisplay, quickCommands, type CLIStatusInfo } from './lib/visual.js';
 import { runBackgroundUpdateCheck } from './lib/cli-update.js';
 import { setOutputMode, setQuietMode } from './lib/output-mode.js';
+import { requestLocalMode } from './lib/mode.js';
 import { profileIndicator } from './lib/output.js';
 import { shouldSkipProfileIndicator } from './lib/banner-policy.js';
 import { configureContextHelp } from './lib/context-help.js';
@@ -68,6 +69,7 @@ interface GlobalOptions {
   profile?: string;
   plain?: boolean;
   quiet?: boolean;
+  local?: boolean;
 }
 
 /**
@@ -102,6 +104,11 @@ program
   .option('--plain', 'Use plain text output (no colors or TUI)')
   .option('-q, --quiet', 'Suppress non-essential output (spinners, info messages, banners)')
   .option('--no-plugins', 'Do not discover, import, or register configured CLI plugins')
+  .option(
+    '--local',
+    'Talk to PostgreSQL directly instead of the API. Bypasses authentication, ' +
+    'authorisation and the audit trail; requires DATABASE_URL, or root on a vault node',
+  )
   .hook('preAction', (thisCommand, actionCommand) => {
     // Apply global options
     const opts = thisCommand.opts<GlobalOptions>();
@@ -110,6 +117,12 @@ program
     if (opts.plain) {
       setOutputMode('plain');
     }
+
+    // Local mode is a DECISION, never a side effect of the environment. It used
+    // to switch itself on whenever DATABASE_URL happened to be set, which took
+    // ordinary commands off the API and past its authentication, authorisation
+    // and audit trail without saying so.
+    requestLocalMode(opts.local === true);
 
     // Set quiet mode (suppresses spinners, info, success, banners)
     if (opts.quiet) {

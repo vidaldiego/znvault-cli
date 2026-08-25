@@ -158,6 +158,7 @@ Key ESLint rules:
 | `ZNVAULT_INSECURE` | Skip TLS verification |
 | `ZNVAULT_NO_UPDATE_CHECK` | Disable auto-update checks |
 | `ZNVAULT_NO_PLUGINS` | Set to `1`/`true` to skip configured plugin discovery and import |
+| `ZNVAULT_LOCAL` | Set to exactly `1` to talk to PostgreSQL directly instead of the API (same as `--local`). Bypasses authentication, authorisation and the audit trail; warns on every invocation. **Never** enabled by the mere presence of `DATABASE_URL` — see below |
 
 For a constrained automation path, pass the global `--no-plugins` option
 before the command name as well as setting `ZNVAULT_NO_PLUGINS=1`. The
@@ -166,6 +167,31 @@ profile/config store is still read by built-in CLI initialization. An
 occurrence after the first `--` belongs to the child command and does not
 disable CLI plugins. This closes configured-plugin code loading only; use `CI=1` and
 `ZNVAULT_NO_UPDATE_CHECK=1` separately to suppress the background update path.
+
+## Local mode is a decision, never a side effect
+
+`znvault --local` (or `ZNVAULT_LOCAL=1`) makes the CLI talk to PostgreSQL
+directly instead of the API. It bypasses the server's authentication,
+authorisation and audit trail, so it warns once per invocation, and it refuses
+rather than falling back to the API when it cannot be honoured.
+
+**It used to switch itself on.** `getMode()` returned `'local'` whenever
+`isLocalModeAvailable()` was true, and that was true whenever `DATABASE_URL`
+was set. Exporting that variable — for a migration, a psql session, an SSH
+tunnel — silently rerouted ordinary commands (`audit`, `lockdown`, `cert`,
+`host/*`, `superadmin accounts`, `agent/*`, the TUI) away from the API and past
+every control on it, while the banner still displayed the profile and URL the
+command was no longer using.
+
+`DATABASE_URL` means "a database is reachable". It has never meant "please
+bypass authentication". Availability is not consent, and the two are now
+separate: `isLocalModeAvailable()` answers whether the request *could* be
+honoured, `--local` is the request. Tests: `test/lib/mode-local.test.ts`.
+
+Break-glass commands (`emergency`, and `lockdown` under `--local`) keep direct
+database access on purpose: they exist for when the API will not let you in,
+and a recovery tool that only works while the server is healthy is not a
+recovery tool.
 
 ## Key Dependencies
 
