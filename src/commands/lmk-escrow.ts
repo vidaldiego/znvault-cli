@@ -17,6 +17,7 @@ import {
 import { restoreBootstrapKeyFromBundle } from '../lib/lmk-escrow-restore.js';
 import { resolveBskFromProvider } from '../lib/bsk-source.js';
 import { createSentinelClient } from '../lib/sentinel-client.js';
+import { registerLmkCeremonyCommands } from './lmk-ceremony.js';
 import { getLocalVaultVersion } from '../lib/local.js';
 import { getVersion } from '../lib/version.js';
 import * as output from '../lib/output.js';
@@ -157,6 +158,8 @@ export function registerLmkEscrowCommands(lmk: Command): void {
   const escrow = lmk
     .command('escrow')
     .description('Local, direct-to-device BSK and versioned-LMK custody snapshots');
+
+  registerLmkCeremonyCommands(escrow);
 
   escrow
     .command('snapshot')
