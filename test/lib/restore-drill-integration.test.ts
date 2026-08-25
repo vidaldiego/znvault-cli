@@ -13,7 +13,7 @@
 // here; a fake would only prove the fake.
 //
 // Skips without PREFLIGHT_TEST_DATABASE_URL, and CI is asserted to provide it
-// by test/lib/db/preflight-ci-wiring.test.ts, which always runs.
+// by test/lib/restore-drill-ci-wiring.test.ts, which always runs.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createCipheriv, randomBytes } from 'node:crypto';
@@ -29,7 +29,7 @@ import {
   type RestoredLmkVersion,
 } from '../../src/lib/restore-drill.js';
 
-const DB_URL = process.env.PREFLIGHT_TEST_DATABASE_URL;
+const DB_URL = process.env.DRILL_TEST_DATABASE_URL;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS lmk_versions (

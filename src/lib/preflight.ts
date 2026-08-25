@@ -48,6 +48,28 @@ export interface PreflightRotation {
   startedAt: string | null;
 }
 
+/**
+ * The inventory as the server sends it (`GET /v1/superadmin/lmk/preflight`).
+ *
+ * Declared here, beside the artifact types it feeds, because it IS the same
+ * data — the wire shape and the evidence shape must not drift apart, and two
+ * copies in two files is how they would.
+ */
+export interface PreflightSnapshotResponse {
+  capturedAt: string;
+  databaseName: string;
+  postgresVersion: string;
+  walLsn: string;
+  transactionSnapshot: string;
+  latestMigration: string | null;
+  lmkVersions: PreflightLmkVersion[];
+  rootKeyEnvelopes: PreflightEnvelope[];
+  rootKeyEnvelopesTablePresent: boolean;
+  activeRotations: PreflightRotation[];
+  auditHead: PreflightAuditHead | null;
+  latestVerifiedBackup: PreflightBackup | null;
+}
+
 export interface PreflightAuditHead {
   id: string;
   timestamp: string | null;

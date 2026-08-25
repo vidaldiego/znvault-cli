@@ -58,7 +58,12 @@ jobs:
       - name: Run Tests
         run: npm test
         env:
-          PREFLIGHT_TEST_DATABASE_URL: postgres://znvault_test:test_password_123@localhost:5433/znvault_test
+          # The restore drill still exercises a real PostgreSQL. The name is
+          # DRILL_, not PREFLIGHT_: the preflight moved to the server's API and
+          # no longer opens a database connection, so a variable still named
+          # after it would send the next reader looking in the wrong place.
+          # `test/lib/restore-drill-ci-wiring.test.ts` pins this.
+          DRILL_TEST_DATABASE_URL: postgres://znvault_test:test_password_123@localhost:5433/znvault_test
 
       - name: Typecheck
         run: npm run typecheck

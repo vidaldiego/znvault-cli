@@ -24,8 +24,13 @@ import { writeFileSync } from 'node:fs';
 import { type Command } from 'commander';
 
 import * as output from '../lib/output.js';
-import { LocalDBClient, isLocalDbAvailable } from '../lib/db/index.js';
-import { buildEvidence, type PreflightBody, type PreflightEvidence } from '../lib/preflight.js';
+import {
+  buildEvidence,
+  type PreflightBody,
+  type PreflightEvidence,
+  type PreflightSnapshotResponse,
+} from '../lib/preflight.js';
+import { client } from '../lib/client.js';
 import { getVersion } from '../lib/version.js';
 
 interface PreflightOptions {
@@ -80,21 +85,21 @@ export function registerLmkPreflightCommand(lmk: Command): void {
     .option('--json', 'Output only the evidence artefact as JSON')
     .option('--out <path>', 'Also write the evidence artefact to this path')
     .action(async (options: PreflightOptions) => {
-      if (!isLocalDbAvailable()) {
-        throw new Error(
-          'The preflight is local-only. Run it on a Vault node with local database ' +
-          'configuration: reading this state through the API would write audit rows, ' +
-          'and "zero writes" is the property being demonstrated.',
-        );
-      }
-
-      const database = new LocalDBClient();
-      let evidence: PreflightEvidence;
-      try {
-        const snapshot = await database.capturePreflight();
-        const body: PreflightBody = {
+      // NO LONGER LOCAL-ONLY. This used to refuse anything but a direct
+      // database connection, on the grounds that reading the state through the
+      // API would write audit rows and "zero writes" was the property being
+      // demonstrated. The server now captures the whole inventory inside ONE
+      // read-only repeatable-read transaction (`GET /v1/superadmin/lmk/preflight`),
+      // so the two properties that mattered — a single instant, and reads the
+      // database itself refuses to let write — are intact. What changed is that
+      // the deployment records that a preflight ran, which is not a perturbation
+      // of the custody state it inspects.
+      const snapshot = await client.get<PreflightSnapshotResponse>(
+        '/v1/superadmin/lmk/preflight',
+      );
+      const body: PreflightBody = {
           artifact: 'znvault-preflight-v1',
-          capturedAt: snapshot.capturedAt.toISOString(),
+          capturedAt: snapshot.capturedAt,
           cliVersion: getVersion(),
           operator: currentOperator(),
           hostname: hostname(),
@@ -112,10 +117,7 @@ export function registerLmkPreflightCommand(lmk: Command): void {
           auditHead: snapshot.auditHead,
           latestVerifiedBackup: snapshot.latestVerifiedBackup,
         };
-        evidence = buildEvidence(body);
-      } finally {
-        await database.close();
-      }
+      const evidence = buildEvidence(body);
 
       // The artefact is written whatever the verdict. A red preflight is
       // exactly the one worth keeping: it is the record of why an operation

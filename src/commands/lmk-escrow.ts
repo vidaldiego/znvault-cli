@@ -161,6 +161,36 @@ export function registerLmkEscrowCommands(lmk: Command): void {
 
   registerLmkCeremonyCommands(escrow);
 
+  // ---------------------------------------------------------------------------
+  // WHY THIS COMMAND STILL READS POSTGRESQL DIRECTLY
+  // ---------------------------------------------------------------------------
+  //
+  // The rule for this CLI is that it does not talk to the database; the
+  // ceremony's own state moved to the API for exactly that reason. This command
+  // is a DELIBERATE, REVIEWED EXCEPTION, decided 2026-08-25 after measuring what
+  // the alternative would cost.
+  //
+  // The bundle carries the BSK IN CLEAR — `Buffer.from(options.bsk)` goes
+  // straight into the file. Its at-rest protection is the datAshur, which is
+  // hardware-encrypted; see the `bskSha256` note in lib/lmk-escrow.ts.
+  //
+  // So an endpoint that returned this bundle would put the root of the entire
+  // key hierarchy in an HTTP response body — through HAProxy, into whatever
+  // buffers, access logs and TLS-terminating intermediaries lie on the way.
+  // What this command does instead is read WRAPPED material from `lmk_versions`
+  // and take the BSK from the local file, which never leaves the node.
+  //
+  // Measured against today's bar: extracting the BSK currently requires root on
+  // a node, the Sentinel's mTLS client certificate, or the AWS KMS credentials.
+  // A superadmin token is NOT enough. An escrow-over-API endpoint would make it
+  // enough. Removing the direct access here would not remove an exposure — it
+  // would create one.
+  //
+  // The safe version of that endpoint exists on paper (an X25519 transport
+  // envelope sealed to a key that lives and dies in the ceremony's RAM volume,
+  // ideally with a second factor or sealed by the Sentinel itself, so the bar
+  // stays where it is): ~/Drive/docs/cli-database-agnostic/DISENO-escrow-b-prima.md.
+  // Until that is built and reviewed, this exception stands.
   escrow
     .command('snapshot')
     .description(
