@@ -83,6 +83,22 @@ describe('assertRamBacked', () => {
 });
 
 describe('assertTornDown', () => {
+  it('REFUSES when the facts could not be observed at all', () => {
+    // Found by an independent audit. The fact-gatherer returned `false` both
+    // for "I looked and it is gone" and for "the command failed and I saw
+    // nothing", so a `mount` that could not run read as proof of teardown and
+    // the ceremony closed as COMPLETED over a live RAM disk still holding the
+    // bootstrap key. `assertRamBacked` had the correct policy all along:
+    // absence of evidence is not evidence.
+    expect(() =>
+      assertTornDown({ device: '/dev/disk32', stillMounted: null, stillAttached: false }),
+    ).toThrow(/could not determine/i);
+    expect(() =>
+      assertTornDown({ device: '/dev/disk32', stillMounted: false, stillAttached: null }),
+    ).toThrow(/has not been observed/i);
+  });
+
+
   it('accepts a workspace that is gone from both mount and hdiutil', () => {
     expect(() =>
       assertTornDown({ device: '/dev/disk32', stillMounted: false, stillAttached: false }),

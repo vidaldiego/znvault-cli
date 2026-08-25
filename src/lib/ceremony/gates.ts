@@ -115,40 +115,18 @@ export function assertKeyMatchesExpectedKcv(
   }
 }
 
-/**
- * Refuse to write to a device that is not the copy the operator intends.
- *
- * THE FAILURE THIS PREVENTS IS SILENT. Both datAshur devices shipped with the
- * same volume label, so they mounted at the same path and which was which
- * depended on plug order. Writing copy B onto device A produces no error: the
- * filenames carry the copy label, so `O_EXCL` never fires, and the operator
- * walks away with BOTH bundles on one device and NONE on the other, believing
- * there are two copies in two locations.
- *
- * The volume label is not the anchor either — it is a name, and device A's
- * changed when it was reformatted. **The USB serial is the identity.**
- */
-export function assertDeviceIsExpectedCopy(
-  device: MountedDevice,
-  copyLabel: string,
-  expectedSerial: string,
-): void {
-  if (device.usbSerial === null || device.usbSerial === '') {
-    throw new Error(
-      `The USB serial of the device at ${device.mountPoint} could not be read. The ` +
-      'serial is the only stable identity — the volume label is a name that ' +
-      'changes when the device is reformatted. Refusing to write without it.',
-    );
-  }
-  if (device.usbSerial !== expectedSerial) {
-    throw new Error(
-      `Wrong device for copy ${copyLabel}: ${device.mountPoint} has USB serial ` +
-      `${device.usbSerial}, but copy ${copyLabel} is ${expectedSerial}. Writing here ` +
-      'would put two bundles on one device and none on the other, with nothing ' +
-      'to indicate it. Check which device is plugged in.',
-    );
-  }
-}
+// REMOVED, 2026-08-25, after an independent audit: `assertDeviceIsExpectedCopy`.
+//
+// It compared a device's USB serial against a serial the operator had typed —
+// but the command found the device BY that serial first, so the mismatch branch
+// was unreachable and the gate could only ever pass. It was pure, it was
+// tested, and it decided nothing. Its replacement is `assertNotTheOtherCopy`
+// below, which compares against the serial this ceremony already RECORDED for
+// the other copy: a value the operator cannot retype at the moment of the check.
+//
+// The lesson is not about this function. A gate is only as good as what it is
+// handed, and a test that feeds it inputs the caller can never produce will
+// stay green forever while the door stands open.
 
 /**
  * Refuse to start while another key-lifecycle operation holds the slot.
@@ -167,4 +145,172 @@ export function assertNoOtherCeremonyRunning(active: ActiveOperation | null): vo
     'ceremony — two operations at once make the bundle and the inventory ' +
     'describe different moments.',
   );
+}
+
+// ---------------------------------------------------------------------------
+// The route
+// ---------------------------------------------------------------------------
+//
+// ADDED AFTER AN INDEPENDENT AUDIT, 2026-08-25. The first version of this
+// command had gates but no route: every subcommand jumped to a fixed phase from
+// ANY phase, and `finish` asked only "are we at teardown?". So this worked, with
+// no error at any step:
+//
+//     ceremony start        -> preflight
+//     ceremony teardown …   -> teardown
+//     ceremony finish       -> COMPLETED
+//
+// A ceremony that created no workspace, checked no key, touched no device, and
+// wrote no bundle — recorded as COMPLETED in the one place anybody will look
+// years later. The gates were pure, tested and entirely bypassable, which is
+// worse than not having them: the record inspires confidence it has not earned.
+
+/** The phases of a ceremony, in the only order they are allowed to occur. */
+export const CEREMONY_ROUTE = [
+  'preflight',
+  'workspace',
+  'material',
+  'write-a',
+  'write-b',
+  'verify',
+  'teardown',
+] as const;
+
+export type RoutePhase = (typeof CEREMONY_ROUTE)[number];
+
+/**
+ * Which phase may follow which.
+ *
+ * `material` repeats because a ceremony checks several keys (the current BSK,
+ * the legacy BSK, the mini-CA) and each one is a separate check. Nothing else
+ * repeats: writing copy A twice means something is wrong that a re-run should
+ * not paper over.
+ *
+ * TEARDOWN IS REACHABLE FROM EVERYWHERE, and that is not a hole. The first
+ * version of this table allowed it only after `verify`, which deadlocked the
+ * exact case it most needed to serve: a ceremony abandoned at `material` has a
+ * RAM volume with key material in it, and refusing to tear it down leaves the
+ * bootstrap key mounted with no command able to destroy it. Destroying the
+ * workspace is always safe and always desirable. What must never be reachable
+ * early is COMPLETED — and that is enforced separately, by
+ * `assertRouteComplete`, which asks the recorded history rather than the
+ * current phase.
+ */
+const ALLOWED_NEXT: Record<RoutePhase, readonly RoutePhase[]> = {
+  preflight: ['workspace', 'teardown'],
+  workspace: ['material', 'teardown'],
+  material: ['material', 'write-a', 'teardown'],
+  'write-a': ['write-b', 'teardown'],
+  'write-b': ['verify', 'teardown'],
+  verify: ['teardown'],
+  teardown: [],
+};
+
+function isRoutePhase(phase: string): phase is RoutePhase {
+  return (CEREMONY_ROUTE as readonly string[]).includes(phase);
+}
+
+/**
+ * Refuse a phase that does not follow the one the ceremony is actually in.
+ *
+ * @throws naming both phases and what is expected next, because the operator is
+ *   mid-ceremony and needs to know where they are, not merely that they are wrong.
+ */
+export function assertTransitionAllowed(from: string, to: string): void {
+  if (!isRoutePhase(from)) {
+    throw new Error(
+      `The ceremony is at an unrecognised phase '${from}'. Refusing to move it: ` +
+      'the record would stop describing anything. Inspect the operation by hand.',
+    );
+  }
+  if (!isRoutePhase(to)) {
+    throw new Error(`'${to}' is not a phase of a ceremony.`);
+  }
+  const allowed = ALLOWED_NEXT[from];
+  if (!allowed.includes(to)) {
+    const next = allowed.length === 0
+      ? 'nothing — the ceremony is at its last phase and can only be closed'
+      : allowed.map((p) => `'${p}'`).join(' or ');
+    throw new Error(
+      `A ceremony cannot go from '${from}' to '${to}'. What follows '${from}' is ` +
+      `${next}. Skipping a phase does not skip the work — it only removes it ` +
+      'from the record.',
+    );
+  }
+}
+
+/**
+ * Refuse to close a ceremony that did not travel the whole route.
+ *
+ * The check is over the RECORDED history rather than the current phase, so a
+ * ceremony that reached teardown by a path that skipped both writes is refused
+ * at the last moment even if every individual transition were somehow allowed.
+ *
+ * @param recorded every phase in `key_lifecycle_phase_events`, in order.
+ */
+export function assertRouteComplete(recorded: readonly string[]): void {
+  const seen = new Set(recorded);
+  const missing = CEREMONY_ROUTE.filter((p) => !seen.has(p));
+  if (missing.length > 0) {
+    throw new Error(
+      `This ceremony never reached ${missing.map((p) => `'${p}'`).join(', ')}. ` +
+      'Closing it as COMPLETED would record two escrow copies that were never ' +
+      'written or never verified — and nobody opens an escrow bundle until the ' +
+      'day everything else is already gone. Abandon it instead, with the reason: ' +
+      "'ceremony abort --reason …'.",
+    );
+  }
+}
+
+/**
+ * Normalise and check a copy label.
+ *
+ * There are exactly two copies. An unrecognised label used to fall through to
+ * copy A, so a typo silently corrupted the trail rather than stopping.
+ */
+export function assertCopyLabel(label: string): 'A' | 'B' {
+  const upper = label.trim().toUpperCase();
+  if (upper !== 'A' && upper !== 'B') {
+    throw new Error(
+      `'${label}' is not a copy: there are exactly two, A and B. A label that is ` +
+      'neither would be recorded against a phase it does not belong to.',
+    );
+  }
+  return upper;
+}
+
+/**
+ * Refuse to write both copies to the same physical device.
+ *
+ * THE GATE THIS REPLACES DID NOTHING. It compared the device's serial against a
+ * serial the operator had just typed — after the device had been LOOKED UP by
+ * that same serial. The mismatch branch was unreachable; the gate could only
+ * ever pass. What it claimed to prevent therefore remained wide open: write copy
+ * A to a device, then copy B to the same device, and the operator walks away
+ * with both bundles on one stick and none on the other, believing there are two
+ * copies in two locations.
+ *
+ * The fix is to compare against something the operator cannot supply at this
+ * moment: the serial ALREADY RECORDED for the other copy, read back from the
+ * append-only phase events of this same ceremony.
+ *
+ * @param serial the device about to be written.
+ * @param otherCopySerial what this ceremony recorded for the other copy, or
+ *   `null` if that copy has not been written yet.
+ */
+export function assertNotTheOtherCopy(
+  serial: string,
+  copy: 'A' | 'B',
+  otherCopySerial: string | null,
+): void {
+  if (otherCopySerial === null) return;
+  if (serial === otherCopySerial) {
+    throw new Error(
+      `This is the same physical device as copy ${copy === 'A' ? 'B' : 'A'} ` +
+      `(USB serial ${serial}). Both bundles would sit on one stick and the other ` +
+      'would hold nothing, with no error at any step and nothing in the record ' +
+      'to show it. The two copies exist to be in two places: plug in the other ' +
+      'device.',
+    );
+  }
 }

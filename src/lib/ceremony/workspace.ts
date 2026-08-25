@@ -41,8 +41,13 @@ export interface DeviceFacts {
 
 export interface TeardownFacts {
   device: string;
-  stillMounted: boolean;
-  stillAttached: boolean;
+  /**
+   * `null` when it could not be observed at all — `mount` or `hdiutil` failed
+   * rather than reported "no". The distinction is load-bearing: see
+   * `assertTornDown`.
+   */
+  stillMounted: boolean | null;
+  stillAttached: boolean | null;
 }
 
 /**
@@ -100,9 +105,26 @@ export function assertRamBacked(facts: DeviceFacts): void {
  * Refuse to close a ceremony while the workspace still exists.
  *
  * Unmounted is not destroyed: the RAM still holds the bytes and anyone can
- * remount the device. Both facts have to be false.
+ * remount the device. Both facts have to be observed, and both have to be false.
+ *
+ * THE `null` CASE IS WHY THIS WAS REWRITTEN. The first version took plain
+ * booleans, and the fact-gatherer returned `false` both for "I looked and it is
+ * gone" and for "the command failed and I saw nothing". So a `mount` that could
+ * not run — ENOENT, a truncated buffer, a signal — read as proof of teardown,
+ * and the ceremony closed as COMPLETED over a live RAM disk still holding the
+ * bootstrap key. `assertRamBacked` had the opposite, correct policy three
+ * functions up ("absence of evidence is not evidence of RAM"); this one applied
+ * it backwards at the single moment that ends the ceremony.
  */
 export function assertTornDown(facts: TeardownFacts): void {
+  if (facts.stillMounted === null || facts.stillAttached === null) {
+    throw new Error(
+      `Could not determine whether ${facts.device} is really gone: the system ` +
+      'commands that would have said so did not run. Refusing to record a ' +
+      'teardown that has not been observed — check by hand with ' +
+      `'mount' and 'hdiutil info' before closing the ceremony.`,
+    );
+  }
   if (facts.stillMounted) {
     throw new Error(
       `${facts.device} is still mounted. The workspace held key material; the ` +

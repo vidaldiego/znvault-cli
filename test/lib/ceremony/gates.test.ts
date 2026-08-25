@@ -10,10 +10,14 @@
 import { describe, expect, it } from 'vitest';
 import { computeBskKcv } from '../../../src/lib/kcv.js';
 import {
+  assertCopyLabel,
   assertKeyMatchesEnvelope,
   assertKeyMatchesExpectedKcv,
-  assertDeviceIsExpectedCopy,
   assertNoOtherCeremonyRunning,
+  assertNotTheOtherCopy,
+  assertRouteComplete,
+  assertTransitionAllowed,
+  CEREMONY_ROUTE,
   type MountedDevice,
 } from '../../../src/lib/ceremony/gates.js';
 
@@ -91,50 +95,6 @@ describe('assertKeyMatchesExpectedKcv — for the legacy BSK, which has no envel
   });
 });
 
-describe('assertDeviceIsExpectedCopy — the gate against writing B onto A', () => {
-  // Both datAshur devices shipped with the SAME volume label, so they mounted
-  // at the same path and which was which depended on plug order. Writing copy B
-  // onto device A is silent: the filenames carry the copy label, so O_EXCL does
-  // not fire, and the operator walks away with BOTH bundles on one device and
-  // NONE on the other, believing there are two copies in two locations.
-  //
-  // The volume label is not the anchor either — it is a name, and it changed
-  // when device A was reformatted. The USB serial is the stable identity.
-
-  const deviceA: MountedDevice = {
-    mountPoint: '/Volumes/ZNVAULT-A',
-    usbSerial: 'SERIAL-COPY-A',
-    volumeLabel: 'ZNVAULT-A',
-  };
-
-  it('accepts the device whose SERIAL matches the expected copy', () => {
-    expect(() => assertDeviceIsExpectedCopy(deviceA, 'A', 'SERIAL-COPY-A')).not.toThrow();
-  });
-
-  it('REFUSES a device whose serial belongs to the other copy', () => {
-    expect(() => assertDeviceIsExpectedCopy(deviceA, 'B', 'SERIAL-COPY-B')).toThrow(
-      /serial/i,
-    );
-  });
-
-  it('is NOT satisfied by a matching volume label alone', () => {
-    // The trap in its purest form: someone relabels a device and the label now
-    // lies. The serial is what the device says about itself.
-    const impostor: MountedDevice = {
-      mountPoint: '/Volumes/ZNVAULT-B',
-      usbSerial: 'SERIAL-COPY-A', // actually device A
-      volumeLabel: 'ZNVAULT-B',
-    };
-    expect(() => assertDeviceIsExpectedCopy(impostor, 'B', 'SERIAL-COPY-B')).toThrow();
-  });
-
-  it('REFUSES when the serial could not be read at all', () => {
-    expect(() =>
-      assertDeviceIsExpectedCopy({ ...deviceA, usbSerial: null }, 'A', 'SERIAL-COPY-A'),
-    ).toThrow(/could not be read/i);
-  });
-});
-
 describe('assertNoOtherCeremonyRunning', () => {
   it('accepts when nothing is in progress', () => {
     expect(() => assertNoOtherCeremonyRunning(null)).not.toThrow();
@@ -170,5 +130,144 @@ describe('assertNoOtherCeremonyRunning', () => {
     expect(message).toContain('someone@example.com');
     expect(message).toContain('2026-08-25T10:00:00Z');
     expect(message).toContain('write-a');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The route
+// ---------------------------------------------------------------------------
+//
+// These gates were added after an independent audit found the command had
+// gates but no route: every subcommand jumped to a fixed phase from ANY phase,
+// and `finish` asked only "are we at teardown?". The tests below are written
+// against the sequences that audit actually walked.
+
+describe('assertTransitionAllowed', () => {
+  it('ALLOWS teardown from anywhere, because an abandoned ceremony must clean up', () => {
+    // The first version of the table allowed teardown only after `verify`, and
+    // deadlocked the case it most needed to serve: a ceremony abandoned at
+    // `material` has a RAM volume holding the bootstrap key, and no command
+    // could destroy it. Destroying the workspace is always safe.
+    for (const from of CEREMONY_ROUTE) {
+      if (from === 'teardown') continue;
+      expect(() => assertTransitionAllowed(from, 'teardown')).not.toThrow();
+    }
+  });
+
+  it('does NOT let an early teardown become a completed ceremony', () => {
+    // Which is where the audit's start -> teardown -> finish path actually
+    // dies: not at the transition, but at what `finish` demands of the record.
+    expect(() => assertRouteComplete(['preflight', 'teardown'])).toThrow(/'workspace'/);
+  });
+
+  it('REFUSES skipping copy B, the likelier mistake', () => {
+    expect(() => assertTransitionAllowed('write-a', 'verify')).toThrow(/'write-b'/);
+  });
+
+  it('REFUSES writing before the material has been checked', () => {
+    expect(() => assertTransitionAllowed('workspace', 'write-a')).toThrow(/'material'/);
+  });
+
+  it('names what actually comes next, because the operator is mid-ceremony', () => {
+    expect(() => assertTransitionAllowed('preflight', 'material')).toThrow(/'workspace'/);
+  });
+
+  it('allows the whole route, one step at a time', () => {
+    for (let i = 0; i < CEREMONY_ROUTE.length - 1; i += 1) {
+      const from = CEREMONY_ROUTE[i] ?? 'preflight';
+      const to = CEREMONY_ROUTE[i + 1] ?? 'preflight';
+      expect(() => assertTransitionAllowed(from, to)).not.toThrow();
+    }
+  });
+
+  it('lets material repeat, because a ceremony checks several keys', () => {
+    // Current BSK, legacy BSK, mini-CA: three separate checks, one phase.
+    expect(() => assertTransitionAllowed('material', 'material')).not.toThrow();
+  });
+
+  it('REFUSES writing copy A twice', () => {
+    expect(() => assertTransitionAllowed('write-a', 'write-a')).toThrow();
+  });
+
+  it('refuses to move an operation sitting at a phase it does not recognise', () => {
+    expect(() => assertTransitionAllowed('rewrap', 'workspace')).toThrow(/unrecognised phase/i);
+  });
+
+  it('has nothing after teardown: the ceremony can only be closed', () => {
+    expect(() => assertTransitionAllowed('teardown', 'verify')).toThrow(/last phase/i);
+  });
+});
+
+describe('assertRouteComplete — what finish demands', () => {
+  it('accepts a ceremony that travelled the whole route', () => {
+    expect(() => assertRouteComplete([...CEREMONY_ROUTE])).not.toThrow();
+  });
+
+  it('REFUSES the ceremony that started and tore down', () => {
+    expect(() => assertRouteComplete(['preflight', 'teardown'])).toThrow(/'workspace'/);
+  });
+
+  it('REFUSES when copy B was never written, and says so by name', () => {
+    const missingB = CEREMONY_ROUTE.filter((p) => p !== 'write-b');
+    expect(() => assertRouteComplete([...missingB])).toThrow(/'write-b'/);
+  });
+
+  it('REFUSES when nothing was verified', () => {
+    const missingVerify = CEREMONY_ROUTE.filter((p) => p !== 'verify');
+    expect(() => assertRouteComplete([...missingVerify])).toThrow(/'verify'/);
+  });
+
+  it('points at abort rather than leaving the operator stuck', () => {
+    // A refusal with no way forward gets worked around, and the workaround is
+    // what ends up in the record.
+    expect(() => assertRouteComplete(['preflight'])).toThrow(/ceremony abort/);
+  });
+
+  it('tolerates repeats and ordering, since the phases are the claim', () => {
+    expect(() =>
+      assertRouteComplete(['preflight', 'workspace', 'material', 'material',
+        'write-a', 'write-b', 'verify', 'teardown']),
+    ).not.toThrow();
+  });
+});
+
+describe('assertCopyLabel', () => {
+  it('accepts both copies, in either case', () => {
+    expect(assertCopyLabel('a')).toBe('A');
+    expect(assertCopyLabel('B')).toBe('B');
+  });
+
+  it('REFUSES a label that is neither, instead of quietly meaning A', () => {
+    // It used to be `label.toUpperCase() === 'B' ? write-b : write-a`, so a
+    // typo did not stop anything — it recorded the wrong phase.
+    expect(() => assertCopyLabel('C')).toThrow(/exactly two/i);
+  });
+});
+
+describe('assertNotTheOtherCopy — what replaced the tautological gate', () => {
+  // The gate this replaces compared a device's serial against a serial the
+  // operator had just typed, after looking the device up BY that serial. It
+  // could only ever pass. This one compares against what the ceremony already
+  // RECORDED for the other copy — a value not in the operator's hands at the
+  // moment of the check.
+
+  it('REFUSES writing copy B to the device already recorded as copy A', () => {
+    expect(() => assertNotTheOtherCopy('SERIAL-ONE', 'B', 'SERIAL-ONE')).toThrow(
+      /same physical device as copy A/i,
+    );
+  });
+
+  it('says why it matters: one stick with both, another with none', () => {
+    expect(() => assertNotTheOtherCopy('SERIAL-ONE', 'B', 'SERIAL-ONE')).toThrow(
+      /two places/i,
+    );
+  });
+
+  it('allows a genuinely different device', () => {
+    expect(() => assertNotTheOtherCopy('SERIAL-TWO', 'B', 'SERIAL-ONE')).not.toThrow();
+  });
+
+  it('allows the first copy, when nothing has been recorded yet', () => {
+    expect(() => assertNotTheOtherCopy('SERIAL-ONE', 'A', null)).not.toThrow();
   });
 });

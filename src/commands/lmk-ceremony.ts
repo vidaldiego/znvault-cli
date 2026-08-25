@@ -22,6 +22,7 @@
 
 import { hostname, userInfo } from 'node:os';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { type Command } from 'commander';
 
 import * as output from '../lib/output.js';
@@ -29,11 +30,15 @@ import { LocalDBClient, isLocalDbAvailable } from '../lib/db/index.js';
 import { KeyLifecycleOperations, type CeremonyPhase } from '../lib/db/key-lifecycle.js';
 import { getVersion } from '../lib/version.js';
 import {
-  assertDeviceIsExpectedCopy,
+  assertCopyLabel,
   assertKeyMatchesEnvelope,
   assertKeyMatchesExpectedKcv,
   assertNoOtherCeremonyRunning,
+  assertNotTheOtherCopy,
+  assertRouteComplete,
+  assertTransitionAllowed,
 } from '../lib/ceremony/gates.js';
+import { readAndVerifyLmkEscrowBundle } from '../lib/lmk-escrow.js';
 import { assertRamBacked, assertTornDown, CEREMONY_MOUNT_POINT } from '../lib/ceremony/workspace.js';
 import {
   createRamWorkspace,
@@ -43,14 +48,22 @@ import {
   listEscrowDevices,
 } from '../lib/ceremony/system.js';
 
-/** Minimum vault release whose schema this command relies on (migration 093). */
-const MIN_RELEASE = '1.67.0';
+/**
+ * Minimum vault release whose schema this command relies on (migration 093).
+ *
+ * 1.68.0 and not 1.67.x: migration 093 is not in 1.67.1. `schemaPresent()` is
+ * the check that actually guards — this is what the record and the refusal
+ * MESSAGE claim, and a message that names a release which does not carry the
+ * table sends the reader to look in the wrong place.
+ */
+const MIN_RELEASE = '1.68.0';
 const WORKSPACE_MB = 64;
 
 interface StartOptions { operator?: string; json?: boolean }
 interface CheckKeyOptions { againstEnvelope?: string; expectKcv?: string; label?: string }
 interface CheckDeviceOptions { copy: string; serial: string }
-interface AbortOptions { reason: string }
+interface ConfirmCopyOptions { copy: string; serial: string; bundle: string }
+interface AbortOptions { reason: string; force?: boolean }
 
 function requireLocalDb(): void {
   if (!isLocalDbAvailable()) {
@@ -94,12 +107,22 @@ async function requireActive(
   return active;
 }
 
+/**
+ * Move to the next phase, refusing any move the route does not allow.
+ *
+ * The gate lives HERE rather than in each subcommand because an audit found the
+ * subcommands each jumped to a fixed phase from wherever the ceremony happened
+ * to be — so `start` then `teardown` then `finish` recorded a COMPLETED
+ * ceremony that had done nothing at all. One choke point, and every caller
+ * passes through it.
+ */
 async function advance(
   ops: KeyLifecycleOperations,
-  active: { operationId: string; epoch: number },
+  active: { operationId: string; epoch: number; phase: string },
   phase: CeremonyPhase,
   detail?: Record<string, unknown>,
 ): Promise<void> {
+  assertTransitionAllowed(active.phase, phase);
   await ops.advance({
     operationId: active.operationId,
     expectedEpoch: active.epoch,
@@ -107,6 +130,74 @@ async function advance(
     nodeId: hostname(),
     ...(detail ? { detail } : {}),
   });
+}
+
+/**
+ * What was recorded for the most recent event of this phase.
+ *
+ * Reading the ceremony's OWN append-only record is the point: it is the one
+ * source in reach that the operator cannot retype at the moment it is checked.
+ */
+async function recordedDetail(
+  ops: KeyLifecycleOperations,
+  operationId: string,
+  phase: CeremonyPhase,
+): Promise<Record<string, unknown> | null> {
+  const history = await ops.history(operationId);
+  // The LAST event for the phase: `material` repeats, and a re-check supersedes
+  // what it re-checked.
+  const match = [...history].reverse().find((event) => event.phase === phase);
+  return match?.detail ?? null;
+}
+
+function recordedString(detail: Record<string, unknown> | null, key: string): string | null {
+  const value = detail?.[key];
+  return typeof value === 'string' ? value : null;
+}
+
+/** The phase a copy is recorded under. */
+function phaseForCopy(copy: 'A' | 'B'): CeremonyPhase {
+  return copy === 'A' ? 'write-a' : 'write-b';
+}
+
+/**
+ * The workspace device this ceremony proved to be RAM-backed.
+ *
+ * @throws if no workspace was ever recorded — which means there is nothing to
+ *   tear down and the ceremony is not where the caller thinks it is.
+ */
+async function recordedWorkspaceDevice(
+  ops: KeyLifecycleOperations,
+  operationId: string,
+): Promise<string> {
+  const device = recordedString(await recordedDetail(ops, operationId, 'workspace'), 'device');
+  if (device === null) {
+    throw new Error(
+      'This ceremony has no recorded workspace, so there is no device that was ' +
+      'ever proven to be RAM-backed. Nothing to tear down.',
+    );
+  }
+  return device;
+}
+
+/**
+ * Refuse a path that is not inside the RAM workspace.
+ *
+ * Checking a key that sits on the SSD and recording the 'material' phase for it
+ * is a check that measured the wrong thing: the point of the phase is that the
+ * material was handled in volatile memory.
+ */
+function assertInsideWorkspace(path: string, what: string): string {
+  const absolute = resolve(path);
+  if (absolute !== CEREMONY_MOUNT_POINT && !absolute.startsWith(`${CEREMONY_MOUNT_POINT}/`)) {
+    throw new Error(
+      `${what} is at ${absolute}, outside the ceremony workspace ` +
+      `(${CEREMONY_MOUNT_POINT}). Key material is handled in the RAM volume and ` +
+      'nowhere else; verifying a copy that lives somewhere else would record a ' +
+      'precaution that was not taken.',
+    );
+  }
+  return absolute;
 }
 
 export function registerLmkCeremonyCommands(escrow: Command): void {
@@ -269,7 +360,17 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
       let key: Buffer | null = null;
       try {
         const active = await requireActive(ops);
-        key = readFileSync(path);
+
+        // The workspace was proven RAM-backed when it was CREATED, and the
+        // process then exited. Minutes pass while material is copied in. If the
+        // volume was unmounted in between, the mount point survives as an
+        // ordinary directory on the SSD and quietly absorbs everything — the
+        // documented failure, reintroduced as a check-then-use gap. So prove it
+        // again, here, against the device this ceremony recorded.
+        const absolute = assertInsideWorkspace(path, 'The key file');
+        assertRamBacked(describeDevice(await recordedWorkspaceDevice(ops, active.operationId)));
+
+        key = readFileSync(absolute);
 
         if (options.againstEnvelope !== undefined) {
           const envelope = await db.getRootKeyEnvelope(options.againstEnvelope);
@@ -282,11 +383,18 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
           }
           assertKeyMatchesEnvelope(key, envelope);
           output.success(`${options.label ?? 'key'} matches the '${envelope.providerId}' envelope (${envelope.kcv})`);
-          await advance(ops, active, 'material', { checked: options.label, against: envelope.providerId });
+          // The KCV goes into the record, not just the message: an acta written
+          // from this trail should not have to trust that someone read the
+          // screen correctly. A KCV is publishable by construction.
+          await advance(ops, active, 'material', {
+            checked: options.label, against: envelope.providerId, kcv: envelope.kcv,
+          });
         } else if (options.expectKcv !== undefined) {
           assertKeyMatchesExpectedKcv(key, options.expectKcv, options.label ?? 'key');
           output.success(`${options.label ?? 'key'} matches ${options.expectKcv}`);
-          await advance(ops, active, 'material', { checked: options.label, against: 'recorded fingerprint' });
+          await advance(ops, active, 'material', {
+            checked: options.label, against: 'recorded fingerprint', kcv: options.expectKcv,
+          });
         }
       } finally {
         key?.fill(0);
@@ -296,16 +404,24 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
     });
 
   // --------------------------------------------------------- check-device ---
+  //
+  // A CHECK, and it no longer pretends to be more. The previous version looked
+  // the device up BY the serial the operator typed and then "verified" that the
+  // device it found had that serial — a tautology that could only ever pass,
+  // while the failure it claimed to prevent (both bundles on one stick) stayed
+  // wide open. What actually binds a copy to a device is `confirm-copy` below,
+  // which compares against the serial already recorded for the other copy.
   ceremony
     .command('check-device')
-    .description('Confirm the mounted device is the copy you think, by USB serial')
-    .requiredOption('--copy <label>', 'Which copy this should be, e.g. A or B')
+    .description('Show whether the device you mean is mounted, before writing to it')
+    .requiredOption('--copy <label>', 'Which copy this should be: A or B')
     .requiredOption('--serial <serial>', 'The USB serial recorded for that copy')
     .action(async (options: CheckDeviceOptions) => {
       requireLocalDb();
       const ops = await lifecycle();
       try {
         const active = await requireActive(ops);
+        const copy = assertCopyLabel(options.copy);
         const devices = listEscrowDevices();
         const match = devices.find((d) => d.usbSerial === options.serial);
         if (match === undefined) {
@@ -314,15 +430,168 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
             `${devices.map((d) => `${d.mountPoint}=${d.usbSerial ?? '?'}`).join(', ') || '(none)'}.`,
           );
         }
-        assertDeviceIsExpectedCopy(match, options.copy, options.serial);
-
-        const phase: CeremonyPhase = options.copy.toUpperCase() === 'B' ? 'write-b' : 'write-a';
-        await advance(ops, active, phase, { copy: options.copy, mountPoint: match.mountPoint });
-        output.success(`${match.mountPoint} is copy ${options.copy} (serial ${options.serial})`);
-        output.info(
-          `Write the bundle with: znvault superadmin lmk escrow snapshot --mount ${match.mountPoint} ` +
-          `--copy-label ${options.copy} …`,
+        const other = copy === 'A' ? 'B' : 'A';
+        assertNotTheOtherCopy(
+          options.serial,
+          copy,
+          recordedString(await recordedDetail(ops, active.operationId, phaseForCopy(other)), 'serial'),
         );
+
+        output.success(`${match.mountPoint} is mounted with serial ${options.serial}.`);
+        output.info(
+          `Write copy ${copy}: znvault superadmin lmk escrow snapshot --mount ` +
+          `${match.mountPoint} --copy-label ${copy} …`,
+        );
+        output.info(
+          `Then record it: ceremony confirm-copy --copy ${copy} --serial ${options.serial} ` +
+          '--bundle <file on the device>',
+        );
+      } finally {
+        await ops.close();
+      }
+    });
+
+  // --------------------------------------------------------- confirm-copy ---
+  //
+  // THE PHASE IS RECORDED AFTER THE WRITE, AND ONLY IF THE WRITE IS THERE.
+  // Previously `check-device` advanced to write-a/write-b BEFORE anything was
+  // written, and no command ever checked that a bundle had landed — so the trail
+  // could read `write-a, write-b, teardown, COMPLETED` for a ceremony whose
+  // devices were empty. The phases described intentions. Now they describe a
+  // bundle that was read back OFF the device and verified.
+  ceremony
+    .command('confirm-copy')
+    .description('Verify the bundle actually on the device, and record that copy')
+    .requiredOption('--copy <label>', 'Which copy this is: A or B')
+    .requiredOption('--serial <serial>', 'USB serial of the device it was written to')
+    .requiredOption('--bundle <path>', 'The bundle file, on that device')
+    .action(async (options: ConfirmCopyOptions) => {
+      requireLocalDb();
+      const ops = await lifecycle();
+      try {
+        const active = await requireActive(ops);
+        const copy = assertCopyLabel(options.copy);
+
+        const devices = listEscrowDevices();
+        const match = devices.find((d) => d.usbSerial === options.serial);
+        if (match === undefined) {
+          throw new Error(
+            `No mounted device has USB serial ${options.serial}, so there is nothing ` +
+            'to verify. Plug in the device the bundle was written to.',
+          );
+        }
+
+        const other = copy === 'A' ? 'B' : 'A';
+        assertNotTheOtherCopy(
+          options.serial,
+          copy,
+          recordedString(await recordedDetail(ops, active.operationId, phaseForCopy(other)), 'serial'),
+        );
+
+        // The bundle has to be ON the device. Verifying a copy that still sits
+        // in the workspace would pass while the device stayed empty.
+        const bundlePath = resolve(options.bundle);
+        if (!bundlePath.startsWith(`${match.mountPoint}/`)) {
+          throw new Error(
+            `${bundlePath} is not on ${match.mountPoint}. The point of this step is ` +
+            'that the bundle reached the device — a copy verified anywhere else ' +
+            'leaves the device empty and the record saying otherwise.',
+          );
+        }
+
+        const report = readAndVerifyLmkEscrowBundle(bundlePath);
+        if (report.copyLabel.toUpperCase() !== copy) {
+          throw new Error(
+            `That bundle is labelled copy ${report.copyLabel}, not ${copy}. Writing ` +
+            'it here would leave two copies with the same label and no way to tell ' +
+            'from the bundles which device is missing.',
+          );
+        }
+
+        await advance(ops, active, phaseForCopy(copy), {
+          copy,
+          serial: options.serial,
+          mountPoint: match.mountPoint,
+          bundlePath,
+          bundleId: report.bundleId,
+          bskKcv: report.bskKcv,
+          recoverability: report.recoverability,
+        });
+        output.success(
+          `Copy ${copy} verified on ${match.mountPoint}: bundle ${report.bundleId}, ` +
+          `BSK ${report.bskKcv}, ${report.recoverability}.`,
+        );
+      } finally {
+        await ops.close();
+      }
+    });
+
+  // --------------------------------------------------------------- verify ---
+  //
+  // Both copies, at the same time, on two different devices. `confirm-copy` can
+  // only ever see one device at a time, so on its own it cannot rule out that
+  // the second copy went onto the first stick after the first was unplugged.
+  // This is the step that makes "two copies in two places" an observed fact.
+  ceremony
+    .command('verify')
+    .description('Re-read BOTH bundles, from both devices, at the same time')
+    .action(async () => {
+      requireLocalDb();
+      const ops = await lifecycle();
+      try {
+        const active = await requireActive(ops);
+
+        const recorded = await Promise.all((['A', 'B'] as const).map(async (copy) => {
+          const detail = await recordedDetail(ops, active.operationId, phaseForCopy(copy));
+          const serial = recordedString(detail, 'serial');
+          const bundlePath = recordedString(detail, 'bundlePath');
+          if (serial === null || bundlePath === null) {
+            throw new Error(
+              `Copy ${copy} was never confirmed, so there is nothing to verify. Run ` +
+              `'ceremony confirm-copy --copy ${copy} …' first.`,
+            );
+          }
+          return { copy, serial, bundlePath };
+        }));
+
+        const [a, b] = recorded as [typeof recorded[0], typeof recorded[0]];
+        if (a.serial === b.serial) {
+          throw new Error(
+            `Both copies were recorded against the same device (${a.serial}). That is ` +
+            'one stick holding both bundles and another holding none.',
+          );
+        }
+
+        const mounted = listEscrowDevices();
+        const results = recorded.map((r) => {
+          if (!mounted.some((d) => d.usbSerial === r.serial)) {
+            throw new Error(
+              `Copy ${r.copy} (serial ${r.serial}) is not mounted. Both devices must ` +
+              'be present for this check — that is what it is for.',
+            );
+          }
+          const report = readAndVerifyLmkEscrowBundle(r.bundlePath);
+          return { ...r, bundleId: report.bundleId, bskKcv: report.bskKcv };
+        });
+
+        const [ra, rb] = results as [typeof results[0], typeof results[0]];
+        if (ra.bskKcv !== rb.bskKcv) {
+          throw new Error(
+            `The two copies hold different bootstrap keys (${ra.bskKcv} and ` +
+            `${rb.bskKcv}). One of them will not open this deployment.`,
+          );
+        }
+
+        await advance(ops, active, 'verify', {
+          copies: results.map((r) => ({ copy: r.copy, serial: r.serial, bundleId: r.bundleId })),
+          bskKcv: ra.bskKcv,
+        });
+        output.success('Both copies verified, on two distinct devices, holding the same key.');
+        output.table(
+          ['Copy', 'USB serial', 'Bundle'],
+          results.map((r) => [r.copy, r.serial, r.bundleId]),
+        );
+        output.info("Next: 'ceremony teardown' to destroy the RAM workspace.");
       } finally {
         await ops.close();
       }
@@ -330,20 +599,36 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
 
   // ------------------------------------------------------------- teardown ---
   ceremony
-    .command('teardown <device>')
+    .command('teardown [device]')
     .description('Destroy the RAM workspace and PROVE it is gone')
-    .action(async (device: string) => {
+    .action(async (device: string | undefined) => {
       requireLocalDb();
       const ops = await lifecycle();
       try {
         const active = await requireActive(ops);
-        const facts = destroyRamWorkspace(device);
+
+        // THE DEVICE COMES FROM THE RECORD, not from argv. It used to come from
+        // argv and was never compared with anything: a typo destroyed nothing,
+        // reported success — `hdiutil detach` on a device that does not exist
+        // fails quietly and the checks then observe that the nonexistent device
+        // is indeed gone — and left the real RAM disk attached with the
+        // bootstrap key in it. The optional argument is now only a cross-check.
+        const recordedDevice = await recordedWorkspaceDevice(ops, active.operationId);
+        if (device !== undefined && device !== recordedDevice) {
+          throw new Error(
+            `This ceremony's workspace is ${recordedDevice}, not ${device}. Tearing ` +
+            `down ${device} would report success while ${recordedDevice} stayed ` +
+            'attached with key material in it.',
+          );
+        }
+
+        const facts = destroyRamWorkspace(recordedDevice);
         // Unmounting is not destroying: the RAM still holds the bytes and the
         // device can be remounted by anyone.
         assertTornDown(facts);
-        await advance(ops, active, 'teardown', { device });
-        output.success(`${device} unmounted and detached; the workspace is gone.`);
-        output.info("Finish with 'ceremony finish' once both copies verify.");
+        await advance(ops, active, 'teardown', { device: recordedDevice });
+        output.success(`${recordedDevice} unmounted and detached; the workspace is gone.`);
+        output.info("Close the ceremony with 'ceremony finish'.");
       } finally {
         await ops.close();
       }
@@ -358,23 +643,24 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
       const ops = await lifecycle();
       try {
         const active = await requireActive(ops);
-        if (active.phase !== 'teardown') {
-          throw new Error(
-            `The ceremony is at phase '${active.phase}', not 'teardown'. The workspace ` +
-            'held key material; closing before it is destroyed would record a ' +
-            'completion that is not true.',
-          );
-        }
-        const workspace = describeDevice('');
-        void workspace;
+
+        // Over the RECORDED ROUTE, not the current phase. Checking only "are we
+        // at teardown?" let a ceremony that had done nothing but start and tear
+        // down close as COMPLETED — and COMPLETED is the word somebody reads
+        // years later, on the day the escrow is all that is left.
+        const history = await ops.history(active.operationId);
+        assertRouteComplete(history.map((e) => e.phase));
+
+        const verified = await recordedDetail(ops, active.operationId, 'verify');
         await ops.finish({
           operationId: active.operationId,
           expectedEpoch: active.epoch,
           outcome: 'COMPLETED',
           nodeId: hostname(),
+          ...(verified ? { detail: verified } : {}),
         });
         output.success(`Ceremony ${active.operationId} closed as COMPLETED.`);
-        output.info('Record the bundle ids, both KCVs and the device serials in the acta.');
+        output.info('The bundle ids, the KCV and both serials are in the record: ceremony status.');
       } finally {
         await ops.close();
       }
@@ -385,11 +671,43 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
     .command('abort')
     .description('Close the ceremony as ABANDONED, keeping the reason')
     .requiredOption('--reason <text>', 'Why it was abandoned — the next person will read this')
+    .option('--force', 'Abandon even if the RAM workspace could not be destroyed')
     .action(async (options: AbortOptions) => {
       requireLocalDb();
       const ops = await lifecycle();
       try {
         const active = await requireActive(ops);
+
+        // ABANDONING CLEANS UP, because nothing else can. Abandoning frees the
+        // slot, and `teardown` needs an active ceremony — so an abort that left
+        // the workspace behind would strand a mounted RAM volume holding the
+        // bootstrap key with no command able to destroy it. The hint that used
+        // to say "run teardown afterwards" was advice that could not be taken.
+        const device = recordedString(
+          await recordedDetail(ops, active.operationId, 'workspace'), 'device',
+        );
+        if (device !== null) {
+          try {
+            assertTornDown(destroyRamWorkspace(device));
+            output.info(`RAM workspace ${device} destroyed.`);
+          } catch (error) {
+            if (options.force !== true) {
+              throw new Error(
+                `The ceremony has NOT been abandoned: its RAM workspace ${device} ` +
+                'could not be destroyed, and abandoning would free the slot while ' +
+                'leaving key material mounted with no command able to reach it. ' +
+                `Deal with it by hand ('hdiutil detach ${device}'), then abort again. ` +
+                'To abandon anyway, add --force. Underlying reason: ' +
+                (error instanceof Error ? error.message : String(error)),
+              );
+            }
+            output.warn(
+              `Abandoning with --force: ${device} may still be attached WITH KEY ` +
+              'MATERIAL IN IT. Destroy it by hand, now.',
+            );
+          }
+        }
+
         await ops.finish({
           operationId: active.operationId,
           expectedEpoch: active.epoch,
@@ -398,10 +716,7 @@ export function registerLmkCeremonyCommands(escrow: Command): void {
           error: options.reason,
         });
         output.warn(`Ceremony ${active.operationId} abandoned at phase '${active.phase}'.`);
-        output.info(
-          'The slot is free. If a RAM workspace is still mounted, destroy it with ' +
-          "'ceremony teardown <device>' — abandoning does not clean up for you.",
-        );
+        output.info('The slot is free and the workspace is gone.');
       } finally {
         await ops.close();
       }
