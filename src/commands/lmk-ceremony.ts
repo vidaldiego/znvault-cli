@@ -30,6 +30,7 @@ import { LocalDBClient, isLocalDbAvailable } from '../lib/db/index.js';
 import { KeyLifecycleOperations, type CeremonyPhase } from '../lib/db/key-lifecycle.js';
 import { getVersion } from '../lib/version.js';
 import {
+  assertCeremonyIsOurs,
   assertCopyLabel,
   assertKeyMatchesEnvelope,
   assertKeyMatchesExpectedKcv,
@@ -104,6 +105,8 @@ async function requireActive(
       'different moments.',
     );
   }
+  // Every fact the gates judge is gathered on THIS machine.
+  assertCeremonyIsOurs(active, hostname());
   return active;
 }
 

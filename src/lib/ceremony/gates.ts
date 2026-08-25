@@ -314,3 +314,32 @@ export function assertNotTheOtherCopy(
     );
   }
 }
+
+/**
+ * Refuse to drive a ceremony that belongs to another machine.
+ *
+ * The state lives in the cluster database, so any host with DATABASE_URL can
+ * reach any ceremony — and every fact this command checks is gathered LOCALLY.
+ * Run `teardown` against another Mac's ceremony and `hdiutil detach` finds
+ * nothing, `mount` reports nothing, and the teardown gate passes: it truthfully
+ * observes that the device is absent HERE while the real RAM volume stays
+ * mounted THERE, with the bootstrap key in it. The check that fixed the argv
+ * problem does not survive the wrong host, so the host has to be checked too.
+ *
+ * A ceremony is a single-machine procedure by construction: one operator, one
+ * RAM volume, two devices in their hands.
+ */
+export function assertCeremonyIsOurs(
+  active: { ownerNodeId: string; ownerPrincipal: string },
+  thisNodeId: string,
+): void {
+  if (active.ownerNodeId !== thisNodeId) {
+    throw new Error(
+      `This ceremony is being run on ${active.ownerNodeId} by ${active.ownerPrincipal}, ` +
+      `and you are on ${thisNodeId}. Every check this command makes — the RAM ` +
+      'volume, the mounted devices, the teardown — is about the machine it runs ' +
+      'on, so from here they would describe the wrong computer and pass. Work on ' +
+      `${active.ownerNodeId}, or have that ceremony abandoned first.`,
+    );
+  }
+}

@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeBskKcv } from '../../../src/lib/kcv.js';
 import {
+  assertCeremonyIsOurs,
   assertCopyLabel,
   assertKeyMatchesEnvelope,
   assertKeyMatchesExpectedKcv,
@@ -269,5 +270,29 @@ describe('assertNotTheOtherCopy — what replaced the tautological gate', () => 
 
   it('allows the first copy, when nothing has been recorded yet', () => {
     expect(() => assertNotTheOtherCopy('SERIAL-ONE', 'A', null)).not.toThrow();
+  });
+});
+
+describe('assertCeremonyIsOurs', () => {
+  const active = { ownerNodeId: 'mac-of-the-operator', ownerPrincipal: 'someone@example.com' };
+
+  it('REFUSES a ceremony that belongs to another machine', () => {
+    // The state is in the cluster database and reachable from anywhere; the
+    // facts are local. Tearing down another Mac's ceremony from here observes,
+    // truthfully, that the device is absent HERE — and passes, while the real
+    // RAM volume stays mounted THERE with the bootstrap key in it.
+    expect(() => assertCeremonyIsOurs(active, 'some-other-mac')).toThrow(
+      /mac-of-the-operator/,
+    );
+  });
+
+  it('says who has it and where, so it can be chased', () => {
+    expect(() => assertCeremonyIsOurs(active, 'some-other-mac')).toThrow(
+      /someone@example\.com/,
+    );
+  });
+
+  it('allows the machine that started it', () => {
+    expect(() => assertCeremonyIsOurs(active, 'mac-of-the-operator')).not.toThrow();
   });
 });
