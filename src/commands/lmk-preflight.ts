@@ -75,6 +75,54 @@ function renderHuman(evidence: PreflightEvidence): void {
   }
 }
 
+/**
+ * Validate the wire, then narrow. Takes `unknown` ON PURPOSE.
+ *
+ * `client.get<PreflightSnapshotResponse>()` is a type ASSERTION, not a
+ * validation: TypeScript believes the annotation and nothing verifies the wire.
+ * That is how a missing `hasWrappedLmk` became `undefined`, read as false, and
+ * produced a production preflight reporting RED on a blocking gate — "the
+ * ACTIVE LMK has no wrapped material" — that was not true.
+ *
+ * Typing the parameter as the response would make every check below
+ * "unnecessary" to the compiler, which is the same false confidence that caused
+ * the bug. So it takes `unknown` and earns the type.
+ *
+ * A preflight exists to be believed, and a wrong RED is not the safe direction:
+ * it stops a ceremony that should proceed and tells the operator their key
+ * hierarchy is unrecoverable. An incomplete response is an explicit error
+ * naming what is missing, never a verdict.
+ */
+function validateSnapshot(raw: unknown): PreflightSnapshotResponse {
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error('The vault returned no preflight inventory.');
+  }
+  const snapshot = raw as Record<string, unknown>;
+  const missing: string[] = [];
+  for (const field of ['capturedAt', 'databaseName', 'walLsn', 'lmkVersions']) {
+    if (snapshot[field] === undefined || snapshot[field] === null) missing.push(field);
+  }
+
+  const versions = snapshot.lmkVersions;
+  if (Array.isArray(versions)) {
+    for (const entry of versions as Array<Record<string, unknown>>) {
+      if (typeof entry.hasWrappedLmk !== 'boolean') {
+        missing.push(`lmkVersions[version=${String(entry.version)}].hasWrappedLmk`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `The vault did not send fields this preflight reads: ${missing.join(', ')}. ` +
+      'Refusing to produce a verdict from an incomplete inventory — a gate ' +
+      'evaluated over a missing field reports a failure that is not real. This ' +
+      'usually means the vault is older than the CLI; check its version.',
+    );
+  }
+  return raw as PreflightSnapshotResponse;
+}
+
 export function registerLmkPreflightCommand(lmk: Command): void {
   lmk
     .command('preflight')
@@ -94,8 +142,8 @@ export function registerLmkPreflightCommand(lmk: Command): void {
       // database itself refuses to let write — are intact. What changed is that
       // the deployment records that a preflight ran, which is not a perturbation
       // of the custody state it inspects.
-      const snapshot = await client.get<PreflightSnapshotResponse>(
-        '/v1/superadmin/lmk/preflight',
+      const snapshot = validateSnapshot(
+        await client.get<unknown>('/v1/superadmin/lmk/preflight'),
       );
       const body: PreflightBody = {
           artifact: 'znvault-preflight-v1',
