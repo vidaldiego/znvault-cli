@@ -27,6 +27,7 @@ function suite(): CipherSuite {
 function operation(): MintOperation {
   return {
     operationId: 'dmo_0123456789abcdef',
+    tenantId: 'tenant-1',
     permitId: 'dmp_0123456789abcdef',
     requestId: 'recovery-request-1',
     state: 'CONSUMED',
@@ -38,6 +39,7 @@ function operation(): MintOperation {
     grantPlanSha256: '2'.repeat(64),
     effectiveGrantPlanSha256: '3'.repeat(64),
     privilegeOverlay: 'MYSQL_SCHEMA_LOCK_TABLES',
+    consumerApiKeyId: 'api-key-packleader',
     leaseId: 'lease-recovery-1',
     username: 'znr_user',
     credentialExpiresAt: EXPIRES_AT,
@@ -136,6 +138,18 @@ describe('Recovery Fence v1 consumer HPKE', () => {
     const fixture = await sealedFixture();
     fixture.operation.fenceEpoch++;
     await expect(openRecoveryCredential(fixture)).rejects.toThrow(/epoch|revision/i);
+  });
+
+  it('rejects an authenticated AAD bound to a different tenant', async () => {
+    const fixture = await sealedFixture();
+    fixture.operation.tenantId = 'tenant-2';
+    await expect(openRecoveryCredential(fixture)).rejects.toThrow(/tenant binding/i);
+  });
+
+  it('rejects an authenticated AAD bound to a different consumer API key', async () => {
+    const fixture = await sealedFixture();
+    fixture.operation.consumerApiKeyId = 'api-key-other';
+    await expect(openRecoveryCredential(fixture)).rejects.toThrow(/consumer API key binding/i);
   });
 
   it('rejects a byte change in the persisted envelope digest', async () => {

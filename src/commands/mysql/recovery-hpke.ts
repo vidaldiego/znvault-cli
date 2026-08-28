@@ -233,6 +233,7 @@ function assertBoundAad(
   recipient: EphemeralRecoveryRecipient,
 ): void {
   const exactBindings = [
+    [aad.tenantId, operation.tenantId, 'tenant'],
     [aad.roleId, operation.roleId, 'role'],
     [aad.fenceId, operation.fenceId, 'fence'],
     [aad.permitId, operation.permitId, 'permit'],
@@ -243,6 +244,7 @@ function assertBoundAad(
     [aad.recipientKeyId, recipient.recipientKeyId, 'recipient'],
     [aad.credentialExpiresAt, operation.credentialExpiresAt, 'expiry'],
     [aad.privilegeOverlay, operation.privilegeOverlay, 'privilege overlay'],
+    [aad.consumerApiKeyId, operation.consumerApiKeyId, 'consumer API key'],
   ] as const;
   for (const [actual, expected, name] of exactBindings) {
     if (actual !== expected) throw new Error(`Recovery HPKE ${name} binding does not match the operation`);

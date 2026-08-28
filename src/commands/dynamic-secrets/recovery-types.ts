@@ -73,6 +73,7 @@ export interface RecoveryHpkeCredential {
 
 export interface MintOperation {
   operationId: string;
+  tenantId: string;
   permitId: string;
   requestId: string;
   state: MintOperationState;
@@ -84,6 +85,7 @@ export interface MintOperation {
   grantPlanSha256: string;
   effectiveGrantPlanSha256: string;
   privilegeOverlay: RecoveryPrivilegeOverlay;
+  consumerApiKeyId: string;
   leaseId: string | null;
   username: string | null;
   credentialExpiresAt: string | null;

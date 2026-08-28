@@ -47,6 +47,7 @@ const DELIVERY: RecoveryHpkeCredential = {
 function operation(state: MintOperation['state'] = 'CONSUMED'): MintOperation {
   return {
     operationId: 'dmo_0123456789abcdef',
+    tenantId: 'tenant-1',
     permitId: PERMIT_ID,
     requestId: REQUEST_ID,
     state,
@@ -58,6 +59,7 @@ function operation(state: MintOperation['state'] = 'CONSUMED'): MintOperation {
     grantPlanSha256: '2'.repeat(64),
     effectiveGrantPlanSha256: '3'.repeat(64),
     privilegeOverlay: 'MYSQL_SCHEMA_LOCK_TABLES',
+    consumerApiKeyId: 'api-key-packleader',
     leaseId: 'lease-recovery-1',
     username: 'znr_user',
     credentialExpiresAt: '2026-08-28T12:15:00.000Z',
