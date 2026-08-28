@@ -55,7 +55,7 @@ export interface DbLease {
   renewalCount: number;
   maxExpiresAt: string;
   status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'FAILED' | 'UNKNOWN';
-  credentialOwnership: 'NOT_CREATED' | 'OWNED' | 'UNKNOWN';
+  credentialOwnership: 'NOT_CREATED' | 'OWNED' | 'UNKNOWN' | 'LEGACY_TERMINAL';
   revokedAt: string | null;
   revokedBy: string | null;
   revokeReason: string | null;
