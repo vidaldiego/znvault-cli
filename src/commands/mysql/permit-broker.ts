@@ -2,7 +2,13 @@
 
 import {client} from '../../lib/client.js';
 import {createMyCnf, type MyCnfHandle} from './mycnf.js';
-import {runMysql} from './run.js';
+import {
+  assertMysqlExecCapabilities,
+  assertMysqlOnPath,
+  assertSafeMysqlDatabase,
+  inspectMysqlClient,
+  runMysql,
+} from './run.js';
 import {
   generateEphemeralRecoveryRecipient,
   openRecoveryCredential,
@@ -14,6 +20,9 @@ import type {
 } from '../dynamic-secrets/recovery-types.js';
 
 const RETRY_DELAYS_MS = [250, 1_000, 2_000];
+const OPERATION_SETTLE_TIMEOUT_MS = 120_000;
+const OPERATION_POLL_DELAYS_MS = [250, 500, 1_000, 2_000];
+const MAX_EXEC_PERMIT_SQL_BYTES = 16 * 1024 * 1024;
 const TERMINAL_STATES = new Set([
   'REVOKED',
   'EXPIRED_REVOKED',
@@ -23,6 +32,7 @@ const TERMINAL_STATES = new Set([
 
 interface HttpError extends Error {
   statusCode?: number;
+  errorCode?: string;
 }
 
 export interface ExecPermitOptions {
@@ -30,14 +40,71 @@ export interface ExecPermitOptions {
   requestId: string;
   fenceEpoch: number;
   files?: string[];
+  /** Internal/test hook. The public CLI accepts recovery SQL only from files. */
+  input?: Buffer;
+  /** Internal compatibility hook; recovery v1 rejects every non-empty list. */
   passthrough?: string[];
   run?: (opts: {
     fd: number;
     fdPath: string;
     database: string;
-    files?: string[];
-    passthrough?: string[];
+    input: Buffer;
   }) => Promise<number>;
+}
+
+async function prepareExecPermitSql(options: ExecPermitOptions): Promise<Buffer> {
+  if (options.input !== undefined) {
+    if (options.files && options.files.length > 0) {
+      throw new Error('Recovery SQL input and --file cannot be combined');
+    }
+    if (options.input.length > MAX_EXEC_PERMIT_SQL_BYTES) {
+      throw new Error(`Recovery SQL exceeds ${MAX_EXEC_PERMIT_SQL_BYTES} bytes`);
+    }
+    const copy = Buffer.from(options.input);
+    if (!copy.some(byte => byte > 0x20)) {
+      copy.fill(0);
+      throw new Error('Recovery SQL input is empty');
+    }
+    return copy;
+  }
+
+  if (!options.files || options.files.length === 0) {
+    throw new Error(
+      'znvault mysql exec-permit requires at least one --file with non-empty SQL',
+    );
+  }
+
+  const fs = await import('node:fs/promises');
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    for (const file of options.files) {
+      const handle = await fs.open(file, 'r');
+      let chunk: Buffer;
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile()) {
+          throw new Error(`Recovery SQL source is not a regular file: ${file}`);
+        }
+        chunk = await handle.readFile();
+      } finally {
+        await handle.close();
+      }
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_EXEC_PERMIT_SQL_BYTES) {
+        throw new Error(`Recovery SQL exceeds ${MAX_EXEC_PERMIT_SQL_BYTES} bytes`);
+      }
+      chunks.push(chunk);
+    }
+    const prepared = Buffer.concat(chunks, totalBytes);
+    if (!prepared.some(byte => byte > 0x20)) {
+      prepared.fill(0);
+      throw new Error('Recovery SQL files contain no executable input');
+    }
+    return prepared;
+  } finally {
+    for (const chunk of chunks) chunk.fill(0);
+  }
 }
 
 export interface ExecPermitResult {
@@ -56,6 +123,10 @@ function sleep(ms: number): Promise<void> {
 
 function statusCode(error: unknown): number | undefined {
   return (error as HttpError | undefined)?.statusCode;
+}
+
+function errorCode(error: unknown): string | undefined {
+  return (error as HttpError | undefined)?.errorCode;
 }
 
 function isRetryable(error: unknown): boolean {
@@ -169,12 +240,62 @@ function assertDeliverableOperation(
   }
 }
 
+async function waitForDeliverableOperation(
+  initial: MintOperation,
+  permitId: string,
+  requestId: string,
+  fenceEpoch: number,
+): Promise<MintOperation> {
+  const deadline = Date.now() + OPERATION_SETTLE_TIMEOUT_MS;
+  let current = initial;
+  let poll = 0;
+
+  for (;;) {
+    if (
+      current.permitId !== permitId
+      || current.requestId !== requestId
+      || current.fenceEpoch !== fenceEpoch
+    ) {
+      throw new Error('Recovery operation response does not match permit, request, or fence epoch');
+    }
+    if (current.state === 'CONSUMED' || current.state === 'DELIVERED') return current;
+    if (TERMINAL_STATES.has(current.state) || current.state === 'RECOVERY_REQUIRED') {
+      throw new Error(
+        `Recovery operation reached ${current.state}; no credential is safe to execute`,
+      );
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Recovery operation remained ${current.state} for ${OPERATION_SETTLE_TIMEOUT_MS}ms`,
+      );
+    }
+
+    await sleep(OPERATION_POLL_DELAYS_MS[Math.min(poll, OPERATION_POLL_DELAYS_MS.length - 1)]);
+    poll++;
+    current = await retrySameRequest(async () => await client.get<MintOperation>(
+      operationPath(permitId, requestId),
+    ));
+  }
+}
+
 /**
  * Consume, decrypt, ACK, execute, and revoke one one-shot recovery permit.
  * Password material exists only in the HPKE plaintext buffer/object and an
  * already-unlinked my.cnf inode inherited by the mysql child.
  */
 export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPermitResult> {
+  // Recovery phases have fixed execution semantics. In particular --force,
+  // --one-database, --safe-updates, --reconnect and --wait could omit failed
+  // statements or turn a partial phase into exit 0. Public exec-permit exposes
+  // no passthrough, and internal callers are rejected before recipient
+  // generation or any one-shot consume request.
+  if (options.passthrough !== undefined && options.passthrough.length > 0) {
+    throw new Error(
+      'Recovery exec-permit does not accept mysql passthrough flags; ' +
+      'phase execution semantics are fixed.',
+    );
+  }
+
   const recipient = await generateEphemeralRecoveryRecipient();
   const consumeBody = Object.freeze({
     fenceEpoch: options.fenceEpoch,
@@ -183,12 +304,13 @@ export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPer
     deliveryFormat: 'hpke-v1' as const,
   });
 
-  let cleanupArmed = true;
+  let cleanupArmed = false;
   let cleanupPromise: Promise<boolean> | undefined;
   let operation: MintOperation | undefined;
   let delivery: RecoveryHpkeCredential | undefined;
   let credential: RecoveryCredentialPlaintext | undefined;
   let cnf: MyCnfHandle | undefined;
+  let sqlInput: Buffer | undefined;
   let revokeState: MintOperation['state'] = 'RECOVERY_REQUIRED';
 
   const cleanup = (reason: string): Promise<boolean> => {
@@ -233,6 +355,17 @@ export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPer
   process.once('uncaughtException', onUncaughtException);
 
   try {
+    // Prove option-file isolation before consuming the one-shot permit. The
+    // test/custom runner path deliberately skips probing a workstation binary.
+    if (options.run === undefined) {
+      assertMysqlExecCapabilities(inspectMysqlClient(assertMysqlOnPath()));
+    }
+
+    // Validate and freeze the exact SQL bytes before the one-shot server-side
+    // consume. Missing, unreadable or empty files therefore make zero API calls.
+    sqlInput = await prepareExecPermitSql(options);
+    cleanupArmed = true;
+
     const consumeAttempt = {hadUncertainFailure: false};
     try {
       operation = await retrySameRequest(async () => {
@@ -248,8 +381,13 @@ export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPer
       });
     } catch (error) {
       // A definitive client error means the server rejected the consume before
-      // creating this operation. Do not burn the permit with a tombstone. For
-      // network/5xx ambiguity cleanup remains armed and revoke is mandatory.
+      // creating this operation. Do not burn the permit with a tombstone. The
+      // exception is recovery_request_id_conflict: it means this permit/request
+      // already exists with a different recipient key, which is exactly what a
+      // restarted process sees after losing its process-local HPKE private key.
+      // Confirm that operation through the subject-scoped GET, then leave cleanup
+      // armed so the finally path revokes it by requestId. For network/5xx
+      // ambiguity cleanup also remains armed and revoke is mandatory.
       const status = statusCode(error);
       if (
         !consumeAttempt.hadUncertainFailure
@@ -258,9 +396,41 @@ export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPer
         && status < 500
       ) {
         cleanupArmed = false;
+        if (errorCode(error) === 'recovery_request_id_conflict') {
+          try {
+            const existing = await retrySameRequest(async () => await client.get<MintOperation>(
+              operationPath(options.permitId, options.requestId),
+            ));
+            if (
+              existing.permitId !== options.permitId
+              || existing.requestId !== options.requestId
+            ) {
+              throw new Error(
+                'Recovery operation lookup does not match the conflicted permit or request',
+              );
+            }
+            cleanupArmed = true;
+          } catch (lookupError) {
+            const lookupStatus = statusCode(lookupError);
+            // Only the server's exact not-found result proves that no operation
+            // exists at this subject-scoped path. Authentication, validation,
+            // conflict, malformed and unavailable responses are ambiguous and
+            // therefore remain fail-closed via a revoke attempt.
+            cleanupArmed = !(
+              lookupStatus === 404
+              && errorCode(lookupError) === 'recovery_operation_not_found'
+            );
+          }
+        }
       }
       throw error;
     }
+    operation = await waitForDeliverableOperation(
+      operation,
+      options.permitId,
+      options.requestId,
+      options.fenceEpoch,
+    );
     assertDeliverableOperation(
       operation,
       options.permitId,
@@ -270,6 +440,11 @@ export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPer
 
     delivery = operation.credential ?? await fetchCredential(options.permitId, options.requestId);
     credential = await openRecoveryCredential({delivery, operation, recipient});
+
+    // The database is authenticated HPKE plaintext but may originate in an old
+    // or compromised producer. Reject it before materialising credentials, ACK,
+    // or invoking mysql; the armed finally path revokes by requestId.
+    assertSafeMysqlDatabase(credential.database);
 
     // Materialize the credential only into the already-unlinked option-file
     // inode before ACK. If this fails, MySQL is never invoked and revoke runs.
@@ -294,15 +469,13 @@ export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPer
       fdPath: args.fdPath,
       database: args.database,
       mode: 'exec',
-      files: args.files,
-      passthrough: args.passthrough,
+      input: args.input,
     }));
     const mysqlExitCode = await run({
       fd: cnf.fd,
       fdPath: cnf.fdPath,
       database: credential.database,
-      files: options.files,
-      passthrough: options.passthrough,
+      input: sqlInput,
     });
     const revoked = await cleanup('znvault_mysql_exec_permit_complete');
     if (!revoked) {
@@ -324,6 +497,7 @@ export async function runExecPermit(options: ExecPermitOptions): Promise<ExecPer
     process.off('SIGTERM', onSIGTERM);
     process.off('SIGHUP', onSIGHUP);
     process.off('uncaughtException', onUncaughtException);
+    sqlInput?.fill(0);
     await cleanup('znvault_mysql_exec_permit_failure');
   }
 }

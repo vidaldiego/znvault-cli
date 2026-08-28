@@ -12,7 +12,7 @@
 //      inode (and its plaintext bytes) stays alive ONLY because the open fd
 //      still references it; there is NO name in the filesystem from this point
 //      on, so a `kill -9` or crash leaves nothing on disk to recover.
-//   4. runMysql passes `/dev/fd/<fd>` as --defaults-extra-file and inherits the
+//   4. runMysql passes `/dev/fd/<fd>` as --defaults-file and inherits the
 //      fd into the child at the SAME number, so mysql re-opens the still-alive
 //      inode through /dev/fd. (On macOS /dev/fd/N re-opens the inode — which is
 //      why the fd MUST be readable; see the 'wx+' note below. On Linux /dev/fd
@@ -48,7 +48,7 @@ function memBackedTmpBase(): string {
  *             child mysql inherits this fd at the SAME number and re-opens it
  *             via `fdPath`.
  * - `fdPath`: `/dev/fd/<fd>` — pass this verbatim as the value of
- *             `--defaults-extra-file`. Works on macOS (/dev/fd) and Linux
+ *             `--defaults-file`. Works on macOS (/dev/fd) and Linux
  *             (/dev/fd → /proc/self/fd).
  * - `cleanup`: idempotent, best-effort. Closes `fd` (releasing the inode so its
  *             bytes are reclaimed) and rmdir's the now-empty mem-fs dir.
@@ -56,7 +56,7 @@ function memBackedTmpBase(): string {
 export interface MyCnfHandle {
   /** Open fd backing the unlinked cnf inode. Child inherits it at this number. */
   fd: number;
-  /** `/dev/fd/<fd>` — the value to pass to --defaults-extra-file. */
+  /** `/dev/fd/<fd>` — the value to pass to --defaults-file. */
   fdPath: string;
   /** Idempotent best-effort teardown: closeSync(fd) + rmdir(dir). */
   cleanup: () => void;

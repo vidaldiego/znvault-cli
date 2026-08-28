@@ -42,6 +42,11 @@ const spawnMock = vi.fn((_bin: string, _args: string[], opts: { stdio: unknown }
 
 vi.mock('node:child_process', () => ({
   spawn: spawnMock,
+  spawnSync: vi.fn(() => ({
+    status: 0,
+    stdout: 'mysql  Ver 8.4\n  --defaults-file=#\n  --no-login-paths\n  --binary-mode\n',
+    stderr: '',
+  })),
 }));
 
 let mysqlDir: string;
@@ -87,9 +92,12 @@ describe('runMysql — fd inheritance (F1)', () => {
     expect(stdio[1]).toBe('inherit');
     expect(stdio[2]).toBe('inherit');
 
-    // --defaults-extra-file=/dev/fd/<fd> is args[0].
+    // --defaults-file=/dev/fd/<fd> is args[0], before --no-login-paths.
     const args = spawnMock.mock.calls[0][1];
-    expect(args[0]).toBe(`--defaults-extra-file=/dev/fd/${fd.toString()}`);
+    expect(args.slice(0, 2)).toEqual([
+      `--defaults-file=/dev/fd/${fd.toString()}`,
+      '--no-login-paths',
+    ]);
 
     lastChild!.emit('close', 0);
     const code = await promise;
@@ -114,6 +122,7 @@ describe('runMysql — fd inheritance (F1)', () => {
     expect(stdio[fd]).toBe(fd);    // cnf fd inherited at its own number
     // SQL was written to the child's stdin.
     expect(lastChild!.stdin.end).toHaveBeenCalled();
+    expect(spawnMock.mock.calls[0][1]).toContain('--binary-mode');
 
     lastChild!.emit('close', 0);
     const code = await promise;

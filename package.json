@@ -21,6 +21,7 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:integration": "ZNVAULT_INTEGRATION=true vitest run --config vitest.integration.config.ts",
+    "test:mysql-client-security": "ZNVAULT_REAL_MYSQL_CLIENT_SECURITY_TEST=1 vitest run --config vitest.integration.config.ts test/integration/mysql-binary-mode.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts --max-warnings 0",
     "lint:fix": "eslint src --ext .ts --fix",
