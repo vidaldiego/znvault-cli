@@ -36,7 +36,7 @@ export async function listLeases(options: LeaseListOptions): Promise<void> {
     }
 
     const table = new Table({
-      head: ['Lease ID', 'Username', 'Role', 'Status', 'TTL Remaining', 'Renewals'],
+      head: ['Lease ID', 'Username', 'Role', 'Status', 'Ownership', 'TTL Remaining', 'Renewals'],
       style: { head: ['cyan'] },
     });
 
@@ -46,6 +46,7 @@ export async function listLeases(options: LeaseListOptions): Promise<void> {
         lease.username,
         lease.roleName ?? lease.roleId.substring(0, 8),
         formatStatus(lease.status),
+        lease.credentialOwnership,
         lease.status === 'ACTIVE' ? formatDuration(lease.ttlRemaining) : '-',
         String(lease.renewalCount),
       ]);
@@ -78,6 +79,7 @@ export async function getLease(leaseId: string, options: { json?: boolean }): Pr
       'Role': response.roleName ?? response.roleId,
       'Connection': response.connectionName ?? response.connectionId,
       'Status': formatStatus(response.status),
+      'Credential Ownership': response.credentialOwnership,
       'TTL Remaining': response.status === 'ACTIVE' ? formatDuration(response.ttlRemaining) : '-',
       'Renewal Count': String(response.renewalCount),
       'Issued At': formatDate(response.issuedAt),

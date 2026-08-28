@@ -284,6 +284,8 @@ describe('Dynamic Secrets Commands', () => {
       await program.parseAsync(['node', 'test', 'dynasec', 'connection', 'delete', 'conn-123']);
 
       expect(inquirer.prompt).toHaveBeenCalled();
+      const questions = vi.mocked(inquirer.prompt).mock.calls[0]?.[0] as unknown;
+      expect(JSON.stringify(questions)).toContain('only when no retained lease history exists');
       expect(client.delete).toHaveBeenCalledWith('/v1/dynamic-secrets/connections/conn-123');
     });
 
@@ -540,6 +542,8 @@ describe('Dynamic Secrets Commands', () => {
       await program.parseAsync(['node', 'test', 'dynasec', 'role', 'delete', 'role-123']);
 
       expect(inquirer.prompt).toHaveBeenCalled();
+      const questions = vi.mocked(inquirer.prompt).mock.calls[0]?.[0] as unknown;
+      expect(JSON.stringify(questions)).toContain('blocked while retained lease history exists');
       expect(client.delete).toHaveBeenCalledWith('/v1/dynamic-secrets/roles/role-123');
     });
 

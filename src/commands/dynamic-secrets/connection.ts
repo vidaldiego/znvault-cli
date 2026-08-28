@@ -187,7 +187,7 @@ export async function deleteConnection(nameOrId: string, options: { force?: bool
     const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
       name: 'confirm',
-      message: `Are you sure you want to delete connection "${nameOrId}"? This will also delete all associated roles.`,
+      message: `Are you sure you want to delete connection "${nameOrId}"? This will also delete its roles, but only when no retained lease history exists.`,
       default: false,
     }]);
     if (!confirm) {

@@ -278,7 +278,7 @@ export async function deleteRole(roleId: string, options: { force?: boolean; jso
     const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
       name: 'confirm',
-      message: `Are you sure you want to delete this role? Active leases will be revoked.`,
+      message: 'Are you sure you want to delete this role? Deletion is blocked while retained lease history exists.',
       default: false,
     }]);
     if (!confirm) {

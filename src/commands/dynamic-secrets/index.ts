@@ -111,8 +111,8 @@ Examples:
   connection
     .command('delete <name-or-id>')
     .alias('rm')
-    .description('Delete a database connection')
-    .option('--force', 'Skip confirmation')
+    .description('Delete a database connection (blocked while retained lease history exists)')
+    .option('--force', 'Skip confirmation only; does not bypass lease-history retention')
     .option('--json', 'Output as JSON')
     .action(deleteConnection);
 
@@ -125,8 +125,9 @@ Examples:
   connection
     .command('provision <name>')
     .description(
-      'Provision a database connection end-to-end: validates the root credential, creates (or ' +
-      'adopts) a least-privilege admin sub-account server-side, and stores the connection. ' +
+      'Provision a database connection end-to-end: validates the root credential, creates ' +
+      'least-privilege sub-accounts server-side, and stores the connection. Pre-existing reserved ' +
+      'accounts are rejected without mutation. ' +
       'The root credential is transient — read from --root-file or a masked prompt, sent once, ' +
       'never persisted or logged.',
     )
@@ -173,11 +174,10 @@ Examples:
     --root-file /tmp/root.txt --json
 
 Notes:
-  - Adopt, don't clobber: if the target admin sub-account already exists,
-    provision ADOPTS it (re-grants least-privilege permissions) instead of
-    resetting its password. If you need a fresh admin credential on an
-    already-provisioned connection, use:
-      znvault dynasec connection rotate-admin <connection-id>
+  - Pre-existing reserved accounts are never adopted or re-granted. Provision
+    returns 409 adopted_account_no_password without mutating either account;
+    use an unused --account-prefix or register a normal connection with a
+    credential whose password you already control.
   - The root credential is used once, in-memory, for this call only — it is
     never stored, logged, or echoed back in the response or audit trail.
   - Root host is subject to the same SSRF host-allowlist guard as other
@@ -207,13 +207,12 @@ Examples:
 
 Notes:
   - This only rotates the vault-managed ADMIN account's password (the
-    account provision created/adopted for managing roles and leases) — it
+    account provision created for managing roles and leases) — it
     does not affect the root credential (which vault never stores) or any
     already-issued dynamic-secret leases.
-  - Use this after \`connection provision\` adopted a pre-existing account
-    with an unknown password (409 adopted_account_no_password on provision
-    means vault could not verify/rotate it during provisioning — rotate
-    it explicitly once you've confirmed the adopted grants are correct).
+  - This cannot retrofit a pre-existing account rejected by \`connection
+    provision\` with 409 adopted_account_no_password. It requires a working
+    admin credential already stored on an active vault connection.
 `)
     .action(rotateAdminCredential);
 
@@ -307,8 +306,8 @@ Notes:
   role
     .command('delete <role-id>')
     .alias('rm')
-    .description('Delete a role')
-    .option('--force', 'Skip confirmation')
+    .description('Delete a role (blocked while retained lease history exists)')
+    .option('--force', 'Skip confirmation only; does not bypass lease-history retention')
     .option('--json', 'Output as JSON')
     .action(deleteRole);
 
@@ -335,7 +334,7 @@ Notes:
     .alias('ls')
     .description('List credential leases')
     .option('--role <id>', 'Filter by role ID')
-    .option('--status <status>', 'Filter by status (ACTIVE, EXPIRED, REVOKED)')
+    .option('--status <status>', 'Filter by status (ACTIVE, EXPIRED, REVOKED, FAILED, UNKNOWN)')
     .option('--json', 'Output as JSON')
     .action(listLeases);
 
