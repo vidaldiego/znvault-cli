@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "4.24.2",
+  "version": "4.24.3",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -21,6 +21,7 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:integration": "ZNVAULT_INTEGRATION=true vitest run --config vitest.integration.config.ts",
+    "test:mysql-client-security": "ZNVAULT_REAL_MYSQL_CLIENT_SECURITY_TEST=1 vitest run --config vitest.integration.config.ts test/integration/mysql-binary-mode.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts --max-warnings 0",
     "lint:fix": "eslint src --ext .ts --fix",
@@ -40,6 +41,9 @@
     "url": "https://github.com/vidaldiego/znvault-cli"
   },
   "dependencies": {
+    "@hpke/chacha20poly1305": "1.8.0",
+    "@hpke/core": "1.9.0",
+    "@hpke/dhkem-x25519": "1.8.0",
     "@iarna/toml": "^2.2.5",
     "@inquirer/prompts": "^8.2.0",
     "@zincapp/znvault-migrate": "^1.0.0",

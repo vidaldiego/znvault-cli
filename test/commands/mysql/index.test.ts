@@ -101,6 +101,8 @@ describe('mysql exec — parse regression (options after target)', () => {
     }));
     vi.mock('../../../src/commands/mysql/run.js', () => ({
       assertMysqlOnPath: vi.fn(),
+      assertPassthroughAllowed: vi.fn(),
+      assertSafeMysqlDatabase: vi.fn(),
       runMysql: vi.fn().mockResolvedValue(0),
     }));
     vi.mock('../../../src/commands/mysql/alias.js', () => ({

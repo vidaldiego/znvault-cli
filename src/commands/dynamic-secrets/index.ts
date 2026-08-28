@@ -31,6 +31,16 @@ import {
 } from './lease.js';
 import { registerAllowedHostsCommands } from './allowed-hosts.js';
 import { registerTemplatesCommands } from './templates.js';
+import {
+  getMintOperationStatus,
+  issueMintPermit,
+  revokeMintOperation,
+} from './permit.js';
+import {
+  closeRecoveryFence,
+  getRecoveryFenceStatus,
+  openRecoveryFence,
+} from './recovery-fence.js';
 
 // Re-export types
 export * from './types.js';
@@ -240,7 +250,7 @@ Notes:
     .description('Create a new role for a connection (from a fixed template, or raw SQL as an escape hatch)')
     .option('--name <name>', 'Role name')
     .option('--description <desc>', 'Role description')
-    .option('--template <name>', 'Create from a fixed, versioned server template (e.g. readonly, readwrite, ddl, migrate) — mutually exclusive with the raw SQL flags below')
+    .option('--template <name>', 'Create from a fixed, versioned server template (e.g. readonly, readwrite, ddl, migrate, packleader-client-v1-recovery) — mutually exclusive with the raw SQL flags below')
     .option('--template-version <n>', 'Template version (defaults to latest on the server if omitted)')
     .option('--creation-statements <sql>', '[raw mode, requires dynamic-secrets:roles:write-raw] SQL statements to create credentials (semicolon-separated)')
     .option('--revocation-statements <sql>', '[raw mode] SQL statements to revoke credentials (semicolon-separated)')
@@ -265,6 +275,11 @@ Examples:
   # prints a "bundle_not_applied" warning.
   znvault dynasec role create <mysql-connection-id> --name migrator --template migrate
 
+  # Recovery Fence v1: the server creates this role permanently disabled.
+  # It can mint only through an OPEN fence plus a one-shot permit.
+  znvault dynasec role create <mysql-connection-id> --name packleader-recovery \
+    --template packleader-client-v1-recovery --template-version 1
+
   # Raw mode (escape hatch): hand-write the SQL yourself. Requires the
   # separate "dynamic-secrets:roles:write-raw" permission (NOT auto-granted —
   # ask an admin to grant it if you get a 403).
@@ -273,7 +288,7 @@ Examples:
     --revocation-statements "DROP ROLE IF EXISTS \\"{{username}}\\""
 
 Template catalog (v1, fixed server-side — see "znvault dynasec templates list"):
-  MySQL:      readonly, readwrite, ddl, migrate
+  MySQL:      readonly, readwrite, ddl, migrate, packleader-client-v1-recovery
   PostgreSQL: readonly, readwrite     (ddl/migrate are MySQL-only; using them
                                         on a PostgreSQL connection 400s with
                                         ddl_unsupported_for_engine)
@@ -293,6 +308,7 @@ Notes:
   role
     .command('update <role-id>')
     .description('Update a role')
+    .requiredOption('--expected-config-revision <n>', 'Exact role CAS revision returned by role get')
     .option('--description <desc>', 'Role description')
     .option('--creation-statements <sql>', 'SQL statements to create credentials (semicolon-separated)')
     .option('--revocation-statements <sql>', 'SQL statements to revoke credentials (semicolon-separated)')
@@ -307,6 +323,7 @@ Notes:
     .command('delete <role-id>')
     .alias('rm')
     .description('Delete a role (blocked while retained lease history exists)')
+    .requiredOption('--expected-config-revision <n>', 'Exact role CAS revision returned by role get')
     .option('--force', 'Skip confirmation only; does not bypass lease-history retention')
     .option('--json', 'Output as JSON')
     .action(deleteRole);
@@ -368,4 +385,73 @@ Notes:
   // Templates Commands
   // -------------------------------------------------------------------------
   registerTemplatesCommands(dynasec);
+
+  // -------------------------------------------------------------------------
+  // Recovery Fence v1
+  // -------------------------------------------------------------------------
+  const fence = dynasec
+    .command('recovery-fence')
+    .description('Open, inspect, and close PostgreSQL-authoritative recovery fences');
+
+  fence
+    .command('open <role-id> <run-id>')
+    .description('Open an idempotent recovery fence around a disabled MySQL role')
+    .requiredOption('--consumer-api-key-id <id>', 'API key bound to all permits in this fence')
+    .requiredOption('--expected-role-revision <n>', 'Pinned role configuration revision')
+    .requiredOption('--expected-role-config-sha256 <hex>', 'Pinned lowercase role configuration SHA-256')
+    .requiredOption('--expires-in-seconds <n>', 'Fence lifetime (PostgreSQL clock)')
+    .requiredOption('--purpose <purpose>', 'Bounded operational purpose')
+    .option('--json', 'Output as JSON')
+    .action(openRecoveryFence);
+
+  fence
+    .command('status <role-id> <run-id>')
+    .description('Get recovery fence state and drain counters')
+    .option('--json', 'Output as JSON')
+    .action(getRecoveryFenceStatus);
+
+  fence
+    .command('close <role-id> <run-id>')
+    .description('Advance the fence epoch, drain operations, and verify final closure')
+    .requiredOption('--expected-fence-epoch <n>', 'The OPEN epoch being closed')
+    .option('--json', 'Output as JSON')
+    .action(closeRecoveryFence);
+
+  const permit = dynasec
+    .command('permit')
+    .description('Issue and inspect one-shot recovery mint permits');
+
+  permit
+    .command('issue <role-id>')
+    .description('Issue an idempotent maxMints=1 permit (strict operator permission required)')
+    .requiredOption('--fence-id <id>', 'Open recovery fence ID')
+    .requiredOption('--consumer-api-key-id <id>', 'Consumer API key bound to the permit')
+    .requiredOption('--phase <phase>', 'Recovery phase (issue one permit per phase)')
+    .requiredOption('--expires-in-seconds <n>', 'Permit lifetime')
+    .requiredOption('--credential-ttl-seconds <n>', 'Target credential lifetime')
+    .option(
+      '--privilege-overlay <overlay>',
+      'NONE or MYSQL_SCHEMA_LOCK_TABLES (never arbitrary SQL)',
+      'NONE',
+    )
+    .requiredOption('--reason <reason>', 'Auditable recovery reason')
+    .requiredOption(
+      '--idempotency-key <uuid>',
+      'UUID persisted with the request; reuse it unchanged after an uncertain response',
+    )
+    .option('--json', 'Output as JSON')
+    .action(issueMintPermit);
+
+  permit
+    .command('status <permit-id> <request-id>')
+    .description('Get an idempotent permit operation by request ID')
+    .option('--json', 'Output as JSON')
+    .action(getMintOperationStatus);
+
+  permit
+    .command('revoke <permit-id> <request-id>')
+    .description('Revoke by request ID, including a pre-acquire tombstone')
+    .option('--reason <reason>', 'Revocation reason')
+    .option('--json', 'Output as JSON')
+    .action(revokeMintOperation);
 }

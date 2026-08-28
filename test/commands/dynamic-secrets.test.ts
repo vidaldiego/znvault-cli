@@ -404,6 +404,9 @@ describe('Dynamic Secrets Commands', () => {
         usernameTemplate: 'v_{{role}}_{{random:8}}',
         defaultTtlSeconds: 3600,
         maxTtlSeconds: 7200,
+        configRevision: 42,
+        configSha256: 'a'.repeat(64),
+        grantPlanSha256: 'b'.repeat(64),
         activeLeases: 5,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
@@ -413,7 +416,11 @@ describe('Dynamic Secrets Commands', () => {
       await program.parseAsync(['node', 'test', 'dynasec', 'role', 'get', 'role-123']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/dynamic-secrets/roles/role-123');
-      expect(output.keyValue).toHaveBeenCalled();
+      expect(output.keyValue).toHaveBeenCalledWith(expect.objectContaining({
+        'Config Revision': '42',
+        'Config SHA-256': 'a'.repeat(64),
+        'Grant Plan SHA-256': 'b'.repeat(64),
+      }));
     });
 
     it('should output JSON when --json flag is set', async () => {
@@ -488,12 +495,14 @@ describe('Dynamic Secrets Commands', () => {
 
       await program.parseAsync([
         'node', 'test', 'dynasec', 'role', 'update', 'role-123',
+        '--expected-config-revision', '42',
         '--description', 'Updated description',
         '--enabled', 'false',
         '--default-ttl', '1800',
       ]);
 
       expect(client.patch).toHaveBeenCalledWith('/v1/dynamic-secrets/roles/role-123', {
+        expectedConfigRevision: 42,
         description: 'Updated description',
         isEnabled: false,
         defaultTtlSeconds: 1800,
@@ -507,6 +516,7 @@ describe('Dynamic Secrets Commands', () => {
 
       await program.parseAsync([
         'node', 'test', 'dynasec', 'role', 'update', 'role-123',
+        '--expected-config-revision', '42',
         '--description', 'test',
         '--json',
       ]);
@@ -520,6 +530,7 @@ describe('Dynamic Secrets Commands', () => {
 
       await program.parseAsync([
         'node', 'test', 'dynasec', 'role', 'update', 'role-123',
+        '--expected-config-revision', '42',
         '--creation-statements', 'CREATE USER x;GRANT SELECT ON *.* TO x',
         '--revocation-statements', 'DROP USER IF EXISTS x',
         '--renew-statements', 'ALTER USER x IDENTIFIED BY \'{{password}}\'',
@@ -539,27 +550,40 @@ describe('Dynamic Secrets Commands', () => {
       vi.mocked(inquirer.prompt).mockResolvedValue({ confirm: true });
       vi.mocked(client.delete).mockResolvedValue(undefined);
 
-      await program.parseAsync(['node', 'test', 'dynasec', 'role', 'delete', 'role-123']);
+      await program.parseAsync([
+        'node', 'test', 'dynasec', 'role', 'delete', 'role-123',
+        '--expected-config-revision', '42',
+      ]);
 
       expect(inquirer.prompt).toHaveBeenCalled();
       const questions = vi.mocked(inquirer.prompt).mock.calls[0]?.[0] as unknown;
       expect(JSON.stringify(questions)).toContain('blocked while retained lease history exists');
-      expect(client.delete).toHaveBeenCalledWith('/v1/dynamic-secrets/roles/role-123');
+      expect(client.delete).toHaveBeenCalledWith(
+        '/v1/dynamic-secrets/roles/role-123?expectedConfigRevision=42',
+      );
     });
 
     it('should delete role with --force flag', async () => {
       vi.mocked(client.delete).mockResolvedValue(undefined);
 
-      await program.parseAsync(['node', 'test', 'dynasec', 'role', 'delete', 'role-123', '--force']);
+      await program.parseAsync([
+        'node', 'test', 'dynasec', 'role', 'delete', 'role-123',
+        '--expected-config-revision', '42', '--force',
+      ]);
 
       expect(inquirer.prompt).not.toHaveBeenCalled();
-      expect(client.delete).toHaveBeenCalledWith('/v1/dynamic-secrets/roles/role-123');
+      expect(client.delete).toHaveBeenCalledWith(
+        '/v1/dynamic-secrets/roles/role-123?expectedConfigRevision=42',
+      );
     });
 
     it('should cancel when not confirmed', async () => {
       vi.mocked(inquirer.prompt).mockResolvedValue({ confirm: false });
 
-      await program.parseAsync(['node', 'test', 'dynasec', 'role', 'delete', 'role-123']);
+      await program.parseAsync([
+        'node', 'test', 'dynasec', 'role', 'delete', 'role-123',
+        '--expected-config-revision', '42',
+      ]);
 
       expect(client.delete).not.toHaveBeenCalled();
       expect(output.info).toHaveBeenCalledWith('Cancelled');

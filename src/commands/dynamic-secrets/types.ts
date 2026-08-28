@@ -35,6 +35,10 @@ export interface DbRole {
   maxTtlSeconds: number | null;
   usernameTemplate: string;
   isEnabled: boolean;
+  /** Recovery Fence v1 semantic CAS identity (absent on older servers). */
+  configRevision?: number;
+  configSha256?: string | null;
+  grantPlanSha256?: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -126,6 +130,7 @@ export interface RoleCreateOptions {
 }
 
 export interface RoleUpdateOptions {
+  expectedConfigRevision: string;
   description?: string;
   creationStatements?: string;
   revocationStatements?: string;
@@ -133,6 +138,12 @@ export interface RoleUpdateOptions {
   defaultTtl?: string;
   maxTtl?: string;
   enabled?: string;
+  json?: boolean;
+}
+
+export interface RoleDeleteOptions {
+  expectedConfigRevision: string;
+  force?: boolean;
   json?: boolean;
 }
 

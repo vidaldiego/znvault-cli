@@ -4,6 +4,8 @@
  * Register `znvault mysql` commands: exec, connect, alias.
  *
  * Security guarantees (spec F1–F12):
+ *   - mysql passthrough is validated against a fixed argument-free allowlist
+ *     before target resolution or lease generation.
  *   - assertMysqlOnPath() is called BEFORE generating a lease (fail-fast, no
  *     wasted credentials if mysql is absent — spec F1).
  *   - Password never in argv/env/stdout (broker writes 0600 my.cnf — spec F3).
@@ -18,9 +20,16 @@ import type { Command } from 'commander';
 import * as output from '../../lib/output.js';
 import { resolveTarget } from './resolve.js';
 import { runBrokered } from './broker.js';
-import { assertMysqlOnPath, runMysql } from './run.js';
+import {
+  assertMysqlOnPath,
+  assertPassthroughAllowed,
+  assertSafeMysqlDatabase,
+  runMysql,
+} from './run.js';
 import { addAlias, listAliases, removeAlias } from './alias.js';
 import type { MysqlExecCmdOptions, MysqlExecOptions } from './types.js';
+import type {MysqlExecPermitOptions} from './types.js';
+import {runExecPermit} from './permit-broker.js';
 
 /**
  * Collect helper for Commander repeatable options (--file <path> ... --file <path>).
@@ -84,8 +93,14 @@ Examples:
   # Save an alias for quick access
   znvault mysql alias add staging-rw --connection staging-mysql --role app-rw  // gitleaks:allow reason=generic help-text example, not a real role id
 
-  # Pass extra mysql flags after --
+  # Pass allowlisted, argument-free presentation flags after --
   znvault mysql connect my-connection -- --table
+
+Passthrough policy:
+  Only fixed presentation flags without values are accepted (for example
+  --batch, --silent, --raw, --force, --table, --vertical and --column-names).
+  Connection, credential, TLS, charset, timeout, input-control, file-output,
+  introspection and unknown flags are rejected before any lease is generated.
 `);
 
   // ── exec ─────────────────────────────────────────────────────────────────────
@@ -117,6 +132,10 @@ Examples:
       const passthrough: string[] = mysqlArgs;
 
       try {
+        // Validate before PATH probing, target resolution or lease generation.
+        assertPassthroughAllowed(passthrough);
+        assertSafeMysqlDatabase(opts.database);
+
         // Fail fast: check mysql binary before generating any lease.
         assertMysqlOnPath();
 
@@ -157,6 +176,10 @@ Examples:
       const passthrough: string[] = mysqlArgs;
 
       try {
+        // Validate before PATH probing, target resolution or lease generation.
+        assertPassthroughAllowed(passthrough);
+        assertSafeMysqlDatabase(opts.database);
+
         // Fail fast: check mysql binary before generating any lease.
         assertMysqlOnPath();
 
@@ -177,6 +200,72 @@ Examples:
             }),
         });
         process.exit(code);
+      } catch (err) {
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // ── exec-permit ──────────────────────────────────────────────────────────────
+  mysql
+    .command('exec-permit <permit-id> <request-id>')
+    .description(
+      'Consume one Recovery Fence v1 permit, execute SQL, ACK delivery, and revoke by request ID',
+    )
+    .requiredOption('--fence-epoch <n>', 'Epoch returned by permit issue')
+    .requiredOption(
+      '--file <path>',
+      'Non-empty SQL file to execute (repeatable; validated before permit consume)',
+      collect,
+      [],
+    )
+    .addHelpText('after', `
+Examples:
+  # SQL is read from a file; no database credential enters argv or env.
+  znvault mysql exec-permit dmp_... recovery-request-1 \\
+    --fence-epoch 7 --file reconcile.sql
+
+Notes:
+  - Recovery v1 requires --file. The exact non-empty bytes are loaded before
+    consuming the permit, so an empty pipe/file cannot burn a one-shot phase.
+  - There is deliberately no --sql option because inline SQL can itself carry
+    sensitive values.
+  - The command creates an ephemeral X25519 key only in this process.
+  - It validates the complete authenticated AAD before invoking mysql.
+  - The password is passed through an already-unlinked 0600 my.cnf inode,
+    never argv or environment.
+  - Delivery is ACKed before mysql runs and the operation is revoked in every
+    exit path. If this process is killed before it can revoke, run:
+      znvault dynasec permit revoke <permit-id> <request-id>
+`)
+    .action(async (
+      permitId: string,
+      requestId: string,
+      opts: MysqlExecPermitOptions,
+    ) => {
+      try {
+        // No permit is consumed if the local mysql client is unavailable.
+        assertMysqlOnPath();
+        const fenceEpoch = Number(opts.fenceEpoch);
+        if (!Number.isSafeInteger(fenceEpoch) || fenceEpoch <= 0) {
+          throw new Error('--fence-epoch must be a positive integer');
+        }
+        const result = await runExecPermit({
+          permitId,
+          requestId,
+          fenceEpoch,
+          files: opts.file,
+        });
+        output.keyValue({
+          'Permit ID': result.permitId,
+          'Request ID': result.requestId,
+          'Operation ID': result.operationId,
+          'Delivery state': result.deliveryState,
+          'Revocation state': result.revokeState,
+          'Envelope SHA-256': result.envelopeSha256,
+          'MySQL exit code': result.mysqlExitCode,
+        });
+        process.exit(result.mysqlExitCode);
       } catch (err) {
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);

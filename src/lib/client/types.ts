@@ -10,6 +10,12 @@ export interface RequestOptions {
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
   skipAuth?: boolean;
+  /**
+   * Additional application headers for endpoints with a header-level
+   * contract (currently Recovery Fence v1's Idempotency-Key). Authentication
+   * and transport headers are protected and cannot be overridden here.
+   */
+  headers?: Readonly<Record<string, string>>;
   // Internal: set by the http client when retrying once after a 401
   // refresh. Prevents infinite recursion when the refresh succeeds
   // but the next request still 401s (which would mean the refresh
