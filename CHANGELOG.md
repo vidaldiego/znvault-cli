@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.24.1] - 2026-08-28
+
+### Fixed
+
+- Dynamic-secret role and connection deletion now surfaces retained-lease
+  conflicts without suggesting that `--force` bypasses the server's 90-day
+  ownership and audit retention boundary.
+- Lease output recognises the fail-closed `UNKNOWN` ownership state and warns
+  operators instead of presenting it as an ordinary revocable credential.
+
 ## [4.23.0] - 2026-08-24
 
 Escrow ceremony work: the receipt stops publishing a raw digest of the root
