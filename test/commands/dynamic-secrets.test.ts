@@ -404,6 +404,9 @@ describe('Dynamic Secrets Commands', () => {
         usernameTemplate: 'v_{{role}}_{{random:8}}',
         defaultTtlSeconds: 3600,
         maxTtlSeconds: 7200,
+        configRevision: 42,
+        configSha256: 'a'.repeat(64),
+        grantPlanSha256: 'b'.repeat(64),
         activeLeases: 5,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
@@ -413,7 +416,11 @@ describe('Dynamic Secrets Commands', () => {
       await program.parseAsync(['node', 'test', 'dynasec', 'role', 'get', 'role-123']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/dynamic-secrets/roles/role-123');
-      expect(output.keyValue).toHaveBeenCalled();
+      expect(output.keyValue).toHaveBeenCalledWith(expect.objectContaining({
+        'Config Revision': '42',
+        'Config SHA-256': 'a'.repeat(64),
+        'Grant Plan SHA-256': 'b'.repeat(64),
+      }));
     });
 
     it('should output JSON when --json flag is set', async () => {
