@@ -31,6 +31,16 @@ import {
 } from './lease.js';
 import { registerAllowedHostsCommands } from './allowed-hosts.js';
 import { registerTemplatesCommands } from './templates.js';
+import {
+  getMintOperationStatus,
+  issueMintPermit,
+  revokeMintOperation,
+} from './permit.js';
+import {
+  closeRecoveryFence,
+  getRecoveryFenceStatus,
+  openRecoveryFence,
+} from './recovery-fence.js';
 
 // Re-export types
 export * from './types.js';
@@ -368,4 +378,73 @@ Notes:
   // Templates Commands
   // -------------------------------------------------------------------------
   registerTemplatesCommands(dynasec);
+
+  // -------------------------------------------------------------------------
+  // Recovery Fence v1
+  // -------------------------------------------------------------------------
+  const fence = dynasec
+    .command('recovery-fence')
+    .description('Open, inspect, and close PostgreSQL-authoritative recovery fences');
+
+  fence
+    .command('open <role-id> <run-id>')
+    .description('Open an idempotent recovery fence around a disabled MySQL role')
+    .requiredOption('--consumer-api-key-id <id>', 'API key bound to all permits in this fence')
+    .requiredOption('--expected-role-revision <n>', 'Pinned role configuration revision')
+    .requiredOption('--expected-role-config-sha256 <hex>', 'Pinned lowercase role configuration SHA-256')
+    .requiredOption('--expires-in-seconds <n>', 'Fence lifetime (PostgreSQL clock)')
+    .requiredOption('--purpose <purpose>', 'Bounded operational purpose')
+    .option('--json', 'Output as JSON')
+    .action(openRecoveryFence);
+
+  fence
+    .command('status <role-id> <run-id>')
+    .description('Get recovery fence state and drain counters')
+    .option('--json', 'Output as JSON')
+    .action(getRecoveryFenceStatus);
+
+  fence
+    .command('close <role-id> <run-id>')
+    .description('Advance the fence epoch, drain operations, and verify final closure')
+    .requiredOption('--expected-fence-epoch <n>', 'The OPEN epoch being closed')
+    .option('--json', 'Output as JSON')
+    .action(closeRecoveryFence);
+
+  const permit = dynasec
+    .command('permit')
+    .description('Issue and inspect one-shot recovery mint permits');
+
+  permit
+    .command('issue <role-id>')
+    .description('Issue an idempotent maxMints=1 permit (strict operator permission required)')
+    .requiredOption('--fence-id <id>', 'Open recovery fence ID')
+    .requiredOption('--consumer-api-key-id <id>', 'Consumer API key bound to the permit')
+    .requiredOption('--phase <phase>', 'Recovery phase (issue one permit per phase)')
+    .requiredOption('--expires-in-seconds <n>', 'Permit lifetime')
+    .requiredOption('--credential-ttl-seconds <n>', 'Target credential lifetime')
+    .option(
+      '--privilege-overlay <overlay>',
+      'NONE or MYSQL_SCHEMA_LOCK_TABLES (never arbitrary SQL)',
+      'NONE',
+    )
+    .requiredOption('--reason <reason>', 'Auditable recovery reason')
+    .requiredOption(
+      '--idempotency-key <uuid>',
+      'UUID persisted with the request; reuse it unchanged after an uncertain response',
+    )
+    .option('--json', 'Output as JSON')
+    .action(issueMintPermit);
+
+  permit
+    .command('status <permit-id> <request-id>')
+    .description('Get an idempotent permit operation by request ID')
+    .option('--json', 'Output as JSON')
+    .action(getMintOperationStatus);
+
+  permit
+    .command('revoke <permit-id> <request-id>')
+    .description('Revoke by request ID, including a pre-acquire tombstone')
+    .option('--reason <reason>', 'Revocation reason')
+    .option('--json', 'Output as JSON')
+    .action(revokeMintOperation);
 }

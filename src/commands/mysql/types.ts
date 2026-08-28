@@ -32,3 +32,11 @@ export interface MysqlAliasAddOptions {
   /** Role name or ID to bind to the alias. */
   role: string;
 }
+
+/** Options for the one-shot Recovery Fence v1 consumer. */
+export interface MysqlExecPermitOptions {
+  /** PostgreSQL-authoritative epoch copied from the issued permit. */
+  fenceEpoch: string;
+  /** SQL files to concatenate and feed over stdin. No inline SQL option exists. */
+  file: string[];
+}

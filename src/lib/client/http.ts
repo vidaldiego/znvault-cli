@@ -389,6 +389,25 @@ export class HttpClient {
       }
     }
 
+    if (options.headers) {
+      const protectedHeaders = new Set([
+        'authorization',
+        'x-api-key',
+        'host',
+        'content-length',
+        'content-type',
+      ]);
+      for (const [name, value] of Object.entries(options.headers)) {
+        if (protectedHeaders.has(name.toLowerCase())) {
+          throw new Error(`Refusing to override protected HTTP header '${name}'`);
+        }
+        if (name.includes('\r') || name.includes('\n') || value.includes('\r') || value.includes('\n')) {
+          throw new Error('Refusing an HTTP header containing a newline');
+        }
+        headers[name] = value;
+      }
+    }
+
     const requestOptions: https.RequestOptions = {
       hostname: url.hostname,
       port: url.port || (url.protocol === 'https:' ? 443 : 80),

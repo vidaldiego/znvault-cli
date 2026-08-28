@@ -21,6 +21,8 @@ import { runBrokered } from './broker.js';
 import { assertMysqlOnPath, runMysql } from './run.js';
 import { addAlias, listAliases, removeAlias } from './alias.js';
 import type { MysqlExecCmdOptions, MysqlExecOptions } from './types.js';
+import type {MysqlExecPermitOptions} from './types.js';
+import {runExecPermit} from './permit-broker.js';
 
 /**
  * Collect helper for Commander repeatable options (--file <path> ... --file <path>).
@@ -177,6 +179,73 @@ Examples:
             }),
         });
         process.exit(code);
+      } catch (err) {
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // ── exec-permit ──────────────────────────────────────────────────────────────
+  mysql
+    .command('exec-permit <permit-id> <request-id>')
+    .description(
+      'Consume one Recovery Fence v1 permit, execute SQL, ACK delivery, and revoke by request ID',
+    )
+    .requiredOption('--fence-epoch <n>', 'Epoch returned by permit issue')
+    .option(
+      '--file <path>',
+      'SQL file to execute (repeatable). If omitted, SQL must be piped over stdin',
+      collect,
+      [],
+    )
+    .addHelpText('after', `
+Examples:
+  # SQL is read from a file; no database credential enters argv or env.
+  znvault mysql exec-permit dmp_... recovery-request-1 \\
+    --fence-epoch 7 --file reconcile.sql
+
+  # Or stream SQL over stdin. There is deliberately no --sql option on this
+  # recovery command because inline SQL can itself carry sensitive values.
+  generate-reconcile-sql | znvault mysql exec-permit dmp_... recovery-request-1 \\
+    --fence-epoch 7
+
+Notes:
+  - The command creates an ephemeral X25519 key only in this process.
+  - It validates the complete authenticated AAD before invoking mysql.
+  - The password is passed through an already-unlinked 0600 my.cnf inode,
+    never argv or environment.
+  - Delivery is ACKed before mysql runs and the operation is revoked in every
+    exit path. If this process is killed before it can revoke, run:
+      znvault dynasec permit revoke <permit-id> <request-id>
+`)
+    .action(async (
+      permitId: string,
+      requestId: string,
+      opts: MysqlExecPermitOptions,
+    ) => {
+      try {
+        // No permit is consumed if the local mysql client is unavailable.
+        assertMysqlOnPath();
+        const fenceEpoch = Number(opts.fenceEpoch);
+        if (!Number.isSafeInteger(fenceEpoch) || fenceEpoch <= 0) {
+          throw new Error('--fence-epoch must be a positive integer');
+        }
+        const result = await runExecPermit({
+          permitId,
+          requestId,
+          fenceEpoch,
+          files: opts.file,
+        });
+        output.keyValue({
+          'Permit ID': result.permitId,
+          'Request ID': result.requestId,
+          'Operation ID': result.operationId,
+          'Delivery state': result.deliveryState,
+          'Revocation state': result.revokeState,
+          'Envelope SHA-256': result.envelopeSha256,
+          'MySQL exit code': result.mysqlExitCode,
+        });
+        process.exit(result.mysqlExitCode);
       } catch (err) {
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
