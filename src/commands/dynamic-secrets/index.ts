@@ -250,7 +250,7 @@ Notes:
     .description('Create a new role for a connection (from a fixed template, or raw SQL as an escape hatch)')
     .option('--name <name>', 'Role name')
     .option('--description <desc>', 'Role description')
-    .option('--template <name>', 'Create from a fixed, versioned server template (e.g. readonly, readwrite, ddl, migrate) — mutually exclusive with the raw SQL flags below')
+    .option('--template <name>', 'Create from a fixed, versioned server template (e.g. readonly, readwrite, ddl, migrate, packleader-client-v1-recovery) — mutually exclusive with the raw SQL flags below')
     .option('--template-version <n>', 'Template version (defaults to latest on the server if omitted)')
     .option('--creation-statements <sql>', '[raw mode, requires dynamic-secrets:roles:write-raw] SQL statements to create credentials (semicolon-separated)')
     .option('--revocation-statements <sql>', '[raw mode] SQL statements to revoke credentials (semicolon-separated)')
@@ -275,6 +275,11 @@ Examples:
   # prints a "bundle_not_applied" warning.
   znvault dynasec role create <mysql-connection-id> --name migrator --template migrate
 
+  # Recovery Fence v1: the server creates this role permanently disabled.
+  # It can mint only through an OPEN fence plus a one-shot permit.
+  znvault dynasec role create <mysql-connection-id> --name packleader-recovery \
+    --template packleader-client-v1-recovery --template-version 1
+
   # Raw mode (escape hatch): hand-write the SQL yourself. Requires the
   # separate "dynamic-secrets:roles:write-raw" permission (NOT auto-granted —
   # ask an admin to grant it if you get a 403).
@@ -283,7 +288,7 @@ Examples:
     --revocation-statements "DROP ROLE IF EXISTS \\"{{username}}\\""
 
 Template catalog (v1, fixed server-side — see "znvault dynasec templates list"):
-  MySQL:      readonly, readwrite, ddl, migrate
+  MySQL:      readonly, readwrite, ddl, migrate, packleader-client-v1-recovery
   PostgreSQL: readonly, readwrite     (ddl/migrate are MySQL-only; using them
                                         on a PostgreSQL connection 400s with
                                         ddl_unsupported_for_engine)
