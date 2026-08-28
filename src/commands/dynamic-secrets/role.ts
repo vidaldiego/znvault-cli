@@ -9,8 +9,15 @@ import Table from 'cli-table3';
 import inquirer from 'inquirer';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
-import type { DbRole, DbRoleCreateResponse, RoleCreateOptions, RoleUpdateOptions } from './types.js';
+import type {
+  DbRole,
+  DbRoleCreateResponse,
+  RoleCreateOptions,
+  RoleDeleteOptions,
+  RoleUpdateOptions,
+} from './types.js';
 import { formatDate, formatTtl } from './helpers.js';
+import {positiveSafeInteger} from './recovery-parse.js';
 
 export async function listRoles(options: { connection?: string; json?: boolean }): Promise<void> {
   const spinner = output.spinner('Fetching roles...').start();
@@ -252,7 +259,12 @@ export async function updateRole(roleId: string, options: RoleUpdateOptions): Pr
   const spinner = output.spinner('Updating role...').start();
 
   try {
-    const body: Record<string, unknown> = {};
+    const body: Record<string, unknown> = {
+      expectedConfigRevision: positiveSafeInteger(
+        options.expectedConfigRevision,
+        '--expected-config-revision',
+      ),
+    };
     if (options.description !== undefined) body.description = options.description;
     if (options.creationStatements) body.creationStatements = options.creationStatements.split(';').filter(s => s.trim());
     if (options.revocationStatements) body.revocationStatements = options.revocationStatements.split(';').filter(s => s.trim());
@@ -276,7 +288,7 @@ export async function updateRole(roleId: string, options: RoleUpdateOptions): Pr
   }
 }
 
-export async function deleteRole(roleId: string, options: { force?: boolean; json?: boolean }): Promise<void> {
+export async function deleteRole(roleId: string, options: RoleDeleteOptions): Promise<void> {
   if (!options.force) {
     const { confirm } = await inquirer.prompt<{ confirm: boolean }>([{
       type: 'confirm',
@@ -293,7 +305,14 @@ export async function deleteRole(roleId: string, options: { force?: boolean; jso
   const spinner = output.spinner('Deleting role...').start();
 
   try {
-    await client.delete(`/v1/dynamic-secrets/roles/${roleId}`);
+    const expectedConfigRevision = positiveSafeInteger(
+      options.expectedConfigRevision,
+      '--expected-config-revision',
+    );
+    await client.delete(
+      `/v1/dynamic-secrets/roles/${roleId}`
+      + `?expectedConfigRevision=${expectedConfigRevision.toString()}`,
+    );
     spinner.succeed('Role deleted');
 
     if (options.json) {

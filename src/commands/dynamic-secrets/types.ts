@@ -130,6 +130,7 @@ export interface RoleCreateOptions {
 }
 
 export interface RoleUpdateOptions {
+  expectedConfigRevision: string;
   description?: string;
   creationStatements?: string;
   revocationStatements?: string;
@@ -137,6 +138,12 @@ export interface RoleUpdateOptions {
   defaultTtl?: string;
   maxTtl?: string;
   enabled?: string;
+  json?: boolean;
+}
+
+export interface RoleDeleteOptions {
+  expectedConfigRevision: string;
+  force?: boolean;
   json?: boolean;
 }
 

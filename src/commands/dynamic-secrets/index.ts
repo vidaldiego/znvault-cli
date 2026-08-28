@@ -303,6 +303,7 @@ Notes:
   role
     .command('update <role-id>')
     .description('Update a role')
+    .requiredOption('--expected-config-revision <n>', 'Exact role CAS revision returned by role get')
     .option('--description <desc>', 'Role description')
     .option('--creation-statements <sql>', 'SQL statements to create credentials (semicolon-separated)')
     .option('--revocation-statements <sql>', 'SQL statements to revoke credentials (semicolon-separated)')
@@ -317,6 +318,7 @@ Notes:
     .command('delete <role-id>')
     .alias('rm')
     .description('Delete a role (blocked while retained lease history exists)')
+    .requiredOption('--expected-config-revision <n>', 'Exact role CAS revision returned by role get')
     .option('--force', 'Skip confirmation only; does not bypass lease-history retention')
     .option('--json', 'Output as JSON')
     .action(deleteRole);
