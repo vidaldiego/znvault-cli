@@ -21,6 +21,7 @@ import {
 import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import { webLogin, isWebLoginSupported } from '../lib/web-login.js';
+import { registerProfileApiKeyCommands } from './profile-api-key.js';
 
 /**
  * Read password from a file.
@@ -317,6 +318,8 @@ export function registerAuthCommands(program: Command): void {
   const profileCmd = program
     .command('profile')
     .description('Manage configuration profiles');
+
+  registerProfileApiKeyCommands(profileCmd);
 
   // List profiles
   profileCmd

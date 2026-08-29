@@ -38,6 +38,7 @@ export {
   switchProfile,
   getProfile,
   renameProfile,
+  mutateProfileAuthentication,
 } from './profile.js';
 
 // Credentials

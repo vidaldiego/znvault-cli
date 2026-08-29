@@ -5,7 +5,7 @@
  */
 
 import type { StoredCredentials } from '../../types/index.js';
-import { getActiveProfileName, getCurrentProfile, saveProfile } from './profile.js';
+import { getActiveProfileName, getCurrentProfile, mutateProfileAuthentication } from './profile.js';
 import { TOKEN_REFRESH_BUFFER_MS, PENDING_REFRESH_TTL } from '../constants.js';
 import { debug } from '../debug.js';
 
@@ -19,9 +19,13 @@ import { debug } from '../debug.js';
  */
 export function storeCredentials(credentials: StoredCredentials): void {
   const profileName = getActiveProfileName();
-  const profile = getCurrentProfile();
-  profile.credentials = credentials;
-  saveProfile(profileName, profile);
+  mutateProfileAuthentication(profileName, (profile) => {
+    if (profile.apiKey) {
+      throw new Error('Profile is configured for API key authentication');
+    }
+    profile.credentials = credentials;
+    return profile;
+  });
 }
 
 /**
@@ -29,9 +33,10 @@ export function storeCredentials(credentials: StoredCredentials): void {
  */
 export function clearCredentials(): void {
   const profileName = getActiveProfileName();
-  const profile = getCurrentProfile();
-  delete profile.credentials;
-  saveProfile(profileName, profile);
+  mutateProfileAuthentication(profileName, (profile) => {
+    delete profile.credentials;
+    return profile;
+  });
 }
 
 /**
