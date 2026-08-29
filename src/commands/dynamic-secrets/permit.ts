@@ -5,6 +5,7 @@ import type {
   MintOperation,
   MintPermit,
   PermitIssueOptions,
+  PermitLookupOptions,
   PermitRevokeOptions,
   PermitStatusOptions,
 } from './recovery-types.js';
@@ -77,6 +78,41 @@ export async function issueMintPermit(roleId: string, options: PermitIssueOption
     else printPermit(response);
   } catch (err) {
     spinner.fail('Failed to issue recovery mint permit');
+    output.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+export async function lookupMintPermit(
+  roleId: string,
+  options: PermitLookupOptions,
+): Promise<void> {
+  const spinner = output.spinner('Looking up recovery mint permit...').start();
+  try {
+    const response = await client.request<MintPermit>({
+      method: 'GET',
+      path:
+        `/v1/dynamic-secrets/roles/${encodeURIComponent(roleId)}` +
+        '/mint-permits/by-idempotency-key',
+      headers: {'Idempotency-Key': idempotencyUuid(options.idempotencyKey)},
+    });
+    spinner.stop();
+    if (options.json) output.json({found: true, permit: response});
+    else printPermit(response);
+  } catch (err) {
+    const failure = err as {statusCode?: number; errorCode?: string};
+    if (failure.statusCode === 404 && failure.errorCode === 'recovery_permit_not_found') {
+      spinner.stop();
+      const absent = {
+        found: false,
+        roleId,
+        idempotencyKey: idempotencyUuid(options.idempotencyKey),
+      };
+      if (options.json) output.json(absent);
+      else output.keyValue({'Permit': 'not issued'});
+      return;
+    }
+    spinner.fail('Failed to look up recovery mint permit');
     output.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
