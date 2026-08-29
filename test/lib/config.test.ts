@@ -6,7 +6,7 @@ vi.mock('conf', () => {
   return {
     default: class MockConf {
       projectName: string;
-      path = '/mock/config/path';
+      path = `/tmp/znvault-config-unit-${process.pid}/config.json`;
 
       constructor(options: { projectName: string; defaults?: Record<string, unknown> }) {
         this.projectName = options.projectName;

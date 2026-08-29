@@ -4,10 +4,23 @@
  * Profile management operations
  */
 
-import { store, getRuntimeProfile } from './store.js';
+import { store, getRuntimeProfile, withStoreMutation } from './store.js';
 import { ensureMigrated } from './migration.js';
 import { CONFIG_DEFAULTS, DEFAULT_PROFILE, type Profile, type ProfileInfo } from './types.js';
 import { getCachedProfile, cacheProfile, invalidateProfileCache } from './cache.js';
+
+function preserveAuthentication(current: Profile | undefined, proposed: Profile): Profile {
+  const next = { ...proposed };
+  if (current?.credentials !== undefined) next.credentials = current.credentials;
+  else delete next.credentials;
+  if (current?.apiKey !== undefined) next.apiKey = current.apiKey;
+  else delete next.apiKey;
+  if (current?.apiKeyId !== undefined) next.apiKeyId = current.apiKeyId;
+  else delete next.apiKeyId;
+  if (current?.apiKeyName !== undefined) next.apiKeyName = current.apiKeyName;
+  else delete next.apiKeyName;
+  return next;
+}
 
 /**
  * Get the current active profile name
@@ -47,12 +60,41 @@ export function getCurrentProfile(): Profile {
  * Save profile data (invalidates cache)
  */
 export function saveProfile(profileName: string, profile: Profile): void {
-  const profiles = store.get('profiles');
-  profiles[profileName] = profile;
-  store.set('profiles', profiles);
+  withStoreMutation(() => {
+    const profiles = store.get('profiles');
+    profiles[profileName] = preserveAuthentication(profiles[profileName], profile);
+    store.set('profiles', profiles);
+    invalidateProfileCache(profileName);
+  });
+}
 
-  // Invalidate cache for this profile
-  invalidateProfileCache(profileName);
+/**
+ * Atomically mutate authentication fields for exactly one existing profile.
+ * Generic profile writes preserve these fields and cannot clobber them.
+ */
+export function mutateProfileAuthentication(
+  profileName: string,
+  mutation: (profile: Profile) => Profile,
+): Profile {
+  return withStoreMutation(() => {
+    const profiles = store.get('profiles');
+    const hasProfile = Object.prototype.hasOwnProperty.call(profiles, profileName);
+    if (!hasProfile && profileName !== DEFAULT_PROFILE) {
+      throw new Error(`Profile '${profileName}' not found`);
+    }
+    const current = hasProfile
+      ? profiles[profileName]
+      : {
+          url: CONFIG_DEFAULTS.url,
+          insecure: CONFIG_DEFAULTS.insecure,
+          timeout: CONFIG_DEFAULTS.timeout,
+        };
+    const updated = mutation({ ...current });
+    profiles[profileName] = updated;
+    store.set('profiles', profiles);
+    invalidateProfileCache(profileName);
+    return updated;
+  });
 }
 
 /**
@@ -99,38 +141,43 @@ export function profileExists(name: string): boolean {
  * Create a new profile
  */
 export function createProfile(name: string, options: { url?: string; insecure?: boolean; copyFrom?: string }): void {
-  const profiles = store.get('profiles');
+  withStoreMutation(() => {
+    const profiles = store.get('profiles');
 
-  if (name in profiles) {
-    throw new Error(`Profile '${name}' already exists`);
-  }
-
-  let newProfile: Profile;
-
-  if (options.copyFrom) {
-    if (!(options.copyFrom in profiles)) {
-      throw new Error(`Source profile '${options.copyFrom}' not found`);
+    if (name in profiles) {
+      throw new Error(`Profile '${name}' already exists`);
     }
-    newProfile = { ...profiles[options.copyFrom] };
-    // Don't copy credentials
-    newProfile.credentials = undefined;
-  } else {
-    newProfile = {
-      url: options.url ?? CONFIG_DEFAULTS.url,
-      insecure: options.insecure ?? CONFIG_DEFAULTS.insecure,
-      timeout: CONFIG_DEFAULTS.timeout,
-    };
-  }
 
-  if (options.url) {
-    newProfile.url = options.url;
-  }
-  if (options.insecure !== undefined) {
-    newProfile.insecure = options.insecure;
-  }
+    let newProfile: Profile;
 
-  profiles[name] = newProfile;
-  store.set('profiles', profiles);
+    if (options.copyFrom) {
+      if (!(options.copyFrom in profiles)) {
+        throw new Error(`Source profile '${options.copyFrom}' not found`);
+      }
+      newProfile = { ...profiles[options.copyFrom] };
+      delete newProfile.credentials;
+      delete newProfile.apiKey;
+      delete newProfile.apiKeyId;
+      delete newProfile.apiKeyName;
+    } else {
+      newProfile = {
+        url: options.url ?? CONFIG_DEFAULTS.url,
+        insecure: options.insecure ?? CONFIG_DEFAULTS.insecure,
+        timeout: CONFIG_DEFAULTS.timeout,
+      };
+    }
+
+    if (options.url) {
+      newProfile.url = options.url;
+    }
+    if (options.insecure !== undefined) {
+      newProfile.insecure = options.insecure;
+    }
+
+    profiles[name] = newProfile;
+    store.set('profiles', profiles);
+    invalidateProfileCache(name);
+  });
 }
 
 /**
@@ -141,33 +188,32 @@ export function deleteProfile(name: string): void {
     throw new Error(`Cannot delete the '${DEFAULT_PROFILE}' profile`);
   }
 
-  const profiles = store.get('profiles');
-
-  if (!(name in profiles)) {
-    throw new Error(`Profile '${name}' not found`);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-  delete profiles[name];
-  store.set('profiles', profiles);
-
-  // If we deleted the active profile, switch to default
-  if (store.get('activeProfile') === name) {
-    store.set('activeProfile', DEFAULT_PROFILE);
-  }
+  withStoreMutation(() => {
+    const profiles = store.get('profiles');
+    if (!(name in profiles)) {
+      throw new Error(`Profile '${name}' not found`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete profiles[name];
+    store.set('profiles', profiles);
+    invalidateProfileCache(name);
+    if (store.get('activeProfile') === name) {
+      store.set('activeProfile', DEFAULT_PROFILE);
+    }
+  });
 }
 
 /**
  * Switch active profile
  */
 export function switchProfile(name: string): void {
-  const profiles = store.get('profiles');
-
-  if (!(name in profiles)) {
-    throw new Error(`Profile '${name}' not found`);
-  }
-
-  store.set('activeProfile', name);
+  withStoreMutation(() => {
+    const profiles = store.get('profiles');
+    if (!(name in profiles)) {
+      throw new Error(`Profile '${name}' not found`);
+    }
+    store.set('activeProfile', name);
+  });
 }
 
 /**
@@ -186,23 +232,22 @@ export function renameProfile(oldName: string, newName: string): void {
     throw new Error(`Cannot rename the '${DEFAULT_PROFILE}' profile`);
   }
 
-  const profiles = store.get('profiles');
-
-  if (!(oldName in profiles)) {
-    throw new Error(`Profile '${oldName}' not found`);
-  }
-
-  if (newName in profiles) {
-    throw new Error(`Profile '${newName}' already exists`);
-  }
-
-  profiles[newName] = profiles[oldName];
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-  delete profiles[oldName];
-  store.set('profiles', profiles);
-
-  // Update active profile if needed
-  if (store.get('activeProfile') === oldName) {
-    store.set('activeProfile', newName);
-  }
+  withStoreMutation(() => {
+    const profiles = store.get('profiles');
+    if (!(oldName in profiles)) {
+      throw new Error(`Profile '${oldName}' not found`);
+    }
+    if (newName in profiles) {
+      throw new Error(`Profile '${newName}' already exists`);
+    }
+    profiles[newName] = profiles[oldName];
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete profiles[oldName];
+    store.set('profiles', profiles);
+    invalidateProfileCache(oldName);
+    invalidateProfileCache(newName);
+    if (store.get('activeProfile') === oldName) {
+      store.set('activeProfile', newName);
+    }
+  });
 }

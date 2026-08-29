@@ -45,6 +45,7 @@ export {
   switchProfile,
   getProfile,
   renameProfile,
+  mutateProfileAuthentication,
 
   // Credentials
   storeCredentials,

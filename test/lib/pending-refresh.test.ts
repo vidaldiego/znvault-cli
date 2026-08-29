@@ -11,7 +11,7 @@ vi.mock('conf', () => {
   return {
     default: class MockConf {
       private store = new Map<string, unknown>();
-      path = '/mock/config/path';
+      path = `/tmp/znvault-pending-refresh-${process.pid}/config.json`;
       constructor(options: { projectName: string; defaults?: Record<string, unknown> }) {
         if (options.defaults) {
           for (const [key, value] of Object.entries(options.defaults)) {

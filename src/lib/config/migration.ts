@@ -4,7 +4,7 @@
  * Config migration from legacy format to profile-based format
  */
 
-import { store } from './store.js';
+import { store, withStoreMutation } from './store.js';
 import { CONFIG_DEFAULTS, DEFAULT_PROFILE, type Profile } from './types.js';
 
 /**
@@ -35,30 +35,32 @@ export function ensureMigrated(): void {
  * Migrate legacy config to profile-based config
  */
 function migrateIfNeeded(): void {
-  // Check if we have legacy config (url at root level but no profiles)
-  const legacyUrl = store.get('url');
-  const profiles = store.get('profiles');
+  withStoreMutation(() => {
+    // Check if we have legacy config (url at root level but no profiles)
+    const legacyUrl = store.get('url');
+    const profiles = store.get('profiles');
 
-  if (legacyUrl && Object.keys(profiles).length === 0) {
-    // Migrate legacy config to default profile
-    const defaultProfile: Profile = {
-      url: legacyUrl,
-      insecure: store.get('insecure') ?? CONFIG_DEFAULTS.insecure,
-      timeout: store.get('timeout') ?? CONFIG_DEFAULTS.timeout,
-      defaultTenant: store.get('defaultTenant'),
-      credentials: store.get('credentials'),
-    };
+    if (legacyUrl && Object.keys(profiles).length === 0) {
+      // Migrate legacy config to default profile
+      const defaultProfile: Profile = {
+        url: legacyUrl,
+        insecure: store.get('insecure') ?? CONFIG_DEFAULTS.insecure,
+        timeout: store.get('timeout') ?? CONFIG_DEFAULTS.timeout,
+        defaultTenant: store.get('defaultTenant'),
+        credentials: store.get('credentials'),
+      };
 
-    store.set('profiles', { [DEFAULT_PROFILE]: defaultProfile });
-    store.set('activeProfile', DEFAULT_PROFILE);
+      store.set('profiles', { [DEFAULT_PROFILE]: defaultProfile });
+      store.set('activeProfile', DEFAULT_PROFILE);
 
-    // Clean up legacy keys
-    store.delete('url');
-    store.delete('insecure');
-    store.delete('timeout');
-    store.delete('defaultTenant');
-    store.delete('credentials');
-  }
+      // Clean up legacy keys
+      store.delete('url');
+      store.delete('insecure');
+      store.delete('timeout');
+      store.delete('defaultTenant');
+      store.delete('credentials');
+    }
+  });
 }
 
 /**

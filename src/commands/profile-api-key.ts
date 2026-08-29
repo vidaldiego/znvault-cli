@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
+import { fstatSync } from 'node:fs';
 
-import { getProfile, saveProfile } from '../lib/config.js';
+import { getProfile, mutateProfileAuthentication } from '../lib/config.js';
 import * as output from '../lib/output.js';
 
 const API_KEY_PATTERN = /^znv_[0-9a-f]{64}$/;
@@ -13,6 +14,10 @@ interface ImportApiKeyOptions {
 
 async function readApiKeyFromStdin(): Promise<string> {
   if (process.stdin.isTTY) {
+    throw new Error('API key import requires piped stdin');
+  }
+  const stdinStat = fstatSync(0);
+  if (!stdinStat.isFIFO() && !stdinStat.isSocket()) {
     throw new Error('API key import requires piped stdin');
   }
 
@@ -78,20 +83,18 @@ export function registerProfileApiKeyCommands(profileCmd: Command): void {
         }
 
         const apiKey = await readApiKeyFromStdin();
-        const currentProfile = getProfile(profileName);
-        if (!currentProfile) {
-          throw new Error(`Profile '${profileName}' not found`);
-        }
-        if (currentProfile.apiKey || currentProfile.credentials) {
-          throw new Error(`Profile '${profileName}' already has authentication configured`);
-        }
-        saveProfile(profileName, { ...currentProfile, apiKey });
+        mutateProfileAuthentication(profileName, (currentProfile) => {
+          if (currentProfile.apiKey || currentProfile.credentials) {
+            throw new Error(`Profile '${profileName}' already has authentication configured`);
+          }
+          return { ...currentProfile, apiKey };
+        });
 
         const receipt = {
           success: true,
           profile: profileName,
           authMethod: 'api-key',
-          secretEmitted: false,
+          secretsEmitted: false,
         };
         if (options.json) {
           output.json(receipt);

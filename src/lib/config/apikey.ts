@@ -5,7 +5,7 @@
  */
 
 import type { ApiKeyInfo } from './types.js';
-import { getActiveProfileName, getCurrentProfile, saveProfile } from './profile.js';
+import { getActiveProfileName, getCurrentProfile, mutateProfileAuthentication } from './profile.js';
 
 /**
  * Check if we have API key authentication (env or stored in profile)
@@ -26,11 +26,15 @@ export function getApiKey(): string | undefined {
  */
 export function storeApiKey(apiKey: string, keyId?: string, keyName?: string): void {
   const profileName = getActiveProfileName();
-  const profile = getCurrentProfile();
-  profile.apiKey = apiKey;
-  if (keyId) profile.apiKeyId = keyId;
-  if (keyName) profile.apiKeyName = keyName;
-  saveProfile(profileName, profile);
+  mutateProfileAuthentication(profileName, (profile) => {
+    if (profile.credentials) {
+      throw new Error('Profile is configured for JWT authentication');
+    }
+    profile.apiKey = apiKey;
+    if (keyId) profile.apiKeyId = keyId;
+    if (keyName) profile.apiKeyName = keyName;
+    return profile;
+  });
 }
 
 /**
@@ -51,11 +55,12 @@ export function getStoredApiKeyInfo(): ApiKeyInfo | undefined {
  */
 export function clearApiKey(): void {
   const profileName = getActiveProfileName();
-  const profile = getCurrentProfile();
-  delete profile.apiKey;
-  delete profile.apiKeyId;
-  delete profile.apiKeyName;
-  saveProfile(profileName, profile);
+  mutateProfileAuthentication(profileName, (profile) => {
+    delete profile.apiKey;
+    delete profile.apiKeyId;
+    delete profile.apiKeyName;
+    return profile;
+  });
 }
 
 /**
