@@ -18,7 +18,7 @@
     "pretest": "npm run build",
     "test": "npm run test:unit",
     "test:all": "vitest run --config vitest.integration.config.ts",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run --pool=threads --maxWorkers=1 --fileParallelism=false",
     "test:unit:watch": "vitest",
     "test:integration": "ZNVAULT_INTEGRATION=true vitest run --config vitest.integration.config.ts",
     "test:mysql-client-security": "ZNVAULT_REAL_MYSQL_CLIENT_SECURITY_TEST=1 vitest run --config vitest.integration.config.ts test/integration/mysql-binary-mode.integration.test.ts",
