@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.24.4] - 2026-08-29
+
+### Added
+
+- `dynasec permit lookup` performs a strict read-only lookup by
+  `Idempotency-Key`, allowing an interrupted recovery supervisor to distinguish
+  a lost issue response from a permit that was never issued without creating
+  new authority.
+
+### Fixed
+
+- Recovery fence and permit wire types now include the pinned connection target
+  identity plus authoritative `openedAt`/`createdAt` timestamps used to verify
+  exact server-side expiry windows.
+
 ## [4.24.1] - 2026-08-28
 
 ### Fixed

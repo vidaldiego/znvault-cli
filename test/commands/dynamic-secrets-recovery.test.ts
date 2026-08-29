@@ -39,6 +39,7 @@ const PERMIT: MintPermit = {
   phase: 'historical-reconcile',
   privilegeOverlay: 'MYSQL_SCHEMA_LOCK_TABLES',
   credentialTtlSeconds: 900,
+  createdAt: '2026-08-28T12:00:00.000Z',
   expiresAt: '2026-08-28T12:02:00.000Z',
 };
 
@@ -69,6 +70,10 @@ const OPERATION: MintOperation = {
 const FENCE: RecoveryFence = {
   fenceId: PERMIT.fenceId,
   runId: 'packleader-recovery-1',
+  connectionId: 'dbc_0123456789abcdef',
+  connectionConfigVersion: 3,
+  credentialTargetVersion: 2,
+  credentialTargetFingerprint: '4'.repeat(64),
   fenceEpoch: 7,
   closeEpoch: null,
   state: 'OPEN',
@@ -81,6 +86,7 @@ const FENCE: RecoveryFence = {
   recoveryRequired: 0,
   nonterminalOperations: 0,
   readyPermits: 0,
+  openedAt: '2026-08-28T12:00:00.000Z',
   expiresAt: '2026-08-28T12:30:00.000Z',
   closedAt: null,
 };
@@ -120,6 +126,40 @@ describe('dynasec Recovery Fence v1 commands', () => {
       },
     });
     expect(mockJson).toHaveBeenCalledWith(PERMIT);
+  });
+
+  it('looks up by Idempotency-Key with GET and cannot create a permit', async () => {
+    mockRequest.mockResolvedValue(PERMIT);
+    const {lookupMintPermit} = await import('../../src/commands/dynamic-secrets/permit.js');
+    await lookupMintPermit('role-1', {
+      idempotencyKey: '6c4a9aea-a265-4c71-8b70-cc4418d152e7', // gitleaks:allow reason=synthetic UUID for idempotency test
+      json: true,
+    });
+    expect(mockRequest).toHaveBeenCalledWith({
+      method: 'GET',
+      path: '/v1/dynamic-secrets/roles/role-1/mint-permits/by-idempotency-key',
+      headers: {'Idempotency-Key': '6c4a9aea-a265-4c71-8b70-cc4418d152e7'}, // gitleaks:allow reason=synthetic UUID for idempotency test
+    });
+    expect(mockJson).toHaveBeenCalledWith({found: true, permit: PERMIT});
+  });
+
+  it('reports exact not-issued lookup without turning other failures into absence', async () => {
+    mockRequest.mockRejectedValue(
+      Object.assign(new Error('not found'), {
+        statusCode: 404,
+        errorCode: 'recovery_permit_not_found',
+      }),
+    );
+    const {lookupMintPermit} = await import('../../src/commands/dynamic-secrets/permit.js');
+    await lookupMintPermit('role-1', {
+      idempotencyKey: '6c4a9aea-a265-4c71-8b70-cc4418d152e7', // gitleaks:allow reason=synthetic UUID for idempotency test
+      json: true,
+    });
+    expect(mockJson).toHaveBeenCalledWith({
+      found: false,
+      roleId: 'role-1',
+      idempotencyKey: '6c4a9aea-a265-4c71-8b70-cc4418d152e7', // gitleaks:allow reason=synthetic UUID for idempotency test
+    });
   });
 
   it('reads operation status by permitId/requestId and never asks for leaseId', async () => {

@@ -19,6 +19,10 @@ export type MintOperationState =
 export interface RecoveryFence {
   fenceId: string;
   runId: string;
+  connectionId: string;
+  connectionConfigVersion: number;
+  credentialTargetVersion: number;
+  credentialTargetFingerprint: string;
   fenceEpoch: number;
   closeEpoch: number | null;
   state: RecoveryFenceState;
@@ -31,6 +35,7 @@ export interface RecoveryFence {
   recoveryRequired: number;
   nonterminalOperations: number;
   readyPermits: number;
+  openedAt: string;
   expiresAt: string;
   closedAt: string | null;
 }
@@ -50,6 +55,7 @@ export interface MintPermit {
   phase: string;
   privilegeOverlay: RecoveryPrivilegeOverlay;
   credentialTtlSeconds: number;
+  createdAt: string;
   expiresAt: string;
 }
 
@@ -112,6 +118,11 @@ export interface PermitIssueOptions {
 }
 
 export interface PermitStatusOptions {
+  json?: boolean;
+}
+
+export interface PermitLookupOptions {
+  idempotencyKey: string;
   json?: boolean;
 }
 

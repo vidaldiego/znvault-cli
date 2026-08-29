@@ -34,6 +34,7 @@ import { registerTemplatesCommands } from './templates.js';
 import {
   getMintOperationStatus,
   issueMintPermit,
+  lookupMintPermit,
   revokeMintOperation,
 } from './permit.js';
 import {
@@ -441,6 +442,13 @@ Notes:
     )
     .option('--json', 'Output as JSON')
     .action(issueMintPermit);
+
+  permit
+    .command('lookup <role-id>')
+    .description('Read an existing permit by Idempotency-Key without issuing one')
+    .requiredOption('--idempotency-key <uuid>', 'Previously approved issue UUID')
+    .option('--json', 'Output as JSON')
+    .action(lookupMintPermit);
 
   permit
     .command('status <permit-id> <request-id>')
