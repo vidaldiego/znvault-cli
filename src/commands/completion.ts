@@ -37,7 +37,7 @@ _znvault_completions() {
     local notification_cmds="config test"
     local advisor_cmds="audit rules suggest llm"
     local advisor_llm_cmds="status get config test delete"
-    local profile_cmds="list create delete use rename"
+    local profile_cmds="list create delete use rename api-key"
     local crypto_cmds="status list grant revoke transfer-root"
     local device_cmds="list revoke enroll"
     local unseal_cmds="status seal"
