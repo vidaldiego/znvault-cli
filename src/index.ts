@@ -64,6 +64,7 @@ import { areCLIPluginsDisabled } from './plugins/policy.js';
 interface GlobalOptions {
   url?: string;
   insecure?: boolean;
+  tlsSpkiSha256?: string;
   profile?: string;
   plain?: boolean;
   quiet?: boolean;
@@ -96,6 +97,7 @@ program
   .version(getVersion())
   .option('--url <url>', 'Vault server URL')
   .option('--insecure', 'Skip TLS certificate verification')
+  .option('--tls-spki-sha256 <hex>', 'Require the server certificate public-key SHA-256')
   .option('--profile <name>', 'Use a specific configuration profile')
   .option('--plain', 'Use plain text output (no colors or TUI)')
   .option('-q, --quiet', 'Suppress non-essential output (spinners, info messages, banners)')
@@ -143,8 +145,15 @@ program
     }
 
     // Apply URL/insecure overrides
-    if (opts.url !== undefined || opts.insecure !== undefined) {
-      client.configure(opts.url, opts.insecure);
+    if (opts.insecure && opts.tlsSpkiSha256 !== undefined) {
+      throw new Error('--insecure cannot be combined with --tls-spki-sha256');
+    }
+    if (
+      opts.url !== undefined ||
+      opts.insecure !== undefined ||
+      opts.tlsSpkiSha256 !== undefined
+    ) {
+      client.configure(opts.url, opts.insecure, opts.tlsSpkiSha256);
     }
 
     // Skip the profile indicator when stdout is a machine channel (`--json`,

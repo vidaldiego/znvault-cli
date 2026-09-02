@@ -63,4 +63,5 @@ export interface ClientConfig {
   baseUrl: string;
   insecure: boolean;
   timeout: number;
+  tlsSpkiSha256?: string;
 }

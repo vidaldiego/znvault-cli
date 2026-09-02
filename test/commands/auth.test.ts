@@ -34,6 +34,17 @@ vi.mock('../../src/lib/client.js', () => ({
       expiresIn: 3600,
       user: { id: '123', username: 'admin', role: 'superadmin', tenantId: null },
     }),
+    get: vi.fn().mockResolvedValue({
+      authMethod: 'jwt',
+      user: {
+        id: '123',
+        username: 'admin',
+        role: 'superadmin',
+        tenantId: 'zincapp',
+      },
+    }),
+    getBaseUrl: vi.fn().mockReturnValue('https://vault.example.com/ignored/path'),
+    getTlsSpkiSha256: vi.fn().mockReturnValue('a'.repeat(64)),
     configure: vi.fn(),
   },
 }));
@@ -144,6 +155,26 @@ describe('auth commands', () => {
       const callArgs = (json as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
       expect(callArgs).toHaveProperty('accessTokenExpires');
       expect(callArgs).not.toHaveProperty('sessionExpires');
+    });
+
+    it('can verify the exact current identity with the server', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { json } = await import('../../src/lib/output.js');
+
+      await program.parseAsync(['node', 'test', 'whoami', '--server', '--json']);
+
+      expect(client.get).toHaveBeenCalledWith('/auth/me');
+      expect(json).toHaveBeenCalledWith({
+        authMethod: 'jwt',
+        profile: 'default',
+        role: 'superadmin',
+        serverOrigin: 'https://vault.example.com',
+        serverVerified: true,
+        tenantId: 'zincapp',
+        tlsSpkiSha256: 'a'.repeat(64),
+        userId: '123',
+        username: 'admin',
+      });
     });
   });
 

@@ -113,7 +113,7 @@ _znvault_completions() {
                 *) ;;
             esac
             # Add global options
-            opts="\${opts} --url --insecure --profile --plain --help -h"
+            opts="\${opts} --url --insecure --tls-spki-sha256 --profile --plain --help -h"
             COMPREPLY=( $(compgen -W "\${opts}" -- "\${cur}") )
             ;;
     esac
@@ -144,6 +144,7 @@ _znvault() {
     _arguments -C \\
         '--url[Vault server URL]:url:_urls' \\
         '--insecure[Skip TLS certificate verification]' \\
+        '--tls-spki-sha256[Require server certificate public-key SHA-256]:sha256' \\
         '--profile[Use a specific configuration profile]:profile:->profiles' \\
         '--plain[Use plain text output]' \\
         '(-h --help)'{-h,--help}'[Show help]' \\

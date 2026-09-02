@@ -7,6 +7,8 @@
 
 import https from 'node:https';
 import http from 'node:http';
+import { createHash, timingSafeEqual, X509Certificate } from 'node:crypto';
+import { checkServerIdentity, type PeerCertificate } from 'node:tls';
 import {
   getConfig,
   getCredentials,
@@ -30,6 +32,31 @@ import type { LoginResponse, StoredCredentials } from '../../types/index.js';
 
 /** Track if insecure warning has been shown (show only once per session) */
 let insecureWarningShown = false;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+export function verifyPinnedServerSpki(
+  certificateRaw: Buffer | undefined,
+  expectedSha256: string,
+): Error | undefined {
+  if (!SHA256_HEX.test(expectedSha256)) {
+    return new Error('Invalid TLS SPKI SHA-256 pin');
+  }
+  if (!certificateRaw || certificateRaw.byteLength < 1) {
+    return new Error('TLS peer certificate is unavailable for SPKI verification');
+  }
+  try {
+    const certificate = new X509Certificate(certificateRaw);
+    const spki = certificate.publicKey.export({ type: 'spki', format: 'der' });
+    const observed = createHash('sha256').update(spki).digest();
+    const expected = Buffer.from(expectedSha256, 'hex');
+    if (observed.byteLength !== expected.byteLength || !timingSafeEqual(observed, expected)) {
+      return new Error('TLS server SPKI SHA-256 does not match the reviewed pin');
+    }
+    return undefined;
+  } catch {
+    return new Error('TLS peer certificate could not be verified against the SPKI pin');
+  }
+}
 
 /**
  * Terminal: a second consecutive 409 / orphaned past-TTL marker — caller must
@@ -95,6 +122,7 @@ export class HttpClient {
   // override) and only let explicit --url/--insecure take precedence.
   private urlOverride?: string;
   private insecureOverride?: boolean;
+  private tlsSpkiSha256Override?: string;
   protected timeout: number;
   private refreshPromise: Promise<void> | null = null;
 
@@ -102,6 +130,13 @@ export class HttpClient {
     const defaultConfig = getConfig();
     if (config?.baseUrl !== undefined) this.urlOverride = config.baseUrl;
     if (config?.insecure !== undefined) this.insecureOverride = config.insecure;
+    if (config?.tlsSpkiSha256 !== undefined) {
+      if (!SHA256_HEX.test(config.tlsSpkiSha256)) {
+        throw new Error('Invalid TLS SPKI SHA-256 pin');
+      }
+      this.tlsSpkiSha256Override = config.tlsSpkiSha256;
+      this.insecureOverride = false;
+    }
     this.timeout = config?.timeout ?? defaultConfig.timeout;
 
     // Warn about insecure mode (once per session)
@@ -142,9 +177,19 @@ export class HttpClient {
   /**
    * Update client configuration (explicit --url / --insecure overrides).
    */
-  configure(url?: string, insecure?: boolean): void {
+  configure(url?: string, insecure?: boolean, tlsSpkiSha256?: string): void {
+    if (insecure === true && tlsSpkiSha256 !== undefined) {
+      throw new Error('TLS SPKI pinning requires certificate verification');
+    }
     if (url) this.urlOverride = url;
     if (insecure !== undefined) this.insecureOverride = insecure;
+    if (tlsSpkiSha256 !== undefined) {
+      if (!SHA256_HEX.test(tlsSpkiSha256)) {
+        throw new Error('Invalid TLS SPKI SHA-256 pin');
+      }
+      this.tlsSpkiSha256Override = tlsSpkiSha256;
+      this.insecureOverride = false;
+    }
   }
 
   /**
@@ -152,6 +197,11 @@ export class HttpClient {
    */
   getBaseUrl(): string {
     return this.resolveBaseUrl();
+  }
+
+  /** Return the invocation-scoped TLS public-key pin, when one is active. */
+  getTlsSpkiSha256(): string | null {
+    return this.tlsSpkiSha256Override ?? null;
   }
 
   /**
@@ -417,6 +467,18 @@ export class HttpClient {
       timeout: this.timeout,
       rejectUnauthorized: !this.insecure,
     };
+
+    if (this.tlsSpkiSha256Override !== undefined) {
+      if (url.protocol !== 'https:') {
+        throw new Error('TLS SPKI pinning requires an https URL');
+      }
+      const expectedSha256 = this.tlsSpkiSha256Override;
+      requestOptions.checkServerIdentity = (hostname: string, certificate: PeerCertificate) => {
+        const identityError = checkServerIdentity(hostname, certificate);
+        if (identityError) return identityError;
+        return verifyPinnedServerSpki(certificate.raw, expectedSha256);
+      };
+    }
 
     return new Promise((resolve, reject) => {
       const protocol = url.protocol === 'https:' ? https : http;

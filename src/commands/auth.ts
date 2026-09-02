@@ -62,6 +62,30 @@ interface LogoutOptions {
 
 interface JsonOutputOptions {
   json?: boolean;
+  server?: boolean;
+}
+
+interface ServerWhoamiResponse {
+  authMethod?: unknown;
+  user?: {
+    id?: unknown;
+    username?: unknown;
+    role?: unknown;
+    tenantId?: unknown;
+    tenant_id?: unknown;
+  };
+}
+
+function requiredServerIdentityString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.length < 1 || /[\0\r\n]/.test(value)) {
+    throw new Error(`Invalid ${field} in server identity response`);
+  }
+  return value;
+}
+
+function nullableServerTenantId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return requiredServerIdentityString(value, 'tenantId');
 }
 
 interface ConfigGetOptions {
@@ -225,14 +249,41 @@ export function registerAuthCommands(program: Command): void {
   program
     .command('whoami')
     .description('Show current authenticated user')
+    .option('--server', 'Verify the current identity with the configured vault server')
     .option('--json', 'Output as JSON')
-    .action((options: JsonOutputOptions) => {
+    .action(async (options: JsonOutputOptions) => {
       const credentials = getCredentials();
       const profileName = getActiveProfileName();
 
-      if (!credentials) {
+      if (!credentials && !options.server) {
         output.error(`Not logged in (profile: ${profileName}). Run "znvault login" first.`);
         process.exit(1);
+      }
+
+      if (options.server) {
+        const response = await client.get<ServerWhoamiResponse>('/auth/me');
+        if (!response.user || (response.authMethod !== 'jwt' && response.authMethod !== 'api-key')) {
+          throw new Error('Invalid server identity response');
+        }
+        const data = {
+          authMethod: response.authMethod,
+          profile: profileName,
+          role: requiredServerIdentityString(response.user.role, 'role'),
+          serverOrigin: new URL(client.getBaseUrl()).origin,
+          serverVerified: true,
+          tenantId: nullableServerTenantId(response.user.tenantId ?? response.user.tenant_id),
+          tlsSpkiSha256: client.getTlsSpkiSha256(),
+          userId: requiredServerIdentityString(response.user.id, 'userId'),
+          username: requiredServerIdentityString(response.user.username, 'username'),
+        };
+
+        if (options.json) output.json(data);
+        else output.keyValue(data);
+        return;
+      }
+
+      if (!credentials) {
+        throw new Error('Local credentials unexpectedly unavailable');
       }
 
       const data = {
