@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `whoami --server --json` verifies the active profile's current identity
   against `/auth/me` and emits a bounded identity receipt for recovery-fence
-  supervisors instead of trusting cached local profile metadata.
+  supervisors, including the effective server origin and TLS pin, instead of
+  trusting cached local profile metadata.
 - `--tls-spki-sha256` pins the reviewed server public key while retaining
   normal certificate-chain and hostname verification; it cannot be combined
   with insecure transport.

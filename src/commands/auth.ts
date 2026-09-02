@@ -269,8 +269,10 @@ export function registerAuthCommands(program: Command): void {
           authMethod: response.authMethod,
           profile: profileName,
           role: requiredServerIdentityString(response.user.role, 'role'),
+          serverOrigin: new URL(client.getBaseUrl()).origin,
           serverVerified: true,
           tenantId: nullableServerTenantId(response.user.tenantId ?? response.user.tenant_id),
+          tlsSpkiSha256: client.getTlsSpkiSha256(),
           userId: requiredServerIdentityString(response.user.id, 'userId'),
           username: requiredServerIdentityString(response.user.username, 'username'),
         };

@@ -43,6 +43,8 @@ vi.mock('../../src/lib/client.js', () => ({
         tenantId: 'zincapp',
       },
     }),
+    getBaseUrl: vi.fn().mockReturnValue('https://vault.example.com/ignored/path'),
+    getTlsSpkiSha256: vi.fn().mockReturnValue('a'.repeat(64)),
     configure: vi.fn(),
   },
 }));
@@ -166,8 +168,10 @@ describe('auth commands', () => {
         authMethod: 'jwt',
         profile: 'default',
         role: 'superadmin',
+        serverOrigin: 'https://vault.example.com',
         serverVerified: true,
         tenantId: 'zincapp',
+        tlsSpkiSha256: 'a'.repeat(64),
         userId: '123',
         username: 'admin',
       });

@@ -199,6 +199,11 @@ export class HttpClient {
     return this.resolveBaseUrl();
   }
 
+  /** Return the invocation-scoped TLS public-key pin, when one is active. */
+  getTlsSpkiSha256(): string | null {
+    return this.tlsSpkiSha256Override ?? null;
+  }
+
   /**
    * Ensure token is valid, refreshing if needed with mutex to prevent race conditions.
    * The synchronization ensures that only one refresh happens even if multiple
