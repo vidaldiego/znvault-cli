@@ -30,7 +30,7 @@ _znvault_completions() {
     local apikey_cmds="list get create delete rotate permissions conditions enable disable policies attach-policy detach-policy self managed"
     local apikey_managed_cmds="list get create bind rotate config delete permissions conditions"
     local policy_cmds="list get create update delete toggle validate attachments attach-user attach-role detach-user detach-role test"
-    local secret_cmds="list get create update delete copy"
+    local secret_cmds="list get decrypt create update delete rotate history copy patch can-decrypt recover recovery grants grant recover-grant revoke"
     local kms_cmds="key encrypt decrypt sign verify"
     local role_cmds="list get create update delete users assign unassign"
     local backup_cmds="config list create restore delete"
@@ -92,7 +92,10 @@ _znvault_completions() {
                     case "\${words[2]}" in
                         list) opts="--tenant -t --type --tag --json" ;;
                         get) opts="--tenant -t --json --decrypt" ;;
-                        create) opts="--tenant -t --type --tags --expires --file --suggest --json" ;;
+                        create) opts="--tenant -t --type --tags --expires --file --suggest --protection --grant-user --json" ;;
+                        grant|recover-grant|revoke) opts="--user" ;;
+                        recovery) opts="--enable --disable --yes -y --json" ;;
+                        grants|recover) opts="--json" ;;
                         *) ;;
                     esac
                     ;;
@@ -238,12 +241,36 @@ _znvault() {
                     subcommands=(
                         'list:List secrets'
                         'get:Get a secret'
+                        'decrypt:Decrypt a secret value'
                         'create:Create a secret'
                         'update:Update a secret'
                         'delete:Delete a secret'
+                        'rotate:Create a new secret version'
+                        'history:Show secret version history'
                         'copy:Copy a secret'
+                        'patch:Update secret metadata'
+                        'can-decrypt:Simulate whether the caller can decrypt'
+                        'recover:Decrypt with tenant-root recovery'
+                        'recovery:Show or change tenant-root recovery'
+                        'grants:List User-Sealed grants'
+                        'grant:Assign a user to a User-Sealed secret'
+                        'recover-grant:Reissue a grant through root recovery'
+                        'revoke:Remove a User-Sealed grant'
                     )
                     _describe -t subcommands 'subcommand' subcommands
+                    case $words[2] in
+                        create)
+                            _arguments \\
+                                '--protection[Protection mode (standard or user-session)]:mode:(standard user-session)' \\
+                                '*--grant-user[User ID to grant when creating a User-Sealed secret]:user-id:'
+                            ;;
+                        grant|recover-grant|revoke)
+                            _arguments '--user[User ID]:user-id:'
+                            ;;
+                        recovery)
+                            _arguments '--enable[Enable root recovery]' '--disable[Disable root recovery]' '(-y --yes)'{-y,--yes}'[Skip confirmation]' '--json[Output JSON]'
+                            ;;
+                    esac
                     ;;
                 advisor)
                     subcommands=(

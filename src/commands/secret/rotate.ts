@@ -11,12 +11,15 @@ import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { RotateOptions, DecryptedSecret, SecretMetadata } from './types.js';
 import { resolveSecretId } from './resolve.js';
+import {readStdinUtf8} from '../../lib/stdin.js';
+import {interactiveSecretValuePromptType} from './input-policy.js';
 
 export function registerRotateCommand(secretCmd: Command): void {
   secretCmd
     .command('rotate <id-or-alias>')
     .description('Rotate secret (supports UUID or tenant/alias format)')
     .option('--json', 'Output as JSON')
+    .option('--data-stdin', 'Read replacement JSON data from stdin')
     .action(async (idOrAlias: string, options: RotateOptions) => {
       const spinner = output.spinner('Resolving secret...').start();
 
@@ -24,6 +27,7 @@ export function registerRotateCommand(secretCmd: Command): void {
         // Resolve alias to UUID if needed
         const id = await resolveSecretId(idOrAlias);
         spinner.text = 'Fetching current secret...';
+        const metadata = await client.get<SecretMetadata>(`/v1/secrets/${id}/meta`);
 
         // Pre-fetch the RAW template so rotating a reference secret never bakes a
         // resolved snapshot into the new version. Byte-identical for others.
@@ -38,7 +42,18 @@ export function registerRotateCommand(secretCmd: Command): void {
         // Prompt for new data
         let newData: Record<string, unknown>;
 
-        if (current.type === 'credential') {
+        if (options.dataStdin) {
+          try {
+            const parsed: unknown = JSON.parse(await readStdinUtf8());
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+              throw new Error('secret data must be a JSON object');
+            }
+            newData = parsed as Record<string, unknown>;
+          } catch (error) {
+            output.error(`Invalid JSON received by --data-stdin: ${(error as Error).message}`);
+            process.exit(1);
+          }
+        } else if (current.type === 'credential') {
           const answers = await inquirer.prompt<{ password: string }>([
             {
               type: 'password',
@@ -55,10 +70,12 @@ export function registerRotateCommand(secretCmd: Command): void {
         } else {
           const { dataJson } = await inquirer.prompt<{ dataJson: string }>([
             {
-              type: 'editor',
+              type: interactiveSecretValuePromptType(metadata.protectionMode, 'editor'),
               name: 'dataJson',
               message: 'Enter new data (JSON):',
-              default: JSON.stringify(current.data, null, 2),
+              ...(metadata.protectionMode === 'USER_SESSION_ONLY'
+                ? {mask: '*'}
+                : {default: JSON.stringify(current.data, null, 2)}),
             },
           ]);
           try {

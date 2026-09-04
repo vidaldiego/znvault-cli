@@ -28,6 +28,7 @@ import {
 } from './patch/operations.js';
 import { getParser, detectFormat } from './patch/parsers.js';
 import { generateDiff, displayDiff, displayOperationsSummary } from './patch/diff.js';
+import {supportsArgvPatch} from './input-policy.js';
 
 /**
  * Extract the raw content from a decrypted secret's data
@@ -141,6 +142,12 @@ Value Types:
       try {
         // Resolve alias to UUID
         id = await resolveSecretId(idOrAlias);
+        const metadata = await client.get<SecretMetadata>(`/v1/secrets/${id}/meta`);
+        if (!supportsArgvPatch(metadata.protectionMode)) {
+          spinner.stop();
+          output.error('secret patch is disabled for User-Sealed Secrets in v1; use secret update --data-stdin or the masked interactive prompt.');
+          process.exit(1);
+        }
         spinner.text = 'Decrypting secret...';
 
         // Decrypt current secret RAW (no reference resolution) so patching a

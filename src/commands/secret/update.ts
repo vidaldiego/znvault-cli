@@ -11,6 +11,8 @@ import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { UpdateOptions, DecryptedSecret, SecretMetadata } from './types.js';
 import { resolveSecretId } from './resolve.js';
+import {readStdinUtf8} from '../../lib/stdin.js';
+import {interactiveSecretValuePromptType} from './input-policy.js';
 
 export function registerUpdateCommand(secretCmd: Command): void {
   secretCmd
@@ -21,6 +23,7 @@ export function registerUpdateCommand(secretCmd: Command): void {
     .option('--expires <datetime>', 'Natural expiration (ISO 8601)')
     .option('--json', 'Output as JSON')
     .option('--data <json>', 'New data as JSON (non-interactive)')
+    .option('--data-stdin', 'Read new JSON data from stdin')
     .option('--enable-references', 'Opt this secret in to ${ref:...} reference resolution')
     .option('--no-enable-references', 'Disable reference resolution (turn opt-in off)')
     .action(async (idOrAlias: string, options: UpdateOptions) => {
@@ -35,8 +38,36 @@ export function registerUpdateCommand(secretCmd: Command): void {
         process.exit(1);
       }
 
+      let metadata: SecretMetadata;
+      try {
+        metadata = await client.get<SecretMetadata>(`/v1/secrets/${id}/meta`);
+      } catch (error) {
+        output.error((error as Error).message);
+        process.exit(1);
+      }
+      const isUserSealed = metadata.protectionMode === 'USER_SESSION_ONLY';
+      if (options.data && options.dataStdin) {
+        output.error('--data cannot be combined with --data-stdin');
+        process.exit(1);
+      }
+      if (isUserSealed && options.data) {
+        output.error('User-Sealed values cannot be supplied through --data; use --data-stdin or the masked interactive prompt.');
+        process.exit(1);
+      }
+
       // Check for non-interactive data option
-      if (options.data) {
+      if (options.dataStdin) {
+        try {
+          const parsed: unknown = JSON.parse(await readStdinUtf8());
+          if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('secret data must be a JSON object');
+          }
+          newData = parsed as Record<string, unknown>;
+        } catch (error) {
+          output.error(`Invalid JSON received by --data-stdin: ${(error as Error).message}`);
+          process.exit(1);
+        }
+      } else if (options.data) {
         // Non-interactive mode: parse JSON data from CLI
         try {
           newData = JSON.parse(options.data) as Record<string, unknown>;
@@ -92,10 +123,10 @@ export function registerUpdateCommand(secretCmd: Command): void {
             } else {
               const { dataJson } = await inquirer.prompt<{ dataJson: string }>([
                 {
-                  type: 'editor',
+                  type: interactiveSecretValuePromptType(metadata.protectionMode, 'editor'),
                   name: 'dataJson',
-                  message: 'Edit data (JSON):',
-                  default: JSON.stringify(current.data, null, 2),
+                  message: isUserSealed ? 'Enter replacement data (JSON):' : 'Edit data (JSON):',
+                  ...(isUserSealed ? {mask: '*'} : {default: JSON.stringify(current.data, null, 2)}),
                 },
               ]);
               try {

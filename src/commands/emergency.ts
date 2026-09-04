@@ -153,6 +153,7 @@ export function registerEmergencyCommands(program: Command): void {
           output.info('  - Disable TOTP/2FA');
           output.info('  - Unlock the account');
           output.info('  - Require password change on next login');
+          output.info('  - Refuse if the user has User-Sealed key material');
           console.log();
 
           const confirmed = await promptConfirm(

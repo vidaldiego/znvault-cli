@@ -114,19 +114,41 @@ export class EmergencyOperations extends BaseDBClient {
   async resetPassword(username: string, newPassword: string): Promise<OperationResult> {
     await this.connect();
 
+    const client = this.getRawClient();
     try {
-      const passwordHash = bcryptjs.hashSync(newPassword, 12);
-
-      const findResult = await this.queryOne<{ id: string; username: string }>(
-        'SELECT id, username FROM users WHERE username = $1 OR email = $1',
-        [username]
+      await client.query('BEGIN');
+      const findQuery = await client.query<{id: string; username: string}>(
+        'SELECT id, username FROM users WHERE username = $1 OR email = $1 FOR UPDATE',
+        [username],
       );
+      const findResult = findQuery.rows.at(0);
 
       if (!findResult) {
+        await client.query('ROLLBACK');
         return { success: false, message: `User '${username}' not found` };
       }
 
-      const client = this.getRawClient();
+      // Direct/local reset has no password-derived private-key rewrap ceremony.
+      // Refuse instead of leaving current grants cryptographically stranded or
+      // allowing old distributed unlock capabilities to survive the reset.
+      const capability = await client.query<{user_secret_keys: string | null}>(
+        "SELECT to_regclass('public.user_secret_keys')::text AS user_secret_keys",
+      );
+      if (capability.rows[0]?.user_secret_keys) {
+        const userSealed = await client.query<{has_key: boolean}>(
+          'SELECT EXISTS(SELECT 1 FROM user_secret_keys WHERE user_id = $1) AS has_key',
+          [findResult.id],
+        );
+        if (userSealed.rows[0]?.has_key) {
+          await client.query('ROLLBACK');
+          return {
+            success: false,
+            message: 'USER_SEALED_PASSWORD_RESET_REQUIRES_API: direct database reset is blocked because this user has User-Sealed key material. Use the authenticated API reset/recovery ceremony so key rotation, grant coverage, and session epochs remain atomic.',
+          };
+        }
+      }
+
+      const passwordHash = bcryptjs.hashSync(newPassword, 12);
       await client.query(
         `UPDATE users SET
           password_hash = $1,
@@ -145,12 +167,14 @@ export class EmergencyOperations extends BaseDBClient {
         WHERE id = $2`,
         [passwordHash, findResult.id]
       );
+      await client.query('COMMIT');
 
       return {
         success: true,
         message: `Password reset for user '${findResult.username}'. TOTP disabled, account unlocked.`,
       };
     } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
       return {
         success: false,
         message: `Failed to reset password: ${err instanceof Error ? err.message : String(err)}`,
