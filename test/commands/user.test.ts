@@ -23,8 +23,8 @@ vi.mock('../../src/lib/auth-context.js', () => ({
 }));
 
 const mockUsers = [
-  { id: 'user-1', username: 'alice', email: 'alice@example.com', role: 'user', status: 'active', tenantId: 'tenant-1', totpEnabled: false, failedAttempts: 0, lastLogin: null, createdAt: new Date().toISOString() },
-  { id: 'user-2', username: 'bob', email: 'bob@example.com', role: 'admin', status: 'locked', tenantId: 'tenant-1', totpEnabled: true, failedAttempts: 3, lastLogin: new Date().toISOString(), createdAt: new Date().toISOString() },
+  { id: 'user-1', username: 'alice', email: 'alice@example.com', role: 'user', accountType: 'HUMAN', status: 'active', tenantId: 'tenant-1', totpEnabled: false, failedAttempts: 0, lastLogin: null, createdAt: new Date().toISOString() },
+  { id: 'user-2', username: 'bob', email: 'bob@example.com', role: 'admin', accountType: 'UNCLASSIFIED', status: 'locked', tenantId: 'tenant-1', totpEnabled: true, failedAttempts: 3, lastLogin: new Date().toISOString(), createdAt: new Date().toISOString() },
 ];
 
 // Mock mode.js - this is what the commands actually use
@@ -32,7 +32,7 @@ vi.mock('../../src/lib/mode.js', () => ({
   getMode: vi.fn().mockReturnValue('api'),
   getModeDescription: vi.fn().mockReturnValue('API mode - using API key'),
   listUsers: vi.fn().mockResolvedValue(mockUsers),
-  getUser: vi.fn().mockResolvedValue({ id: 'user-1', username: 'alice', email: 'alice@example.com', role: 'user', status: 'active', tenantId: 'tenant-1', totpEnabled: false, failedAttempts: 0, lockedUntil: null, lastLogin: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+  getUser: vi.fn().mockResolvedValue({ id: 'user-1', username: 'alice', email: 'alice@example.com', role: 'user', accountType: 'HUMAN', status: 'active', tenantId: 'tenant-1', totpEnabled: false, failedAttempts: 0, lockedUntil: null, lastLogin: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
   unlockUser: vi.fn().mockResolvedValue({ success: true, message: 'User unlocked' }),
   resetPassword: vi.fn().mockResolvedValue({ success: true, message: 'Password reset' }),
   disableTotp: vi.fn().mockResolvedValue({ success: true, message: 'TOTP disabled' }),
@@ -42,8 +42,8 @@ vi.mock('../../src/lib/mode.js', () => ({
 // Mock client.js for API-only operations
 vi.mock('../../src/lib/client.js', () => ({
   client: {
-    createUser: vi.fn().mockResolvedValue({ id: 'new-user', username: 'newuser', email: null, role: 'user', status: 'active', tenantId: 'acme', createdAt: new Date().toISOString() }),
-    updateUser: vi.fn().mockResolvedValue({ id: 'user-1', username: 'alice', status: 'active', updatedAt: new Date().toISOString() }),
+    createUser: vi.fn().mockResolvedValue({ id: 'new-user', username: 'newuser', email: null, role: 'user', accountType: 'HUMAN', status: 'active', tenantId: 'acme', createdAt: new Date().toISOString() }),
+    updateUser: vi.fn().mockResolvedValue({ id: 'user-1', username: 'alice', accountType: 'HUMAN', status: 'active', updatedAt: new Date().toISOString() }),
     deleteUser: vi.fn().mockResolvedValue(undefined),
     resetUserPassword: vi.fn().mockResolvedValue({ success: true, message: 'Password reset' }),
     unlockUser: vi.fn().mockResolvedValue({ success: true, message: 'User unlocked' }),
@@ -134,6 +134,7 @@ describe('user commands', () => {
         tenantId: 'acme',
         email: undefined,
         role: 'user', // defaults to 'user'
+        accountType: undefined,
         asSuperadmin: true,
       });
     });
@@ -149,8 +150,38 @@ describe('user commands', () => {
         tenantId: 'acme',
         email: 'new@example.com',
         role: 'admin',
+        accountType: undefined,
         asSuperadmin: true,
       });
+    });
+
+  });
+
+  describe('user update', () => {
+    it('should classify a legacy identity as HUMAN through the superadmin route', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'superadmin', 'user', 'update', 'user-1', '--account-type', 'human']);
+
+      expect(client.updateUser).toHaveBeenCalledWith(
+        'user-1',
+        { accountType: 'HUMAN' },
+        { asSuperadmin: true },
+      );
+    });
+
+    it('should reject an invalid identity classification before calling the API', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await expect(program.parseAsync(['node', 'test', 'superadmin', 'user', 'update', 'user-1', '--account-type', 'robot'])).rejects.toThrow('process.exit unexpectedly called with "1"');
+      expect(client.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('should keep identity classification out of tenant-admin routes', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await expect(program.parseAsync(['node', 'test', 'user', 'update', 'user-1', '--account-type', 'human'])).rejects.toThrow('process.exit unexpectedly called with "1"');
+      expect(client.updateUser).not.toHaveBeenCalled();
     });
   });
 

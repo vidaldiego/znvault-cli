@@ -162,6 +162,8 @@ export interface User {
   username: string;
   email?: string;
   role: 'user' | 'admin' | 'superadmin';
+  /** Explicit identity classification used by User-Sealed Secrets. */
+  accountType?: 'HUMAN' | 'SERVICE' | 'UNCLASSIFIED';
   tenantId?: string;
   status: 'active' | 'disabled' | 'locked';
   totpEnabled: boolean;

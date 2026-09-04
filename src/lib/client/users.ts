@@ -51,6 +51,7 @@ export class UsersClient extends HttpClient {
     email?: string;
     tenantId?: string;
     role?: 'user' | 'admin';
+    accountType?: 'HUMAN' | 'SERVICE';
     asSuperadmin?: boolean;
   }): Promise<User> {
     const { asSuperadmin, ...body } = data;
@@ -73,6 +74,7 @@ export class UsersClient extends HttpClient {
     password?: string;
     role?: 'user' | 'admin';
     status?: 'active' | 'disabled';
+    accountType?: 'HUMAN' | 'SERVICE';
   }, opts?: { asSuperadmin?: boolean }): Promise<User> {
     return this.request<User>({
       method: 'PUT',

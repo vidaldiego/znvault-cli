@@ -24,6 +24,7 @@ interface CreateUserOptions {
   email?: string;
   tenant?: string;
   role?: 'user' | 'admin';
+  accountType?: string;
   json?: boolean;
 }
 
@@ -36,6 +37,7 @@ interface UpdateUserOptions {
   password?: string;
   role?: string;
   status?: string;
+  accountType?: string;
   json?: boolean;
 }
 
@@ -54,6 +56,15 @@ interface UnlockOptions {
 
 interface ResetPasswordOptions {
   json?: boolean;
+}
+
+function parseAccountType(value: string | undefined): 'HUMAN' | 'SERVICE' | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.toUpperCase();
+  if (normalized !== 'HUMAN' && normalized !== 'SERVICE') {
+    throw new Error('Invalid account type. Use HUMAN or SERVICE');
+  }
+  return normalized;
 }
 
 export function registerUserCommands(parent: Command, opts?: RegisterOptions): void {
@@ -99,12 +110,13 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
         }
 
         output.table(
-          ['ID', 'Username', 'Email', 'Role', 'Tenant', 'Status', '2FA', 'Last Login'],
+          ['ID', 'Username', 'Email', 'Role', 'Account Type', 'Tenant', 'Status', '2FA', 'Last Login'],
           users.map(u => [
             u.id.substring(0, 8),
             u.username,
             u.email ?? '-',
             u.role,
+            u.accountType ?? '-',
             u.tenantId ?? '-',
             u.status,
             u.totpEnabled,
@@ -130,11 +142,25 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
   addTenantOption(createCmd, ctx, 'Tenant ID');
   createCmd
     .option('--role <role>', 'User role (user|admin)', 'user')
+    .option('--account-type <type>', 'Identity type (HUMAN|SERVICE); superadmin only')
     .option('--json', 'Output as JSON')
     .action(async (username: string, password: string, options: CreateUserOptions) => {
       if (mode.getMode() === 'local') {
         output.error('User creation requires API mode with authentication');
         output.info('Use: znvault login first, or set ZNVAULT_API_KEY');
+        process.exit(1);
+      }
+
+      if (options.accountType !== undefined && !asSuperadmin) {
+        output.error('--account-type is only available under superadmin user commands');
+        process.exit(1);
+      }
+
+      let accountType: 'HUMAN' | 'SERVICE' | undefined;
+      try {
+        accountType = parseAccountType(options.accountType);
+      } catch (err) {
+        output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
 
@@ -147,6 +173,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
           email: options.email,
           tenantId: options.tenant,
           role: options.role,
+          accountType,
           asSuperadmin,
         });
         spinner.succeed('User created successfully');
@@ -159,6 +186,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
             'Username': result.username,
             'Email': result.email ?? '-',
             'Role': result.role,
+            'Account Type': result.accountType ?? '-',
             'Tenant': result.tenantId ?? '-',
             'Status': result.status,
             'Created': output.formatDate(result.createdAt),
@@ -199,6 +227,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
           'Username': result.username,
           'Email': result.email ?? '-',
           'Role': result.role,
+          'Account Type': result.accountType ?? '-',
           'Tenant': result.tenantId ?? '-',
           'Status': result.status,
           '2FA Enabled': result.totpEnabled,
@@ -226,6 +255,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
     .option('--password <password>', 'New password')
     .option('--role <role>', 'New role (user|admin)')
     .option('--status <status>', 'New status (active|disabled)')
+    .option('--account-type <type>', 'Identity type (HUMAN|SERVICE); superadmin only')
     .option('--json', 'Output as JSON')
     .action(async (id: string, options: UpdateUserOptions) => {
       if (mode.getMode() === 'local') {
@@ -234,14 +264,27 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
         process.exit(1);
       }
 
+
+      if (options.accountType !== undefined && !asSuperadmin) {
+        output.error('--account-type is only available under superadmin user commands');
+        process.exit(1);
+      }
+
       const updates: Record<string, unknown> = {};
       if (options.email) updates.email = options.email;
       if (options.password) updates.password = options.password;
       if (options.role) updates.role = options.role;
       if (options.status) updates.status = options.status;
+      try {
+        const accountType = parseAccountType(options.accountType);
+        if (accountType) updates.accountType = accountType;
+      } catch (err) {
+        output.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
 
       if (Object.keys(updates).length === 0) {
-        output.error('No updates specified. Use --email, --password, --role, or --status');
+        output.error('No updates specified. Use --email, --password, --role, --status, or --account-type');
         process.exit(1);
       }
 
@@ -261,6 +304,7 @@ function registerUserCommandsInner(parent: Command, ctx: 'tenant' | 'superadmin'
           output.keyValue({
             'ID': result.id,
             'Username': result.username,
+            'Account Type': result.accountType ?? '-',
             'Status': result.status,
             'Updated': output.formatDate(result.updatedAt),
           });
