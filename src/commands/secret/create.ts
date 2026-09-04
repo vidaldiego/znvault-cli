@@ -15,6 +15,7 @@ import type { CreateOptions, SecretMetadata, SuggestResult } from './types.js';
 import { formatBytes } from './helpers.js';
 import { analyzeFileForSuggestion, formatPemType, type FileAnalysisInfo } from './pem-analysis.js';
 import { validateTokenAlias, validateFieldPath, buildLinkData } from './references.js';
+import {interactiveSecretValuePromptType} from './input-policy.js';
 
 export function registerCreateCommand(secretCmd: Command): void {
   secretCmd
@@ -38,6 +39,8 @@ export function registerCreateCommand(secretCmd: Command): void {
     .option('--data <json>', 'JSON data (non-interactive)')
     .option('--data-stdin', 'Read JSON data from stdin (keeps secret values out of argv and files)')
     .option('--enable-references', 'Opt this secret in to ${ref:...} reference resolution')
+    .option('--protection <mode>', 'Protection mode: standard or user-session', 'standard')
+    .option('--grant-user <userId...>', 'Authorized user IDs (repeatable; required unless tenant-root recovery is enabled)')
     .option('--link <alias>', 'Create a link secret pointing at another secret (sets sub-type link)')
     .option('--link-field <path>', 'Narrow a --link to a single field (dot-path, e.g. password or db.host)')
     .option('--file <path>', 'File to upload (non-interactive)')
@@ -273,6 +276,14 @@ Examples:
 
       let data: Record<string, unknown> = {};
 
+      if (options.protection === 'user-session' && (
+        options.username !== undefined || options.password !== undefined ||
+        options.text !== undefined || options.data !== undefined || options.file !== undefined
+      )) {
+        output.error('User-Sealed secret values cannot be supplied in command arguments or file paths. Use --data-stdin or the interactive prompt.');
+        process.exit(1);
+      }
+
       // Check for non-interactive data options first. A --link owns the value
       // (its pointer), so it bypasses both interactive and other non-interactive
       // data collection.
@@ -355,7 +366,9 @@ Examples:
               { name: 'Credential (username/password)', value: 'credential' },
               { name: 'Plain Text', value: 'text' },
               { name: 'Key-Value pairs', value: 'keyvalue' },
-              { name: 'File upload', value: 'file' },
+              ...(options.protection === 'user-session'
+                ? []
+                : [{ name: 'File upload', value: 'file' }]),
             ],
           },
         ]);
@@ -369,7 +382,12 @@ Examples:
           data = answers;
         } else if (dataType === 'text') {
           const { text } = await inquirer.prompt<{ text: string }>([
-            { type: 'editor', name: 'text', message: 'Enter text content:' },
+            {
+              type: interactiveSecretValuePromptType(options.protection, 'editor'),
+              name: 'text',
+              message: 'Enter text content:',
+              mask: '*',
+            },
           ]);
           data = { text: text.trim() };
         } else if (dataType === 'keyvalue') {
@@ -380,7 +398,12 @@ Examples:
             ]);
             if (!key) break;
             const { value } = await inquirer.prompt<{ value: string }>([
-              { type: 'input', name: 'value', message: `Value for "${key}":` },
+              {
+                type: interactiveSecretValuePromptType(options.protection, 'input'),
+                name: 'value',
+                message: `Value for "${key}":`,
+                mask: '*',
+              },
             ]);
             data[key] = value;
           }
@@ -420,6 +443,12 @@ Examples:
           type: actualType,
           data,
         };
+        if (options.protection === 'user-session') {
+          body.protectionMode = 'USER_SESSION_ONLY';
+          if (options.grantUser !== undefined) body.grantUserIds = options.grantUser;
+        } else if (options.protection !== 'standard') {
+          throw new Error('--protection must be standard or user-session');
+        }
 
         if (actualSubType) body.subType = actualSubType;
         if (actualTags) body.tags = actualTags.split(',').map(t => t.trim());
@@ -444,6 +473,7 @@ Examples:
         console.log(`  ID:     ${result.id}`);
         console.log(`  Alias:  ${result.alias}`);
         console.log(`  Tenant: ${result.tenant}`);
+        console.log(`  Protection: ${result.protectionMode === 'USER_SESSION_ONLY' ? 'User-Sealed' : 'Standard'}`);
         if (result.references) {
           console.log(`  References: ${result.references.count}`);
         }

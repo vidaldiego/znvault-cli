@@ -46,6 +46,7 @@ vi.mock('../../src/lib/client.js', () => ({
     getBaseUrl: vi.fn().mockReturnValue('https://vault.example.com/ignored/path'),
     getTlsSpkiSha256: vi.fn().mockReturnValue('a'.repeat(64)),
     configure: vi.fn(),
+    post: vi.fn().mockResolvedValue({}),
   },
 }));
 
@@ -105,6 +106,7 @@ describe('auth commands', () => {
   afterEach(() => {
     consoleSpy.mockRestore();
     vi.clearAllMocks();
+    process.exitCode = undefined;
   });
 
   describe('login', () => {
@@ -119,13 +121,36 @@ describe('auth commands', () => {
 
   describe('logout', () => {
     it('should clear credentials', async () => {
+      const { client } = await import('../../src/lib/client.js');
       const { clearCredentials } = await import('../../src/lib/config.js');
       const { success } = await import('../../src/lib/output.js');
 
       await program.parseAsync(['node', 'test', 'logout']);
 
+      expect(client.post).toHaveBeenCalledWith('/auth/logout', {});
       expect(clearCredentials).toHaveBeenCalled();
       expect(success).toHaveBeenCalledWith('Logged out successfully (profile: default)');
+    });
+
+    it('revokes every server session with --all', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync(['node', 'test', 'logout', '--all']);
+
+      expect(client.post).toHaveBeenCalledWith('/auth/logout-all', {});
+    });
+
+    it('still clears local credentials when server revocation fails', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { clearCredentials } = await import('../../src/lib/config.js');
+      const { error } = await import('../../src/lib/output.js');
+      vi.mocked(client.post).mockRejectedValueOnce(new Error('server unavailable'));
+
+      await program.parseAsync(['node', 'test', 'logout']);
+
+      expect(clearCredentials).toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('server revocation failed'));
+      expect(process.exitCode).toBe(1);
     });
   });
 

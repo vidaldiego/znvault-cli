@@ -30,6 +30,8 @@ export interface SecretMetadata {
   referencesEnabled?: boolean;
   /** Server-derived: the secret currently carries ${ref:...} tokens or is a link. Additive on /meta (undefined on old servers). */
   hasReferences?: boolean;
+  protectionMode?: 'STANDARD' | 'USER_SESSION_ONLY';
+  grantCount?: number;
 }
 
 export interface DecryptedSecret extends SecretMetadata {
@@ -87,6 +89,8 @@ export interface CreateOptions {
   enableReferences?: boolean;
   link?: string;
   linkField?: string;
+  protection?: 'standard' | 'user-session';
+  grantUser?: string[];
 }
 
 export interface SuggestResult {
@@ -109,6 +113,7 @@ export interface UpdateOptions {
   json?: boolean;
   // Non-interactive data option
   data?: string;
+  dataStdin?: boolean;
   enableReferences?: boolean;
 }
 
@@ -118,6 +123,7 @@ export interface DeleteOptions {
 
 export interface RotateOptions {
   json?: boolean;
+  dataStdin?: boolean;
 }
 
 export interface HistoryOptions {

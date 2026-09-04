@@ -58,6 +58,7 @@ interface LoginOptions {
 
 interface LogoutOptions {
   json?: boolean;
+  all?: boolean;
 }
 
 interface JsonOutputOptions {
@@ -232,16 +233,37 @@ export function registerAuthCommands(program: Command): void {
   // Logout command
   program
     .command('logout')
-    .description('Clear stored credentials')
+    .description('Revoke the server session and clear stored credentials')
+    .option('--all', 'Revoke all sessions and refresh tokens for this user')
     .option('--json', 'Output as JSON')
-    .action((options: LogoutOptions) => {
+    .action(async (options: LogoutOptions) => {
       const profileName = getActiveProfileName();
-      clearCredentials();
+      const hadCredentials = getCredentials() !== undefined;
+      let remoteError: string | undefined;
+      try {
+        if (hadCredentials) {
+          await client.post(options.all ? '/auth/logout-all' : '/auth/logout', {});
+        }
+      } catch (error) {
+        remoteError = error instanceof Error
+          ? error.message
+          : typeof error === 'string' ? error : 'Unknown server revocation error';
+      } finally {
+        clearCredentials();
+      }
+
+      if (remoteError !== undefined) {
+        const message = `Local credentials cleared, but server revocation failed: ${remoteError}`;
+        if (options.json) output.json({success: false, profile: profileName, message});
+        else output.error(message);
+        process.exitCode = 1;
+        return;
+      }
 
       if (options.json) {
-        output.json({ success: true, profile: profileName, message: 'Logged out successfully' });
+        output.json({ success: true, profile: profileName, message: options.all ? 'Logged out from all sessions' : 'Logged out successfully' });
       } else {
-        output.success(`Logged out successfully (profile: ${profileName})`);
+        output.success(`${options.all ? 'Logged out from all sessions' : 'Logged out successfully'} (profile: ${profileName})`);
       }
     });
 
