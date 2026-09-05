@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Independent workspace
+
+The active clone is `~/Drive/vault/znvault-cli`, a sibling of `zn-vault`,
+SDKs and plugins. Run commands from this Git root; no nested core is required.
+See `AGENTS.md` for recovery boundaries. Machine-specific Claude permissions
+are not versioned or inherited from the old workspace.
+
 ## Project Overview
 
 ZnVault CLI (`@zincapp/znvault-cli`) is the official command-line interface for ZnVault secrets management. It's a TypeScript/Node.js CLI built with Commander.js that supports multi-profile authentication, interactive TUI dashboards via React/Ink, and both JWT and API key authentication.
@@ -16,7 +23,7 @@ npm run build:prod         # Production build (no sourcemaps)
 npm run dev                # Watch mode for development
 
 # Testing
-npm test                   # Full test suite (starts Docker PostgreSQL)
+npm test                   # Build and unit tests (no Docker)
 npm run test:unit          # Unit tests only (fast, no Docker)
 npm run test:unit:watch    # Watch mode for unit tests
 npm run test:integration   # Integration tests (requires running vault)

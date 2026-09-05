@@ -1,23 +1,9 @@
 // Path: znvault-cli/src/commands/lmk-preflight.ts
 //
-// `znvault lmk preflight` — read-only, local, and it produces evidence.
-//
-// This is the command that answers "is this deployment in a state where a
-// key-lifecycle operation is safe to start?", and its two hard requirements
-// come from the same place: whoever reads the answer later was not in the room.
-//
-//   IT WRITES NOTHING. Not a row, not an audit entry. That is why it goes
-//   straight to PostgreSQL instead of through the API: both
-//   `/v1/superadmin/rootkey/status` and `.../verify` write an audit row, so
-//   asking them would falsify the property being asserted — invisibly.
-//
-//   IT PRINTS A VERDICT, AND EXITS ON IT. A preflight that reports problems in
-//   prose and exits 0 is a preflight that gets piped into a script and ignored.
-//   Any BLOCKING gate failing means exit 1.
-//
-// The evidence file is the input to the detached signature (A2) and to the
-// isolated-restore bench (D2). It carries the gate results AND everything the
-// gates were computed from, so they can be recomputed from the artefact alone.
+// `znvault lmk preflight` obtains its snapshot through the authenticated server
+// API. The CLI validates that response, constructs the evidence document and
+// exits nonzero for blocking gates. Database access and server-side audit
+// behavior belong to the core endpoint, not to this command.
 
 import { hostname } from 'node:os';
 import { writeFileSync } from 'node:fs';

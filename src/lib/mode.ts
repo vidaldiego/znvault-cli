@@ -21,11 +21,11 @@ import type {
 /**
  * Unified interface for CLI operations.
  *
- * This module provides a unified interface that automatically chooses between:
+ * This module provides a unified interface for:
  * - Local mode (direct database access) when running with sudo on a vault node
  * - API mode (HTTP requests) when configured with credentials
  *
- * Local mode is preferred when available as it doesn't require authentication.
+ * API mode is the default. Local mode requires explicit operator selection.
  */
 
 export type Mode = 'local' | 'api';

@@ -14,11 +14,8 @@ jobs:
       matrix:
         node-version: [20, 22]
 
-    # The BSK-rotation preflight opens a REPEATABLE READ READ ONLY transaction
-    # and the only honest proof of that is PostgreSQL refusing a write inside
-    # it (SQLSTATE 25006). Inspecting the SQL string would prove the spelling,
-    # not the guarantee. See test/lib/db/preflight-readonly.test.ts — and
-    # preflight-ci-wiring.test.ts, which fails if this service disappears.
+    # PostgreSQL is retained for the restore-drill integration test.
+    # LMK preflight runs through the server API; its DB tests live in core.
     services:
       postgres:
         image: postgres:16-alpine
