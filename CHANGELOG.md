@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-09-05
+
+### Added
+
+- `znvault secret protection <id-or-alias> --protection user-session|standard`
+  performs the dedicated cryptographic conversion without putting secret
+  plaintext in arguments, files, output, or receipts.
+- `--history preserve|delete` preserves and re-encrypts retained versions by
+  default or deletes them only after explicit confirmation. Converting to
+  Standard also requires confirmation because normal policy may then permit
+  API-key and service-account reads.
+- `--grant-user`, `--root-recovery`, `--yes`, JSON output, completions, and
+  command tests cover the full conversion contract.
+
 ## [5.0.0] - 2026-09-05
 
 ### Breaking changes

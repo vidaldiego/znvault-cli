@@ -26,7 +26,7 @@ try {
   const lmk = run('superadmin', 'lmk', '--help');
   if (/^  ceremony/m.test(lmk) || !/^  preflight/m.test(lmk)) throw new Error('Trust boundary failure');
   const secrets = run('secret', '--help');
-  for (const command of ['grants', 'grant', 'revoke', 'recover', 'recover-grant']) {
+  for (const command of ['grants', 'grant', 'revoke', 'recover', 'recover-grant', 'protection']) {
     if (!new RegExp(`^  ${command} `, 'm').test(secrets)) throw new Error(`User-Sealed command missing: ${command}`);
   }
   if (!run('dynasec', 'permit', '--help').includes('lookup')) throw new Error('DR permit lookup missing');
