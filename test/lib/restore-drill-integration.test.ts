@@ -12,7 +12,7 @@
 // zn-vault's deploy/lab/isolated-restore/ exists to drive. It is not simulated
 // here; a fake would only prove the fake.
 //
-// Skips without PREFLIGHT_TEST_DATABASE_URL, and CI is asserted to provide it
+// Skips without DRILL_TEST_DATABASE_URL, and CI is asserted to provide it
 // by test/lib/restore-drill-ci-wiring.test.ts, which always runs.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

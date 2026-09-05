@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-09-05
+
+### Breaking changes
+
+- Local PostgreSQL mode requires explicit `--local` or `ZNVAULT_LOCAL=1`;
+  exporting DATABASE_URL alone no longer changes ordinary commands from API
+  mode to direct DB access. Emergency operations retain their explicit DB path.
+- Remove `superadmin lmk ceremony` and `superadmin lmk escrow snapshot`.
+  Creation/custody ceremonies belong to zn-trust-root. Legacy escrow `verify`
+  and `restore` remain available for existing artifacts.
+- `superadmin lmk preflight` uses the authenticated server snapshot API rather
+  than opening PostgreSQL. It requires a compatible server and superadmin
+  credentials; the server records an audit event outside the read-only snapshot.
+
+### Preserved compatibility
+
+- User-Sealed create/update, grants, revocation and root-recovery workflows from
+  4.25.0 remain; no change to secret payloads or server migrations.
+- Emergency DR permit lookup, recovery fences and existing escrow restore
+  readers remain; this release does not activate or commission DR/Trust.
+
+### Release engineering
+
+- Align VERSION with package and lockfile metadata; clean dist before packing
+  to prevent removed ceremony modules leaking into npm artifacts.
+- Gate publication on the complete CI suite and matching tag/main SHA; install
+  and smoke-test the exact tarball before publishing it with provenance.
+- Keep machine-specific Claude permissions out of Git and document independent
+  repository paths under ~/Drive/vault.
+
 ## [4.24.6] - 2026-09-02
 
 ### Added

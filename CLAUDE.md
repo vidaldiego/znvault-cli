@@ -276,51 +276,12 @@ src/commands/backup/
 
 ## Release Process
 
-**Publishing is handled automatically by GitHub Actions CI/CD.**
+Use [RELEASING.md](RELEASING.md) as the authoritative release procedure.
+All version files and the tag must match; full CI and the exact packed-artifact
+smoke test gate npm publication. A source build is not evidence that the npm
+artifact contains the intended modules. The v5 compatibility boundary is
+explained in CHANGELOG.md; ceremonies belong to zn-trust-root, while historical
+escrow readers and User-Sealed/DR workflows remain supported.
 
-### Steps to Release
-
-1. Update version in `package.json`:
-   ```bash
-   npm version patch  # or minor/major
-   ```
-
-2. Commit the version bump:
-   ```bash
-   git add package.json package-lock.json
-   git commit -m "chore(release): vX.Y.Z"
-   ```
-
-3. Create and push tag:
-   ```bash
-   git tag vX.Y.Z
-   git push origin main
-   git push origin vX.Y.Z
-   ```
-
-4. GitHub Actions automatically:
-   - Runs tests
-   - Builds the package
-   - Publishes to npm using OIDC authentication (no npm token needed)
-
-### npm Package
-
-- **Package:** `@zincapp/znvault-cli`
-- **Registry:** https://www.npmjs.com/package/@zincapp/znvault-cli
-
-### Verification
-
-```bash
-# Check published version
-npm view @zincapp/znvault-cli version
-
-# Install latest
-npm install -g @zincapp/znvault-cli
-```
-
-### CI/CD Configuration
-
-The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
-- Running tests on PRs
-- Publishing to npm on version tags (`v*`)
-- OIDC-based npm authentication (provenance enabled)
+The Mac Studio is canonical. Claude Remote is the normal remote work path;
+Codex Handoff is deferred until the end of the overall reorganization.

@@ -113,8 +113,8 @@ export function registerLmkPreflightCommand(lmk: Command): void {
   lmk
     .command('preflight')
     .description(
-      'Read-only inventory of the key hierarchy with pass/fail gates. Writes ' +
-      'nothing to the database and produces a JSON evidence artefact.',
+      'Read-only key-hierarchy snapshot through the authenticated API with ' +
+      'pass/fail gates and JSON evidence. The server records an audit event.',
     )
     .option('--json', 'Output only the evidence artefact as JSON')
     .option('--out <path>', 'Also write the evidence artefact to this path')

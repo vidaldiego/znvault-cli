@@ -14,11 +14,13 @@ profiles or credentials to make local tests pass.
 The September 5 recovery branch preserves four unpublished mainline commits:
 local DB mode requires explicit selection; LMK preflight goes through the API;
 ceremony and escrow creation belong to Trust; existing escrow verification and
-restore remain available for legacy artifacts. This is a prepared local change,
-not a published release. Other legacy feature branches remain separately preserved.
+restore remain available for legacy artifacts. These changes form the v5 compatibility boundary;
+consult RELEASING.md and the release receipt for publication status. Other legacy feature branches remain separately preserved.
 
 Do not recreate nested repositories, reactivate old Mutagen dev-sync, or rewrite
 legacy session files. Git hooks are temporarily disabled for recovery. Personal
 `.claude/settings.local.json` permissions stay untracked; the legacy copy is
 preserved in the recovery evidence and Git history. Local validation does not
 require `npm link`, global package updates, tags, pushes or deployment.
+
+This Mac is canonical; Claude Remote is the normal remote workflow. Handoff is deferred.
