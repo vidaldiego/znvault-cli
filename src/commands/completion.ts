@@ -95,6 +95,7 @@ _znvault_completions() {
                         create) opts="--tenant -t --type --tags --expires --file --suggest --protection --grant-user --json" ;;
                         grant|recover-grant|revoke) opts="--user" ;;
                         recovery) opts="--enable --disable --yes -y --json" ;;
+                        protection) opts="--protection --history --grant-user --root-recovery --yes -y --json" ;;
                         grants|recover) opts="--json" ;;
                         *) ;;
                     esac
@@ -256,6 +257,7 @@ _znvault() {
                         'grant:Assign a user to a User-Sealed secret'
                         'recover-grant:Reissue a grant through root recovery'
                         'revoke:Remove a User-Sealed grant'
+                        'protection:Convert Standard and User-Sealed protection'
                     )
                     _describe -t subcommands 'subcommand' subcommands
                     case $words[2] in
@@ -269,6 +271,15 @@ _znvault() {
                             ;;
                         recovery)
                             _arguments '--enable[Enable root recovery]' '--disable[Disable root recovery]' '(-y --yes)'{-y,--yes}'[Skip confirmation]' '--json[Output JSON]'
+                            ;;
+                        protection)
+                            _arguments \
+                                '--protection[Target protection]:mode:(standard user-session)' \
+                                '--history[History handling]:mode:(preserve delete)' \
+                                '*--grant-user[Human user ID to grant when sealing]:user-id:' \
+                                '--root-recovery[Use tenant-root recovery when converting to Standard]' \
+                                '(-y --yes)'{-y,--yes}'[Accept required confirmations]' \
+                                '--json[Output JSON]'
                             ;;
                     esac
                     ;;

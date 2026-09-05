@@ -22,6 +22,10 @@ vi.mock('../../src/lib/stdin.js', () => ({
   readStdinUtf8: mockReadStdinUtf8,
 }));
 
+vi.mock('../../src/lib/prompts.js', () => ({
+  promptConfirm: vi.fn().mockResolvedValue(true),
+}));
+
 // Mock dependencies
 vi.mock('inquirer', () => ({
   default: {
@@ -725,6 +729,108 @@ describe('secret commands', () => {
       await expect(program.parseAsync([
         'node', 'test', 'secret', 'create', 'x', '--link', 'a/b', '--link-field', '__proto__.x',
       ])).rejects.toThrow(/exit:1/);
+    });
+  });
+
+  describe('secret protection', () => {
+    const converted = {
+      id: 'secret-1',
+      previousMode: 'STANDARD',
+      protectionMode: 'USER_SESSION_ONLY',
+      historyMode: 'PRESERVE_HISTORY',
+      versionsConverted: 3,
+      historyVersionsDeleted: 0,
+      grantCount: 1,
+      rootRecoveryWrapped: false,
+    };
+
+    it('preserves history by default when converting to User-Sealed', async () => {
+      const {client} = await import('../../src/lib/client.js');
+      const {promptConfirm} = await import('../../src/lib/prompts.js');
+      vi.mocked(client.post).mockResolvedValueOnce(converted as never);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'protection', 'web/prod/api-key',
+        '--protection', 'user-session', '--grant-user', 'user-1',
+      ]);
+
+      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/protection-mode', {
+        targetMode: 'USER_SESSION_ONLY',
+        historyMode: 'PRESERVE_HISTORY',
+        grantUserIds: ['user-1'],
+      });
+    });
+
+    it('requires both confirmations for a destructive conversion to Standard', async () => {
+      const {client} = await import('../../src/lib/client.js');
+      const {promptConfirm} = await import('../../src/lib/prompts.js');
+      vi.mocked(promptConfirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      vi.mocked(client.post).mockResolvedValueOnce({
+        ...converted,
+        previousMode: 'USER_SESSION_ONLY',
+        protectionMode: 'STANDARD',
+        historyMode: 'DELETE_HISTORY',
+        versionsConverted: 1,
+        historyVersionsDeleted: 2,
+        grantCount: 0,
+      } as never);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'protection', 'secret-1',
+        '--protection', 'standard', '--history', 'delete', '--root-recovery',
+      ]);
+
+      expect(promptConfirm).toHaveBeenNthCalledWith(
+        1,
+        'Permanently delete every retained version before converting this secret?',
+        false,
+      );
+      expect(promptConfirm).toHaveBeenNthCalledWith(
+        2,
+        'Convert to Standard and allow API keys/service accounts to decrypt when normal permissions permit?',
+        false,
+      );
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/protection-mode', {
+        targetMode: 'STANDARD',
+        historyMode: 'DELETE_HISTORY',
+        confirmHistoryDeletion: true,
+        confirmStandardExposure: true,
+        useRootRecovery: true,
+      });
+    });
+
+    it('cancels before resolving or mutating when history deletion is refused', async () => {
+      const {client} = await import('../../src/lib/client.js');
+      const {promptConfirm} = await import('../../src/lib/prompts.js');
+      vi.mocked(promptConfirm).mockResolvedValueOnce(false);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'protection', 'web/prod/api-key',
+        '--protection', 'user-session', '--history', 'delete',
+      ]);
+
+      expect(client.get).not.toHaveBeenCalled();
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('uses --yes for both server confirmations without prompting', async () => {
+      const {client} = await import('../../src/lib/client.js');
+      const {promptConfirm} = await import('../../src/lib/prompts.js');
+      vi.mocked(client.post).mockResolvedValueOnce(converted as never);
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'protection', 'secret-1',
+        '--protection', 'standard', '--history', 'delete', '--yes',
+      ]);
+
+      expect(promptConfirm).not.toHaveBeenCalled();
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/protection-mode', {
+        targetMode: 'STANDARD',
+        historyMode: 'DELETE_HISTORY',
+        confirmHistoryDeletion: true,
+        confirmStandardExposure: true,
+      });
     });
   });
 
