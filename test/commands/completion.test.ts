@@ -42,6 +42,8 @@ describe('Completion Commands', () => {
       const output = consoleSpy.mock.calls[0][0] as string;
       expect(output).toContain('_znvault_completions');
       expect(output).toContain('complete -F _znvault_completions znvault');
+      expect(output).toContain('revoke protection');
+      expect(output).toContain('decrypt) opts="--version --no-resolve --raw --field --output -o --json"');
     });
   });
 
@@ -54,6 +56,7 @@ describe('Completion Commands', () => {
       const output = consoleSpy.mock.calls[0][0] as string;
       expect(output).toContain('_znvault()');
       expect(output).toContain('compdef _znvault znvault');
+      expect(output).toContain("'--version[Decrypt a retained historical version]:number:'");
     });
   });
 

@@ -30,7 +30,7 @@ _znvault_completions() {
     local apikey_cmds="list get create delete rotate permissions conditions enable disable policies attach-policy detach-policy self managed"
     local apikey_managed_cmds="list get create bind rotate config delete permissions conditions"
     local policy_cmds="list get create update delete toggle validate attachments attach-user attach-role detach-user detach-role test"
-    local secret_cmds="list get decrypt create update delete rotate history copy patch can-decrypt recover recovery grants grant recover-grant revoke"
+    local secret_cmds="list get decrypt create update delete rotate history copy patch can-decrypt recover recovery grants grant recover-grant revoke protection"
     local kms_cmds="key encrypt decrypt sign verify"
     local role_cmds="list get create update delete users assign unassign"
     local backup_cmds="config list create restore delete"
@@ -92,6 +92,7 @@ _znvault_completions() {
                     case "\${words[2]}" in
                         list) opts="--tenant -t --type --tag --json" ;;
                         get) opts="--tenant -t --json --decrypt" ;;
+                        decrypt) opts="--version --no-resolve --raw --field --output -o --json" ;;
                         create) opts="--tenant -t --type --tags --expires --file --suggest --protection --grant-user --json" ;;
                         grant|recover-grant|revoke) opts="--user" ;;
                         recovery) opts="--enable --disable --yes -y --json" ;;
@@ -204,6 +205,23 @@ _znvault() {
             ;;
         args)
             case $words[1] in
+                health)
+                    _arguments \\
+                        '--url[Vault server URL]:url:_urls' \\
+                        '--insecure[Skip TLS certificate verification]' \\
+                        '--tls-spki-sha256[Require server certificate public-key SHA-256]:sha256' \\
+                        '--profile[Use a specific configuration profile]:profile:' \\
+                        '--leader[Check leader node health]' \\
+                        '--json[Output JSON]'
+                    ;;
+                status)
+                    _arguments \\
+                        '--url[Vault server URL]:url:_urls' \\
+                        '--insecure[Skip TLS certificate verification]' \\
+                        '--tls-spki-sha256[Require server certificate public-key SHA-256]:sha256' \\
+                        '--profile[Use a specific configuration profile]:profile:' \\
+                        '--json[Output JSON]'
+                    ;;
                 cluster)
                     subcommands=(
                         'status:Show cluster status'
@@ -265,6 +283,14 @@ _znvault() {
                             _arguments \\
                                 '--protection[Protection mode (standard or user-session)]:mode:(standard user-session)' \\
                                 '*--grant-user[User ID to grant when creating a User-Sealed secret]:user-id:'
+                            ;;
+                        decrypt)
+                            _arguments \\
+                                '--version[Decrypt a retained historical version]:number:' \\
+                                '--no-resolve[Return unresolved current value]' \\
+                                '--raw[Write the bare value]' \\
+                                '--field[Write one field from an object value]:field:' \\
+                                '(-o --output)'{-o,--output}'[Write value to a file]:path:_files'
                             ;;
                         grant|recover-grant|revoke)
                             _arguments '--user[User ID]:user-id:'

@@ -324,6 +324,26 @@ describe('secret commands', () => {
       expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
     });
 
+    it('decrypts a retained historical version through the dedicated route', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await program.parseAsync([
+        'node', 'test', 'secret', 'decrypt', 'secret-1', '--version', '2', '--json',
+      ]);
+
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/history/2/decrypt', {});
+    });
+
+    it('rejects a non-positive or non-integer historical version', async () => {
+      const { client } = await import('../../src/lib/client.js');
+
+      await expect(program.parseAsync([
+        'node', 'test', 'secret', 'decrypt', 'secret-1', '--version', '1.5',
+      ])).rejects.toThrow(/exit:1/);
+
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
     it('displays provenance (resolvedFrom and resolved) in non-JSON output', async () => {
       const { client } = await import('../../src/lib/client.js');
 

@@ -39,6 +39,7 @@ export function registerDecryptCommand(secretCmd: Command): void {
     .option('--json', 'Output as JSON')
     .option('--raw', 'Print only the value, no metadata (for env vars / files). Multi-field secrets need --field')
     .option('--field <name>', 'Print only this field of the secret data (implies --raw)')
+    .option('--version <number>', 'Decrypt a retained historical version')
     .option('--no-resolve', 'Return the raw, unresolved template/pointer (skip reference resolution)')
     .addHelpText('after', `
 Examples:
@@ -47,6 +48,7 @@ Examples:
   znvault secret decrypt abc12345-...                # by UUID
   znvault secret decrypt certs/server-key -o key.pem # save to file
   znvault secret decrypt app/db-url --no-resolve     # raw template, tokens unexpanded
+  znvault secret decrypt app/credential --version 2  # retained historical version
 
 Raw output (value only — nothing else on stdout):
   export API_KEY=$(znvault secret decrypt web/api-key --raw)          # single-value secret
@@ -62,6 +64,20 @@ Raw output (value only — nothing else on stdout):
         output.error('--raw/--field cannot be combined with --json');
         process.exit(1);
       }
+      const historyVersion = options.version === undefined
+        ? undefined
+        : Number(options.version);
+      if (
+        historyVersion !== undefined &&
+        (!Number.isSafeInteger(historyVersion) || historyVersion < 1)
+      ) {
+        output.error('--version must be a positive integer');
+        process.exit(1);
+      }
+      if (historyVersion !== undefined && options.resolve === false) {
+        output.error('--no-resolve cannot be combined with --version; historical values are already returned without reference resolution');
+        process.exit(1);
+      }
 
       const spinner = output.spinner('Resolving secret...').start();
 
@@ -74,7 +90,10 @@ Raw output (value only — nothing else on stdout):
         // (default true). Append the query ONLY on explicit false — a default
         // decrypt stays byte-identical to the pre-feature call.
         const query = options.resolve === false ? '?resolve=false' : '';
-        const secret = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt${query}`, {});
+        const endpoint = historyVersion === undefined
+          ? `/v1/secrets/${id}/decrypt${query}`
+          : `/v1/secrets/${id}/history/${historyVersion}/decrypt`;
+        const secret = await client.post<DecryptedSecret>(endpoint, {});
         spinner.stop();
 
         if (options.json) {

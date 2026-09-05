@@ -18,6 +18,10 @@ export function registerHealthCommands(program: Command): void {
   program
     .command('health')
     .description('Check vault server health')
+    .option('--url <url>', 'Vault server URL (may also be specified before the command)')
+    .option('--insecure', 'Skip TLS certificate verification')
+    .option('--tls-spki-sha256 <hex>', 'Require the server certificate public-key SHA-256')
+    .option('--profile <name>', 'Use a specific configuration profile')
     .option('--leader', 'Check leader node health')
     .option('--json', 'Output as JSON')
     .action(async (options: HealthOptions) => {
@@ -97,6 +101,10 @@ export function registerHealthCommands(program: Command): void {
   program
     .command('status')
     .description('Show comprehensive system status')
+    .option('--url <url>', 'Vault server URL (may also be specified before the command)')
+    .option('--insecure', 'Skip TLS certificate verification')
+    .option('--tls-spki-sha256 <hex>', 'Require the server certificate public-key SHA-256')
+    .option('--profile <name>', 'Use a specific configuration profile')
     .option('--json', 'Output as JSON')
     .action(async (options: StatusOptions) => {
       const spinner = output.spinner('Gathering status...').start();
@@ -208,4 +216,3 @@ function formatUptime(seconds: number): string {
   }
   return `${minutes}m`;
 }
-

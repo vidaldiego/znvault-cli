@@ -138,7 +138,7 @@ export function registerAuthCommands(program: Command): void {
             process.exit(1);
           }
 
-          const result = await webLogin();
+          const result = await webLogin(client.getBaseUrl());
 
           if (!result.success) {
             if (options.json) {

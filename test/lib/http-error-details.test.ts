@@ -102,4 +102,36 @@ describe('HttpClient error-body passthrough', () => {
     expect(e.errorCode).toBeUndefined();
     expect(e.steps).toBeUndefined();
   });
+
+  it('preserves and renders the server symbolic code when code and generic error are both present', async () => {
+    server = http.createServer((req, res) => {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      res.end(JSON.stringify({
+        error: 'Forbidden',
+        code: 'SECRET_REQUIRES_USER_SESSION',
+        message: 'A password-authenticated user session is required',
+      }));
+    });
+    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', () => { resolve(); }); });
+    const address = server.address() as AddressInfo;
+    process.env.ZNVAULT_URL = `http://127.0.0.1:${address.port}`;
+
+    const { HttpClient } = await import('../../src/lib/client/http.js');
+    const httpClient = new HttpClient();
+
+    let caught: unknown;
+    try {
+      await httpClient.post('/v1/secrets/example/decrypt', {});
+    } catch (err) {
+      caught = err;
+    }
+
+    const error = caught as Error & { statusCode?: number; errorCode?: string };
+    expect(error.message).toBe(
+      'SECRET_REQUIRES_USER_SESSION: A password-authenticated user session is required',
+    );
+    expect(error.statusCode).toBe(403);
+    expect(error.errorCode).toBe('SECRET_REQUIRES_USER_SESSION');
+  });
 });

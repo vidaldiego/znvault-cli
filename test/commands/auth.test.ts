@@ -89,6 +89,14 @@ vi.mock('../../src/lib/output.js', () => ({
   json: vi.fn(),
 }));
 
+vi.mock('../../src/lib/web-login.js', () => ({
+  isWebLoginSupported: vi.fn().mockReturnValue(true),
+  webLogin: vi.fn().mockResolvedValue({
+    success: true,
+    user: { id: '123', username: 'admin', role: 'superadmin', tenantId: null },
+  }),
+}));
+
 describe('auth commands', () => {
   let program: Command;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
@@ -116,6 +124,14 @@ describe('auth commands', () => {
       await program.parseAsync(['node', 'test', 'login', '-u', 'admin', '-p', 'password']);
 
       expect(client.login).toHaveBeenCalledWith('admin', 'password', undefined);
+    });
+
+    it('passes the effective global URL to browser login', async () => {
+      const { webLogin } = await import('../../src/lib/web-login.js');
+
+      await program.parseAsync(['node', 'test', 'login', '--web']);
+
+      expect(webLogin).toHaveBeenCalledWith('https://vault.example.com/ignored/path');
     });
   });
 

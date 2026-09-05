@@ -111,7 +111,10 @@ program
   )
   .hook('preAction', (thisCommand, actionCommand) => {
     // Apply global options
-    const opts = thisCommand.opts<GlobalOptions>();
+    // `health` and `status` also declare connection overrides locally so the
+    // operationally common `znvault status --url ...` form remains accepted
+    // while positional parsing is enabled for nested SSH commands.
+    const opts = actionCommand.optsWithGlobals<GlobalOptions>();
 
     // Set output mode first (before any output)
     if (opts.plain) {

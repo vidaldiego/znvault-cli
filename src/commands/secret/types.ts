@@ -66,6 +66,8 @@ export interface DecryptOptions {
   raw?: boolean;
   /** Print only this field of the data payload; implies `raw`. */
   field?: string;
+  /** Decrypt a retained historical version rather than the current value. */
+  version?: string;
 }
 
 export interface CreateOptions {

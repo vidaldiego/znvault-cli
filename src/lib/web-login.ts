@@ -23,15 +23,13 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import { getConfig, storeCredentials } from './config.js';
 import * as output from './output.js';
+import { getVersion } from './version.js';
 
 // Dynamic import for 'open' package (ESM)
 async function openBrowser(url: string): Promise<void> {
   const open = (await import('open')).default;
   await open(url);
 }
-
-// Version for CLI identification
-const CLI_VERSION = '2.20.2';
 
 // Configuration
 const CALLBACK_PATH = '/callback';
@@ -42,6 +40,22 @@ interface PKCEParams {
   codeVerifier: string;
   codeChallenge: string;
   state: string;
+}
+
+/** Build the canonical dashboard route used by the CLI PKCE flow. */
+export function buildCliAuthUrl(
+  baseUrl: string,
+  callbackUri: string,
+  pkce: Pick<PKCEParams, 'state' | 'codeChallenge'>,
+): URL {
+  const normalizedBase = baseUrl.replace(/\/$/, '');
+  const authUrl = new URL(`${normalizedBase}/cli-auth/`);
+  authUrl.searchParams.set('callback_uri', callbackUri);
+  authUrl.searchParams.set('state', pkce.state);
+  authUrl.searchParams.set('code_challenge', pkce.codeChallenge);
+  authUrl.searchParams.set('code_challenge_method', 'S256');
+  authUrl.searchParams.set('cli_version', getVersion());
+  return authUrl;
 }
 
 // Token response from server
@@ -259,15 +273,13 @@ function startCallbackServer(
  * Exchange auth code for tokens
  */
 async function exchangeCodeForTokens(
+  baseUrl: string,
   code: string,
   codeVerifier: string,
   state: string
 ): Promise<TokenResponse> {
-  const config = getConfig();
-
   // Parse URL and build token endpoint
-  const baseUrl = config.url.replace(/\/$/, '');
-  const tokenUrl = `${baseUrl}/auth/cli/token`;
+  const tokenUrl = `${baseUrl.replace(/\/$/, '')}/auth/cli/token`;
 
   // Make request
   const response = await fetch(tokenUrl, {
@@ -296,7 +308,7 @@ async function exchangeCodeForTokens(
  * Opens a browser for authentication, waits for callback,
  * and exchanges the code for tokens.
  */
-export async function webLogin(): Promise<{
+export async function webLogin(baseUrlOverride?: string): Promise<{
   success: boolean;
   user?: TokenResponse['user'];
   error?: string;
@@ -312,13 +324,8 @@ export async function webLogin(): Promise<{
     const callbackUri = `http://127.0.0.1:${port}${CALLBACK_PATH}`;
 
     // 3. Build auth URL
-    const baseUrl = config.url.replace(/\/$/, '');
-    const authUrl = new URL(`${baseUrl}/cli-auth`);
-    authUrl.searchParams.set('callback_uri', callbackUri);
-    authUrl.searchParams.set('state', pkce.state);
-    authUrl.searchParams.set('code_challenge', pkce.codeChallenge);
-    authUrl.searchParams.set('code_challenge_method', 'S256');
-    authUrl.searchParams.set('cli_version', CLI_VERSION);
+    const baseUrl = baseUrlOverride ?? config.url;
+    const authUrl = buildCliAuthUrl(baseUrl, callbackUri, pkce);
 
     // 4. Show instructions
     output.info('Opening browser for authentication...');
@@ -344,6 +351,7 @@ export async function webLogin(): Promise<{
 
     // 8. Exchange code for tokens
     const tokens = await exchangeCodeForTokens(
+      baseUrl,
       callbackResult.code,
       pkce.codeVerifier,
       callbackResult.state

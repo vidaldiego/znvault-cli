@@ -29,6 +29,8 @@ try {
   for (const command of ['grants', 'grant', 'revoke', 'recover', 'recover-grant', 'protection']) {
     if (!new RegExp(`^  ${command} `, 'm').test(secrets)) throw new Error(`User-Sealed command missing: ${command}`);
   }
+  const decrypt = run('secret', 'decrypt', '--help');
+  if (!decrypt.includes('--version <number>')) throw new Error('Historical secret decrypt option missing');
   if (!run('dynasec', 'permit', '--help').includes('lookup')) throw new Error('DR permit lookup missing');
   if (!run('emergency', '--help').includes('Usage:')) throw new Error('Emergency command missing');
   console.log(`Exact package verified: ${expectedVersion}; Trust, User-Sealed and DR command surfaces present`);

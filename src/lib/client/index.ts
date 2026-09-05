@@ -63,51 +63,73 @@ export class VaultClient extends HttpClient {
 
   // Lazy getters for domain clients
   private get healthClient(): HealthClient {
-    return this._healthClient ??= new HealthClient();
+    return this._healthClient ??= new HealthClient(this.getExplicitClientConfig());
   }
 
   private get clusterClient(): ClusterClient {
-    return this._clusterClient ??= new ClusterClient();
+    return this._clusterClient ??= new ClusterClient(this.getExplicitClientConfig());
   }
 
   private get tenantsClient(): TenantsClient {
-    return this._tenantsClient ??= new TenantsClient();
+    return this._tenantsClient ??= new TenantsClient(this.getExplicitClientConfig());
   }
 
   private get usersClient(): UsersClient {
-    return this._usersClient ??= new UsersClient();
+    return this._usersClient ??= new UsersClient(this.getExplicitClientConfig());
   }
 
   private get superadminsClient(): SuperadminsClient {
-    return this._superadminsClient ??= new SuperadminsClient();
+    return this._superadminsClient ??= new SuperadminsClient(this.getExplicitClientConfig());
   }
 
   private get lockdownClient(): LockdownClient {
-    return this._lockdownClient ??= new LockdownClient();
+    return this._lockdownClient ??= new LockdownClient(this.getExplicitClientConfig());
   }
 
   private get auditClient(): AuditClient {
-    return this._auditClient ??= new AuditClient();
+    return this._auditClient ??= new AuditClient(this.getExplicitClientConfig());
   }
 
   private get apiKeysClient(): ApiKeysClient {
-    return this._apiKeysClient ??= new ApiKeysClient();
+    return this._apiKeysClient ??= new ApiKeysClient(this.getExplicitClientConfig());
   }
 
   private get managedKeysClient(): ManagedKeysClient {
-    return this._managedKeysClient ??= new ManagedKeysClient();
+    return this._managedKeysClient ??= new ManagedKeysClient(this.getExplicitClientConfig());
   }
 
   private get policiesClient(): PoliciesClient {
-    return this._policiesClient ??= new PoliciesClient();
+    return this._policiesClient ??= new PoliciesClient(this.getExplicitClientConfig());
   }
 
   private get permissionsClient(): PermissionsClient {
-    return this._permissionsClient ??= new PermissionsClient();
+    return this._permissionsClient ??= new PermissionsClient(this.getExplicitClientConfig());
   }
 
   private get quarantineClient(): QuarantineClient {
-    return this._quarantineClient ??= new QuarantineClient();
+    return this._quarantineClient ??= new QuarantineClient(this.getExplicitClientConfig());
+  }
+
+  /** Propagate explicit invocation overrides to already-created domain clients. */
+  override configure(url?: string, insecure?: boolean, tlsSpkiSha256?: string): void {
+    super.configure(url, insecure, tlsSpkiSha256);
+    const clients: Array<HttpClient | undefined> = [
+      this._healthClient,
+      this._clusterClient,
+      this._tenantsClient,
+      this._usersClient,
+      this._superadminsClient,
+      this._lockdownClient,
+      this._auditClient,
+      this._apiKeysClient,
+      this._managedKeysClient,
+      this._policiesClient,
+      this._permissionsClient,
+      this._quarantineClient,
+    ];
+    for (const domainClient of clients) {
+      domainClient?.configure(url, insecure, tlsSpkiSha256);
+    }
   }
 
   // ============ Authentication (inherited from HttpClient) ============
