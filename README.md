@@ -125,12 +125,33 @@ znvault secret get <alias>                           # Get metadata only
 znvault secret decrypt <alias>                       # Decrypt after unseal
 znvault secret decrypt <alias> --raw                 # Value only (env vars, $(...))
 znvault secret decrypt <alias> --field password      # One field of a multi-field secret
+znvault secret decrypt <alias> --version 2           # Retained historical version
 znvault secret create <alias> --text "secret"        # Create plain text
 printf '%s\n' '{"k":"v"}' | \
   znvault secret create <alias> --data-stdin         # JSON without argv/files
 znvault secret update <alias> --data '{"k":"new"}' # Replace JSON data
 znvault secret delete <alias>                        # Delete secret
 ```
+
+### User-Sealed Secrets
+
+`USER_SESSION_ONLY` values require an eligible HUMAN username/password session
+and an explicit user grant. API keys and service accounts cannot decrypt them.
+Use interactive or stdin input so plaintext does not enter argv or shell history.
+
+```bash
+znvault login --web
+znvault secret create hardware/yubikey/pin \
+  --protection user-session --grant-user USER_ID
+znvault secret protection app/credential \
+  --protection user-session --grant-user USER_ID
+znvault secret decrypt app/credential --version 2
+znvault secret protection app/credential --protection standard
+```
+
+Conversion preserves and re-encrypts retained history by default. Use
+`--history delete` only when irreversible history removal is intended and
+confirmed. User-Sealed plaintext is not available through bulk export.
 
 ### KMS (Key Management Service)
 

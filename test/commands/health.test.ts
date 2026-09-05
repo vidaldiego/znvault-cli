@@ -114,6 +114,18 @@ describe('health commands', () => {
 
       expect(json).toHaveBeenCalled();
     });
+
+    it('accepts connection overrides after the health command', async () => {
+      await program.parseAsync([
+        'node', 'test', 'health', '--url', 'https://vault.example.test', '--profile', 'prod',
+      ]);
+
+      const health = program.commands.find(command => command.name() === 'health');
+      expect(health?.opts()).toMatchObject({
+        url: 'https://vault.example.test',
+        profile: 'prod',
+      });
+    });
   });
 
   describe('status', () => {
@@ -137,6 +149,18 @@ describe('health commands', () => {
       await program.parseAsync(['node', 'test', 'status', '--json']);
 
       expect(json).toHaveBeenCalled();
+    });
+
+    it('accepts connection overrides after the status command', async () => {
+      await program.parseAsync([
+        'node', 'test', 'status', '--url', 'https://vault.example.test', '--insecure',
+      ]);
+
+      const status = program.commands.find(command => command.name() === 'status');
+      expect(status?.opts()).toMatchObject({
+        url: 'https://vault.example.test',
+        insecure: true,
+      });
     });
   });
 });

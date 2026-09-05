@@ -44,6 +44,16 @@ async function startMarkerServer(marker: string): Promise<{ server: http.Server;
             timestamp: new Date().toISOString(),
           })
         );
+      } else if (req.url === '/v1/admin/cluster') {
+        res.end(JSON.stringify({
+          enabled: true,
+          thisNode: { nodeId: marker, isLeader: true, isHealthy: true },
+          cluster: { totalNodes: 1, healthyNodes: 1, leaderId: marker, nodes: [] },
+        }));
+      } else if (req.url === '/v1/admin/lockdown/status') {
+        res.end(JSON.stringify({
+          scope: 'SYSTEM', status: 'NORMAL', escalationCount: 0, reason: marker,
+        }));
       } else if (req.url === '/auth/login' && req.method === 'POST') {
         // Echo the marker in user.role so the caller can tell which server
         // served login — this is the path the bug affects (login runs on the
@@ -143,6 +153,24 @@ describe('F1: --profile runtime override routes requests to that profile', () =>
 
     const resp = await client.login('admin', 'password');
     expect(resp.user.role).toBe('OTHER-PROFILE-SERVER');
+  });
+
+  it('propagates explicit --url to lazy domain clients used by status', async () => {
+    const { saveProfile, switchProfile } = await import('../../src/lib/config/profile.js');
+    const { VaultClient } = await import('../../src/lib/client.js');
+
+    saveProfile('prod', { url: active.url, insecure: false, timeout: 30000 });
+    switchProfile('prod');
+
+    const client = new VaultClient();
+    client.configure(other.url);
+
+    const health = await client.health();
+    const cluster = await client.clusterStatus();
+    const lockdown = await client.getLockdownStatus();
+    expect(health.version).toBe('OTHER-PROFILE-SERVER');
+    expect(cluster.thisNode.nodeId).toBe('OTHER-PROFILE-SERVER');
+    expect(lockdown.reason).toBe('OTHER-PROFILE-SERVER');
   });
 
   it('with no override, uses the active profile URL', async () => {

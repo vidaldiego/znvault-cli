@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.1] - 2026-09-05
+
+### Added
+
+- `znvault secret decrypt <id-or-alias> --version <number>` decrypts a retained
+  historical version through the same User-Sealed session and grant boundary as
+  the current value. Historical values do not support reference resolution.
+
+### Fixed
+
+- Global `--url`, `--insecure`, and TLS pin overrides now reach every lazily
+  created API client, including `status`, health, cluster, and lockdown calls.
+- `login --web` uses the effective CLI URL, the canonical `/cli-auth/` route,
+  and the package version instead of a stale hard-coded client version.
+- Structured server error codes such as `SECRET_REQUIRES_USER_SESSION` are
+  preserved and rendered by the CLI instead of being reduced to generic HTTP
+  status text.
+
 ## [5.1.0] - 2026-09-05
 
 ### Added

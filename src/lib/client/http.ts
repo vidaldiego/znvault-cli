@@ -85,7 +85,7 @@ function isConflict(err: unknown): boolean {
  */
 function isApiErrorLike(
   value: unknown,
-): value is { message?: string; error?: string; steps?: unknown[] } {
+): value is { message?: string; error?: string; code?: unknown; steps?: unknown[] } {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -159,6 +159,22 @@ export class HttpClient {
   /** Resolve the effective insecure flag at call time (explicit override wins). */
   protected resolveInsecure(): boolean {
     return this.insecureOverride ?? getConfig().insecure;
+  }
+
+  /**
+   * Return only invocation-scoped transport overrides, so facade clients can
+   * pass them to lazily-created domain clients without freezing profile
+   * configuration. Profile values still resolve independently per request.
+   */
+  protected getExplicitClientConfig(): Partial<ClientConfig> {
+    return {
+      ...(this.urlOverride !== undefined ? { baseUrl: this.urlOverride } : {}),
+      ...(this.insecureOverride !== undefined ? { insecure: this.insecureOverride } : {}),
+      ...(this.tlsSpkiSha256Override !== undefined
+        ? { tlsSpkiSha256: this.tlsSpkiSha256Override }
+        : {}),
+      timeout: this.timeout,
+    };
   }
 
   /**
@@ -534,7 +550,13 @@ export class HttpClient {
               }
               if (isApiErrorLike(parsed)) {
                 const errorMessage = parsed.message ?? parsed.error ?? `Request failed with status ${statusCode}`;
-                const e = new Error(errorMessage);
+                const symbolicCode = typeof parsed.code === 'string' && parsed.code.length > 0
+                  ? parsed.code
+                  : undefined;
+                const renderedMessage = symbolicCode !== undefined && !errorMessage.includes(symbolicCode)
+                  ? `${symbolicCode}: ${errorMessage}`
+                  : errorMessage;
+                const e = new Error(renderedMessage);
                 // Preserve the machine-readable parts of the error body so
                 // callers (e.g. dynamic-secrets provision/routines commands)
                 // can render a partial-progress report instead of just a
@@ -548,7 +570,8 @@ export class HttpClient {
                   details?: unknown;
                 };
                 ext.statusCode = statusCode;
-                if (parsed.error !== undefined) ext.errorCode = parsed.error;
+                if (symbolicCode !== undefined) ext.errorCode = symbolicCode;
+                else if (parsed.error !== undefined) ext.errorCode = parsed.error;
                 if (parsed.steps !== undefined) ext.steps = parsed.steps;
                 ext.details = parsed;
                 reject(e);
