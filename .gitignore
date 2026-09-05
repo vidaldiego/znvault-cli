@@ -8,3 +8,6 @@ coverage/
 
 # Swift build output (SwiftPM) — never track
 secure-enclave/.build/
+
+# Machine-specific agent permissions
+.claude/settings.local.json

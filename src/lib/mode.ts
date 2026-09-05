@@ -1,4 +1,5 @@
 import { client } from './client.js';
+import * as output from './output.js';
 import { LocalDBClient } from './db.js';
 import { isLocalModeAvailable, getLocalModeStatus } from './local.js';
 import { hasApiKey, getCredentials, hasEnvCredentials } from './config.js';
@@ -20,17 +21,47 @@ import type {
 /**
  * Unified interface for CLI operations.
  *
- * This module provides a unified interface that automatically chooses between:
+ * This module provides a unified interface for:
  * - Local mode (direct database access) when running with sudo on a vault node
  * - API mode (HTTP requests) when configured with credentials
  *
- * Local mode is preferred when available as it doesn't require authentication.
+ * API mode is the default. Local mode requires explicit operator selection.
  */
 
 export type Mode = 'local' | 'api';
 
 let _forceMode: Mode | null = null;
 let _localClient: LocalDBClient | null = null;
+
+/**
+ * Has the operator ASKED for local mode?
+ *
+ * THIS REPLACES AN AUTOMATIC TRIGGER, AND THAT IS THE WHOLE POINT. `getMode()`
+ * used to return 'local' whenever `isLocalModeAvailable()` was true, and that
+ * was true whenever `DATABASE_URL` happened to be set. So exporting one
+ * environment variable — for a migration, a psql session, a tunnel, anything —
+ * silently rerouted ordinary commands (`audit`, `lockdown`, `cert`, `host`,
+ * `agent`, the TUI) away from the API and straight into the database, skipping
+ * authentication, authorisation and the audit trail. No flag, no warning, and
+ * the banner still showed the profile and URL it was no longer using.
+ *
+ * `DATABASE_URL` means "a database is reachable". It has never meant "please
+ * bypass authentication". Those are now two different statements, and only the
+ * second one is a decision.
+ */
+let _localRequested = false;
+
+/** Record an explicit `--local` (or ZNVAULT_LOCAL=1). */
+export function requestLocalMode(requested: boolean): void {
+  _localRequested = requested;
+}
+
+export function isLocalModeRequested(): boolean {
+  return _localRequested || process.env.ZNVAULT_LOCAL === '1';
+}
+
+/** So the warning is printed once per invocation, not once per call. */
+let _warned = false;
 
 /**
  * Force a specific mode (for testing)
@@ -47,13 +78,30 @@ export function getMode(): Mode {
     return _forceMode;
   }
 
-  // Check if local mode is available (running on vault node with sudo or DATABASE_URL set)
-  if (isLocalModeAvailable()) {
-    return 'local';
+  // Asked for, or not used. Availability alone is not consent.
+  if (!isLocalModeRequested()) {
+    return 'api';
   }
 
-  // Fall back to API mode
-  return 'api';
+  if (!isLocalModeAvailable()) {
+    const status = getLocalModeStatus();
+    throw new Error(
+      `--local was requested but direct database access is not available: ` +
+      `${status.reason ?? 'no DATABASE_URL, and this is not a vault node with root'}. ` +
+      'Refusing to fall back to the API silently — you asked for one thing and ' +
+      'would have got another.',
+    );
+  }
+
+  if (!_warned) {
+    _warned = true;
+    output.warn(
+      'LOCAL MODE: talking to PostgreSQL directly. This bypasses the server\'s ' +
+      'authentication, authorisation and audit trail — nothing you do in this ' +
+      'command will appear in the vault\'s audit log.',
+    );
+  }
+  return 'local';
 }
 
 /**

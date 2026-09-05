@@ -1,6 +1,6 @@
 {
   "name": "@zincapp/znvault-cli",
-  "version": "4.25.0",
+  "version": "5.0.0",
   "description": "Official CLI for ZnVault administration",
   "type": "module",
   "main": "dist/index.js",
@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "build:prod": "tsc --sourceMap false",
+    "build:prod": "npm run clean && tsc --sourceMap false",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "pretest": "npm run build",
@@ -25,7 +25,9 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts --max-warnings 0",
     "lint:fix": "eslint src --ext .ts --fix",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release:check": "node scripts/check-release.mjs",
+    "release:verify-package": "node scripts/verify-package.mjs"
   },
   "keywords": [
     "znvault",

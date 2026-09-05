@@ -4,44 +4,56 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: znvault-cli-npm-publication
+  cancel-in-progress: false
 
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+
   publish:
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
-          # Do NOT pass `registry-url` here. setup-node writes a stub
-          # `_authToken=${NODE_AUTH_TOKEN}` line into .npmrc when this is
-          # set, which forces npm into classic Bearer-token auth and
-          # bypasses OIDC trusted publishing. With Trusted Publishers
-          # enabled on npm.com, npm picks up the GitHub OIDC token from
-          # ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN automatically.
-
-      - name: Update npm for OIDC support
-        # OIDC Trusted Publishing requires npm >= 11.5.1. The 10.x line
-        # falls back to classic Bearer-token auth and returns ENEEDAUTH
-        # in this workflow. `npm@latest` itself is broken on 2026-05-15
-        # (missing `promise-retry`), so pin to a known-good 11.x.
+      - name: Install pinned npm with OIDC support
         run: npm install -g npm@11.10.1
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Publish to npm (Trusted Publishing via OIDC)
-        # --loglevel=verbose forces npm to dump the full HTTP response
-        # body from the registry on failure. With Trusted Publishing,
-        # npm.com's 404 responses include a JSON body explaining which
-        # OIDC claim failed to match the configured publisher.
-        run: npm publish --access public --provenance --loglevel=verbose
+      - name: Verify tag, main and version metadata
+        run: node scripts/check-release.mjs "$GITHUB_REF_NAME"
+      - run: npm ci
+      - name: Clean production build
+        run: npm run build:prod
+      - name: Pack once and verify the exact installable artifact
+        run: |
+          mkdir -p "$RUNNER_TEMP/cli-release"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/cli-release" --json > "$RUNNER_TEMP/cli-pack.json"
+          PACKAGE_FILE=$(node -p "require(process.env.RUNNER_TEMP + '/cli-pack.json')[0].filename")
+          PACKAGE_PATH="$RUNNER_TEMP/cli-release/$PACKAGE_FILE"
+          node scripts/verify-package.mjs "$PACKAGE_PATH" "${GITHUB_REF_NAME#v}"
+          sha256sum "$PACKAGE_PATH" > "$RUNNER_TEMP/cli-package.sha256"
+          printf 'PACKAGE_PATH=%s\n' "$PACKAGE_PATH" >> "$GITHUB_ENV"
+      - name: Preserve release artifact and digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-package-${{ github.ref_name }}
+          path: |
+            ${{ runner.temp }}/cli-release/*.tgz
+            ${{ runner.temp }}/cli-package.sha256
+          if-no-files-found: error
+      - name: Publish verified tarball using OIDC
+        run: |
+          sha256sum --check "$RUNNER_TEMP/cli-package.sha256"
+          npm publish "$PACKAGE_PATH" --ignore-scripts --access public --provenance --tag latest

@@ -1,31 +1,22 @@
 // Path: znvault-cli/src/commands/lmk-preflight.ts
 //
-// `znvault lmk preflight` — read-only, local, and it produces evidence.
-//
-// This is the command that answers "is this deployment in a state where a
-// key-lifecycle operation is safe to start?", and its two hard requirements
-// come from the same place: whoever reads the answer later was not in the room.
-//
-//   IT WRITES NOTHING. Not a row, not an audit entry. That is why it goes
-//   straight to PostgreSQL instead of through the API: both
-//   `/v1/superadmin/rootkey/status` and `.../verify` write an audit row, so
-//   asking them would falsify the property being asserted — invisibly.
-//
-//   IT PRINTS A VERDICT, AND EXITS ON IT. A preflight that reports problems in
-//   prose and exits 0 is a preflight that gets piped into a script and ignored.
-//   Any BLOCKING gate failing means exit 1.
-//
-// The evidence file is the input to the detached signature (A2) and to the
-// isolated-restore bench (D2). It carries the gate results AND everything the
-// gates were computed from, so they can be recomputed from the artefact alone.
+// `znvault lmk preflight` obtains its snapshot through the authenticated server
+// API. The CLI validates that response, constructs the evidence document and
+// exits nonzero for blocking gates. Database access and server-side audit
+// behavior belong to the core endpoint, not to this command.
 
 import { hostname } from 'node:os';
 import { writeFileSync } from 'node:fs';
 import { type Command } from 'commander';
 
 import * as output from '../lib/output.js';
-import { LocalDBClient, isLocalDbAvailable } from '../lib/db/index.js';
-import { buildEvidence, type PreflightBody, type PreflightEvidence } from '../lib/preflight.js';
+import {
+  buildEvidence,
+  type PreflightBody,
+  type PreflightEvidence,
+  type PreflightSnapshotResponse,
+} from '../lib/preflight.js';
+import { client } from '../lib/client.js';
 import { getVersion } from '../lib/version.js';
 
 interface PreflightOptions {
@@ -70,31 +61,79 @@ function renderHuman(evidence: PreflightEvidence): void {
   }
 }
 
+/**
+ * Validate the wire, then narrow. Takes `unknown` ON PURPOSE.
+ *
+ * `client.get<PreflightSnapshotResponse>()` is a type ASSERTION, not a
+ * validation: TypeScript believes the annotation and nothing verifies the wire.
+ * That is how a missing `hasWrappedLmk` became `undefined`, read as false, and
+ * produced a production preflight reporting RED on a blocking gate — "the
+ * ACTIVE LMK has no wrapped material" — that was not true.
+ *
+ * Typing the parameter as the response would make every check below
+ * "unnecessary" to the compiler, which is the same false confidence that caused
+ * the bug. So it takes `unknown` and earns the type.
+ *
+ * A preflight exists to be believed, and a wrong RED is not the safe direction:
+ * it stops a ceremony that should proceed and tells the operator their key
+ * hierarchy is unrecoverable. An incomplete response is an explicit error
+ * naming what is missing, never a verdict.
+ */
+function validateSnapshot(raw: unknown): PreflightSnapshotResponse {
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error('The vault returned no preflight inventory.');
+  }
+  const snapshot = raw as Record<string, unknown>;
+  const missing: string[] = [];
+  for (const field of ['capturedAt', 'databaseName', 'walLsn', 'lmkVersions']) {
+    if (snapshot[field] === undefined || snapshot[field] === null) missing.push(field);
+  }
+
+  const versions = snapshot.lmkVersions;
+  if (Array.isArray(versions)) {
+    for (const entry of versions as Array<Record<string, unknown>>) {
+      if (typeof entry.hasWrappedLmk !== 'boolean') {
+        missing.push(`lmkVersions[version=${String(entry.version)}].hasWrappedLmk`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `The vault did not send fields this preflight reads: ${missing.join(', ')}. ` +
+      'Refusing to produce a verdict from an incomplete inventory — a gate ' +
+      'evaluated over a missing field reports a failure that is not real. This ' +
+      'usually means the vault is older than the CLI; check its version.',
+    );
+  }
+  return raw as PreflightSnapshotResponse;
+}
+
 export function registerLmkPreflightCommand(lmk: Command): void {
   lmk
     .command('preflight')
     .description(
-      'Read-only inventory of the key hierarchy with pass/fail gates. Writes ' +
-      'nothing to the database and produces a JSON evidence artefact.',
+      'Read-only key-hierarchy snapshot through the authenticated API with ' +
+      'pass/fail gates and JSON evidence. The server records an audit event.',
     )
     .option('--json', 'Output only the evidence artefact as JSON')
     .option('--out <path>', 'Also write the evidence artefact to this path')
     .action(async (options: PreflightOptions) => {
-      if (!isLocalDbAvailable()) {
-        throw new Error(
-          'The preflight is local-only. Run it on a Vault node with local database ' +
-          'configuration: reading this state through the API would write audit rows, ' +
-          'and "zero writes" is the property being demonstrated.',
-        );
-      }
-
-      const database = new LocalDBClient();
-      let evidence: PreflightEvidence;
-      try {
-        const snapshot = await database.capturePreflight();
-        const body: PreflightBody = {
+      // NO LONGER LOCAL-ONLY. This used to refuse anything but a direct
+      // database connection, on the grounds that reading the state through the
+      // API would write audit rows and "zero writes" was the property being
+      // demonstrated. The server now captures the whole inventory inside ONE
+      // read-only repeatable-read transaction (`GET /v1/superadmin/lmk/preflight`),
+      // so the two properties that mattered — a single instant, and reads the
+      // database itself refuses to let write — are intact. What changed is that
+      // the deployment records that a preflight ran, which is not a perturbation
+      // of the custody state it inspects.
+      const snapshot = validateSnapshot(
+        await client.get<unknown>('/v1/superadmin/lmk/preflight'),
+      );
+      const body: PreflightBody = {
           artifact: 'znvault-preflight-v1',
-          capturedAt: snapshot.capturedAt.toISOString(),
+          capturedAt: snapshot.capturedAt,
           cliVersion: getVersion(),
           operator: currentOperator(),
           hostname: hostname(),
@@ -112,10 +151,7 @@ export function registerLmkPreflightCommand(lmk: Command): void {
           auditHead: snapshot.auditHead,
           latestVerifiedBackup: snapshot.latestVerifiedBackup,
         };
-        evidence = buildEvidence(body);
-      } finally {
-        await database.close();
-      }
+      const evidence = buildEvidence(body);
 
       // The artefact is written whatever the verdict. A red preflight is
       // exactly the one worth keeping: it is the record of why an operation

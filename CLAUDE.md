@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Independent workspace
+
+The active clone is `~/Drive/vault/znvault-cli`, a sibling of `zn-vault`,
+SDKs and plugins. Run commands from this Git root; no nested core is required.
+See `AGENTS.md` for recovery boundaries. Machine-specific Claude permissions
+are not versioned or inherited from the old workspace.
+
 ## Project Overview
 
 ZnVault CLI (`@zincapp/znvault-cli`) is the official command-line interface for ZnVault secrets management. It's a TypeScript/Node.js CLI built with Commander.js that supports multi-profile authentication, interactive TUI dashboards via React/Ink, and both JWT and API key authentication.
@@ -16,7 +23,7 @@ npm run build:prod         # Production build (no sourcemaps)
 npm run dev                # Watch mode for development
 
 # Testing
-npm test                   # Full test suite (starts Docker PostgreSQL)
+npm test                   # Build and unit tests (no Docker)
 npm run test:unit          # Unit tests only (fast, no Docker)
 npm run test:unit:watch    # Watch mode for unit tests
 npm run test:integration   # Integration tests (requires running vault)
@@ -158,6 +165,7 @@ Key ESLint rules:
 | `ZNVAULT_INSECURE` | Skip TLS verification |
 | `ZNVAULT_NO_UPDATE_CHECK` | Disable auto-update checks |
 | `ZNVAULT_NO_PLUGINS` | Set to `1`/`true` to skip configured plugin discovery and import |
+| `ZNVAULT_LOCAL` | Set to exactly `1` to talk to PostgreSQL directly instead of the API (same as `--local`). Bypasses authentication, authorisation and the audit trail; warns on every invocation. **Never** enabled by the mere presence of `DATABASE_URL` — see below |
 
 For a constrained automation path, pass the global `--no-plugins` option
 before the command name as well as setting `ZNVAULT_NO_PLUGINS=1`. The
@@ -166,6 +174,31 @@ profile/config store is still read by built-in CLI initialization. An
 occurrence after the first `--` belongs to the child command and does not
 disable CLI plugins. This closes configured-plugin code loading only; use `CI=1` and
 `ZNVAULT_NO_UPDATE_CHECK=1` separately to suppress the background update path.
+
+## Local mode is a decision, never a side effect
+
+`znvault --local` (or `ZNVAULT_LOCAL=1`) makes the CLI talk to PostgreSQL
+directly instead of the API. It bypasses the server's authentication,
+authorisation and audit trail, so it warns once per invocation, and it refuses
+rather than falling back to the API when it cannot be honoured.
+
+**It used to switch itself on.** `getMode()` returned `'local'` whenever
+`isLocalModeAvailable()` was true, and that was true whenever `DATABASE_URL`
+was set. Exporting that variable — for a migration, a psql session, an SSH
+tunnel — silently rerouted ordinary commands (`audit`, `lockdown`, `cert`,
+`host/*`, `superadmin accounts`, `agent/*`, the TUI) away from the API and past
+every control on it, while the banner still displayed the profile and URL the
+command was no longer using.
+
+`DATABASE_URL` means "a database is reachable". It has never meant "please
+bypass authentication". Availability is not consent, and the two are now
+separate: `isLocalModeAvailable()` answers whether the request *could* be
+honoured, `--local` is the request. Tests: `test/lib/mode-local.test.ts`.
+
+Break-glass commands (`emergency`, and `lockdown` under `--local`) keep direct
+database access on purpose: they exist for when the API will not let you in,
+and a recovery tool that only works while the server is healthy is not a
+recovery tool.
 
 ## Key Dependencies
 
@@ -243,51 +276,12 @@ src/commands/backup/
 
 ## Release Process
 
-**Publishing is handled automatically by GitHub Actions CI/CD.**
+Use [RELEASING.md](RELEASING.md) as the authoritative release procedure.
+All version files and the tag must match; full CI and the exact packed-artifact
+smoke test gate npm publication. A source build is not evidence that the npm
+artifact contains the intended modules. The v5 compatibility boundary is
+explained in CHANGELOG.md; ceremonies belong to zn-trust-root, while historical
+escrow readers and User-Sealed/DR workflows remain supported.
 
-### Steps to Release
-
-1. Update version in `package.json`:
-   ```bash
-   npm version patch  # or minor/major
-   ```
-
-2. Commit the version bump:
-   ```bash
-   git add package.json package-lock.json
-   git commit -m "chore(release): vX.Y.Z"
-   ```
-
-3. Create and push tag:
-   ```bash
-   git tag vX.Y.Z
-   git push origin main
-   git push origin vX.Y.Z
-   ```
-
-4. GitHub Actions automatically:
-   - Runs tests
-   - Builds the package
-   - Publishes to npm using OIDC authentication (no npm token needed)
-
-### npm Package
-
-- **Package:** `@zincapp/znvault-cli`
-- **Registry:** https://www.npmjs.com/package/@zincapp/znvault-cli
-
-### Verification
-
-```bash
-# Check published version
-npm view @zincapp/znvault-cli version
-
-# Install latest
-npm install -g @zincapp/znvault-cli
-```
-
-### CI/CD Configuration
-
-The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
-- Running tests on PRs
-- Publishing to npm on version tags (`v*`)
-- OIDC-based npm authentication (provenance enabled)
+The Mac Studio is canonical. Claude Remote is the normal remote work path;
+Codex Handoff is deferred until the end of the overall reorganization.

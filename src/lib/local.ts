@@ -55,7 +55,15 @@ export function isRoot(): boolean {
 }
 
 /**
- * Check if local mode is available and should be used
+ * CAN direct database access work here? Not: should it be used.
+ *
+ * The two used to be one function, and the conflation was the bug. This
+ * returned true whenever `DATABASE_URL` was set, and `getMode()` read that as
+ * "use the database" — so one environment variable silently took ordinary
+ * commands off the API and past its authentication, authorisation and audit
+ * trail. Whether local mode is USED is now decided by an explicit `--local`
+ * (see `isLocalModeRequested` in mode.ts); this answers only whether that
+ * request could be honoured.
  */
 export function isLocalModeAvailable(): boolean {
   // Already have DATABASE_URL in env
