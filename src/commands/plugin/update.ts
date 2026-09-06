@@ -16,6 +16,7 @@ import {
   getPackageVersion,
   getInstalledVersion,
   getPluginsDir,
+  isVersionNewer,
   runNpm,
 } from './helpers.js';
 
@@ -62,7 +63,7 @@ export function registerUpdateCommand(parent: Command): void {
           const currentVersion = getInstalledVersion(packageName, pluginsDir);
           const latestVersion = getPackageVersion(packageName);
 
-          if (currentVersion && latestVersion && currentVersion !== latestVersion) {
+          if (currentVersion && latestVersion && isVersionNewer(latestVersion, currentVersion)) {
             updates.push({
               name: getShortName(packageName),
               packageName,

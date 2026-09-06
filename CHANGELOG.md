@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.2] - 2026-09-06
+
+### Fixed
+
+- `plugin update` and `plugin info` now treat a registry version as an update
+  only when it has higher SemVer precedence, preventing a newer local plugin
+  from being downgraded to an older npm `latest` tag.
+
 ## [5.1.1] - 2026-09-05
 
 ### Added

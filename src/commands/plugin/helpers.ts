@@ -133,6 +133,59 @@ export function getInstalledVersion(packageName: string, pluginsDir: string): st
   return null;
 }
 
+interface ParsedVersion {
+  core: [bigint, bigint, bigint];
+  prerelease: string[] | null;
+}
+
+function parseVersion(version: string): ParsedVersion | null {
+  const versionPattern = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+  const match = versionPattern.exec(version);
+  if (!match) return null;
+  const prerelease = match.at(4);
+
+  return {
+    core: [BigInt(match[1]), BigInt(match[2]), BigInt(match[3])],
+    prerelease: prerelease ? prerelease.split('.') : null,
+  };
+}
+
+function comparePrerelease(a: string[] | null, b: string[] | null): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const left = a.at(i);
+    const right = b.at(i);
+    if (left === undefined) return -1;
+    if (right === undefined) return 1;
+    if (left === right) continue;
+
+    const leftNumeric = /^\d+$/.test(left);
+    const rightNumeric = /^\d+$/.test(right);
+    if (leftNumeric && rightNumeric) {
+      return BigInt(left) > BigInt(right) ? 1 : -1;
+    }
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return left > right ? 1 : -1;
+  }
+  return 0;
+}
+
+/** Return true only when candidate has higher SemVer precedence than current. */
+export function isVersionNewer(candidate: string, current: string): boolean {
+  const parsedCandidate = parseVersion(candidate);
+  const parsedCurrent = parseVersion(current);
+  if (!parsedCandidate || !parsedCurrent) return false;
+
+  for (let i = 0; i < parsedCandidate.core.length; i++) {
+    if (parsedCandidate.core[i] > parsedCurrent.core[i]) return true;
+    if (parsedCandidate.core[i] < parsedCurrent.core[i]) return false;
+  }
+  return comparePrerelease(parsedCandidate.prerelease, parsedCurrent.prerelease) > 0;
+}
+
 /**
  * Run npm command in plugins directory
  */

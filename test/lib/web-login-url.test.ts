@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildCliAuthUrl } from '../../src/lib/web-login.js';
+
+const packageVersion = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+) as { version: string };
 
 describe('CLI browser-login URL', () => {
   it('uses the canonical trailing-slash route and current CLI version', () => {
@@ -14,6 +19,6 @@ describe('CLI browser-login URL', () => {
     expect(url.searchParams.get('state')).toBe('state-value');
     expect(url.searchParams.get('code_challenge')).toBe('challenge-value');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
-    expect(url.searchParams.get('cli_version')).toBe('5.1.1');
+    expect(url.searchParams.get('cli_version')).toBe(packageVersion.version);
   });
 });
