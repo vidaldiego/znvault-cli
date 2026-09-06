@@ -18,6 +18,7 @@ import {
   getInstalledVersion,
   getPluginsDir,
   findPlugin,
+  isVersionNewer,
 } from './helpers.js';
 
 export function registerInfoCommand(parent: Command): void {
@@ -69,6 +70,9 @@ export function registerInfoCommand(parent: Command): void {
 
         if (options.json) {
           const localVersion = installed?.package ? getInstalledVersion(installed.package, pluginsDir) : null;
+          const updateAvailable = Boolean(
+            npmInfo && localVersion && isVersionNewer(npmInfo.version, localVersion)
+          );
           output.json({
             name: getShortName(packageName),
             package: packageName,
@@ -81,7 +85,7 @@ export function registerInfoCommand(parent: Command): void {
               installed: true,
               version: localVersion ?? 'unknown',
               enabled: installed.enabled !== false,
-              updateAvailable: npmInfo && localVersion && localVersion !== npmInfo.version,
+              updateAvailable,
             } : null,
           });
           return;
@@ -110,7 +114,7 @@ export function registerInfoCommand(parent: Command): void {
           console.log(`  Version:     ${localVersion ?? 'unknown'}`);
           console.log(`  Enabled:     ${installed.enabled !== false ? chalk.green('Yes') : chalk.yellow('No')}`);
 
-          if (npmInfo && localVersion && localVersion !== npmInfo.version) {
+          if (npmInfo && localVersion && isVersionNewer(npmInfo.version, localVersion)) {
             console.log();
             console.log(chalk.yellow(`  Update available: ${localVersion} → ${npmInfo.version}`));
             console.log(chalk.dim(`  Run: znvault plugin update ${getShortName(packageName)}`));
