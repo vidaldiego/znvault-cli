@@ -11,6 +11,12 @@ export interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   skipAuth?: boolean;
   /**
+   * Internal access-token proof attached only to /auth/refresh. It lets the
+   * server continue a still-live User-Sealed password capability without ever
+   * placing that capability in the refresh token itself.
+   */
+  _refreshAccessToken?: string;
+  /**
    * Additional application headers for endpoints with a header-level
    * contract (currently Recovery Fence v1's Idempotency-Key). Authentication
    * and transport headers are protected and cannot be overridden here.

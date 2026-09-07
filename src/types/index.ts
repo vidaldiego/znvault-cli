@@ -252,6 +252,7 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  userSealedUnlocked?: boolean;
   user: {
     id: string;
     username: string;

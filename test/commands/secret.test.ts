@@ -304,6 +304,22 @@ describe('secret commands', () => {
       expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt', {});
     });
 
+    it('explains how to restore a human session when User-Sealed access is missing', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      const { info } = await import('../../src/lib/output.js');
+      const error = Object.assign(
+        new Error('SECRET_REQUIRES_USER_SESSION: password-authenticated session required'),
+        {errorCode: 'SECRET_REQUIRES_USER_SESSION'},
+      );
+      vi.mocked(client.post).mockRejectedValueOnce(error);
+
+      await expect(
+        program.parseAsync(['node', 'test', 'secret', 'decrypt', 'secret-1']),
+      ).rejects.toThrow('exit:1');
+
+      expect(info).toHaveBeenCalledWith(expect.stringContaining('znvault login --web'));
+    });
+
     it('should output JSON when --json flag is used', async () => {
       const { json } = await import('../../src/lib/output.js');
 

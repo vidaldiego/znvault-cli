@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.3] - 2026-09-07
+
+### Fixed
+
+- Send the current access token as an optional same-family proof during refresh
+  so a still-live password-authenticated User-Sealed session is retained after
+  automatic token rotation.
+- Print an actionable username/password or web-login hint when the server
+  returns `SECRET_REQUIRES_USER_SESSION`.
+
 ## [5.1.2] - 2026-09-06
 
 ### Fixed

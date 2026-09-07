@@ -205,7 +205,11 @@ Raw output (value only — nothing else on stdout):
         }
       } catch (error) {
         spinner.fail('Failed to decrypt secret');
-        output.error((error as Error).message);
+        const apiError = error as Error & {errorCode?: string};
+        output.error(apiError.message);
+        if (apiError.errorCode === 'SECRET_REQUIRES_USER_SESSION') {
+          output.info('Start a fresh human session with `znvault login --web` or `znvault login -u <username>`, then retry.');
+        }
         process.exit(1);
       }
     });

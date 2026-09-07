@@ -351,6 +351,7 @@ export class HttpClient {
         path: '/auth/refresh',
         body: { refreshToken: credentials.refreshToken },
         skipAuth: true,
+        _refreshAccessToken: credentials.accessToken,
       });
     } catch (err) {
       if (isConflict(err)) {
@@ -453,6 +454,14 @@ export class HttpClient {
           }
         }
       }
+    }
+
+    // Refresh remains unauthenticated for ordinary token rotation, but the
+    // current access token is supplied as an optional same-family proof. The
+    // server accepts it only while it is signed, unexpired, unrevoked and still
+    // backed by the distributed User-Sealed envelope.
+    if (options.skipAuth && options._refreshAccessToken) {
+      headers.Authorization = `Bearer ${options._refreshAccessToken}`;
     }
 
     if (options.headers) {
