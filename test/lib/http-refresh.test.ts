@@ -38,7 +38,7 @@ vi.mock('../../src/lib/client/refresh-lock.js', () => ({
 }));
 
 let server: http.Server;
-let posts: Array<{ refreshToken: string }> = [];
+let posts: Array<{ refreshToken: string; authorization?: string }> = [];
 let nextResponses: Array<{ code: number; body: unknown }> = [];
 
 beforeEach(async () => {
@@ -59,7 +59,10 @@ beforeEach(async () => {
     req.on('end', () => {
       res.setHeader('Content-Type', 'application/json');
       if (req.url === '/auth/refresh') {
-        posts.push(JSON.parse(body || '{}'));
+        posts.push({
+          ...JSON.parse(body || '{}'),
+          authorization: typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined,
+        });
         const r = nextResponses.shift() ?? { code: 200, body: { accessToken: 'a2', refreshToken: 'r2', expiresIn: 3600, user: { id: 'u', username: 'al', role: 'user', tenantId: null } } };
         res.statusCode = r.code; res.end(JSON.stringify(r.body)); return;
       }
@@ -79,7 +82,7 @@ it('refresh acquires the cross-process lock, writes the real-jti marker, clears 
   const { HttpClient } = await import('../../src/lib/client/http.js');
   await new HttpClient().refreshToken();
   expect(acquireSpy).toHaveBeenCalledTimes(1);
-  expect(posts).toEqual([{ refreshToken: 'r1' }]);
+  expect(posts).toEqual([{ refreshToken: 'r1', authorization: 'Bearer a' }]);
   expect(creds.refreshToken).toBe('r2');
   expect(creds.pendingRefresh).toBeUndefined(); // cleared in the same write as new tokens
 });
@@ -133,7 +136,7 @@ it('lock acquire times out (null) -> refresh proceeds best-effort, no hang (A5)'
   acquireSpy.mockReset().mockResolvedValue(null); // timeout path
   const { HttpClient } = await import('../../src/lib/client/http.js');
   await new HttpClient().refreshToken();           // must resolve, not hang
-  expect(posts).toEqual([{ refreshToken: 'r1' }]); // POSTed best-effort without the lock
+  expect(posts).toEqual([{ refreshToken: 'r1', authorization: 'Bearer a' }]); // POSTed best-effort without the lock
   expect(creds.refreshToken).toBe('r2');
 });
 
@@ -150,7 +153,10 @@ it('401-replay forces a real refresh even when the token is clock-VALID (v3.3.0 
     req.on('end', () => {
       res.setHeader('Content-Type', 'application/json');
       if (req.url === '/auth/refresh') {
-        posts.push(JSON.parse(body || '{}'));
+        posts.push({
+          ...JSON.parse(body || '{}'),
+          authorization: typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined,
+        });
         res.statusCode = 200;
         res.end(JSON.stringify({ accessToken: 'a2', refreshToken: 'r2', expiresIn: 3600, user: { id: 'u', username: 'al', role: 'user', tenantId: null } }));
         return;
@@ -167,6 +173,6 @@ it('401-replay forces a real refresh even when the token is clock-VALID (v3.3.0 
   const { HttpClient } = await import('../../src/lib/client/http.js');
   const result = await new HttpClient().get<{ ok: boolean }>('/v1/anything');
   expect(result).toEqual({ ok: true });
-  expect(posts).toEqual([{ refreshToken: 'r1' }]); // the 401-replay DID refresh
+  expect(posts).toEqual([{ refreshToken: 'r1', authorization: 'Bearer a' }]); // the 401-replay DID refresh
   expect(creds.refreshToken).toBe('r2');
 });
