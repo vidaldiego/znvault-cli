@@ -36,7 +36,8 @@ export function profileOrigin(name:string):string {
   if(!profile||profile.insecure)throw new Error('LINKING_SECURE_PROFILE_REQUIRED');
   if(profile.apiKey||!profile.credentials?.accessToken)throw new Error('LINKING_PROFILE_SESSION_REQUIRED');
   const url=new URL(profile.url);
-  if(url.protocol!=='https:'||url.username||url.password||url.port||url.pathname!=='/'||url.search||url.hash)throw new Error('LINKING_SECURE_PROFILE_REQUIRED');
+  const userInfo=[url.username,url.password];
+  if(url.protocol!=='https:'||url.port||url.pathname!=='/'||url.search||url.hash||userInfo.some(Boolean))throw new Error('LINKING_SECURE_PROFILE_REQUIRED');
   return url.origin;
 }
 export async function withLinkProfile<T>(name:string,operation:(peer:VaultClient)=>Promise<T>):Promise<T>{
