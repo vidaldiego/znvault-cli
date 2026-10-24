@@ -25,6 +25,7 @@ import {
 } from '../../lib/command-context.js';
 import { configureContextHelp } from '../../lib/context-help.js';
 
+import {registerLinkingCommands} from './linking.js';
 import { registerAccountsCommands } from './accounts.js';
 
 // Pure-superadmin groups (moved from top level under `superadmin`).
@@ -86,6 +87,7 @@ export function registerSuperadminCommands(parent: Command, _opts?: RegisterOpti
     registerKmipSuperadminCommands(superadmin);
     registerDynsecFenceCommands(superadmin);
     registerRootkeyCommands(superadmin);
+    registerLinkingCommands(superadmin);
     registerPolicyCommands(superadmin, { context: 'superadmin' });
     registerQuarantineCommands(superadmin, { context: 'superadmin' });
     registerRoleCommands(superadmin, { context: 'superadmin' });
