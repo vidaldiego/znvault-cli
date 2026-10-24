@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-10-24
+
+### Added
+
+- Explicit one-way Vault linking administration and tenant consent with named,
+  password-authenticated profiles, metadata-only status and protected key input.
+- Per-secret replication controls and explicit User-Sealed remote human grants,
+  key fingerprints and revocations. Existing local grant commands are unchanged
+  unless `--link` is supplied.
+- Destination-local transport revocation with an explicit retry request ID;
+  retained copies and grants survive stopping the transport.
+
 ## [5.1.3] - 2026-09-07
 
 ### Fixed
