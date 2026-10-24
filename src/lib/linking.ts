@@ -11,7 +11,7 @@ export interface LinkSelection {id:string;binding_id:string;source_secret_id:str
 export interface TenantLinks {bindings:LinkBinding[];selections:LinkSelection[];replicas?:Array<{id:string;binding_id:string}>}
 export interface Recipient {userId:string;username?:string;keyReady:boolean;keyVersion:number|null;fingerprint:string|null}
 export interface LinkOutputOptions {json?:boolean}
-const allowed=new Set(`installationId capability linking sealedLink fleetReady sealedFleetReady schemaReady enabled reason connections bindings selections replicas id name direction state connection_id local_tenant peer_tenant peer_installation_id peer_binding_id generation last_error last_contact_at revocation_unverified selected_count pending_count retained_count error_count source_api_origin destination_origin source_secret_id source_alias destination_alias protection_mode desired_revision acknowledged_revision source_data_version acknowledged_data_version reserved_replica_id enabled paused origin_deleted_at crypto_closed_at last_data_sync_at hasCopy lifecycle syncState recipient_status recipients grantId grant_id userId recipient_user_id username keyReady keyVersion user_key_version fingerprint recipient_fingerprint created_at revoked_at status accessVerification role readonly usableReaderCount sourceVersion copiedVersion sourceExpiresAt sourceTtlUntil grants queued paused remoteConfirmed revocationUnverified revoked consented sourceBindingId destinationBindingId sourceInstallationId destinationInstallationId local_alias local_data_version applied_revision desired_data_version operation requestId`.split(' '));
+const allowed=new Set(`bindingId revokedAt revocation revoke_request_id installationId capability linking sealedLink fleetReady sealedFleetReady schemaReady enabled reason connections bindings selections replicas id name direction state connection_id local_tenant peer_tenant peer_installation_id peer_binding_id generation last_error last_contact_at revocation_unverified selected_count pending_count retained_count error_count source_api_origin destination_origin source_secret_id source_alias destination_alias protection_mode desired_revision acknowledged_revision source_data_version acknowledged_data_version reserved_replica_id enabled paused origin_deleted_at crypto_closed_at last_data_sync_at hasCopy lifecycle syncState recipient_status recipients grantId grant_id userId recipient_user_id username keyReady keyVersion user_key_version fingerprint recipient_fingerprint created_at revoked_at status accessVerification role readonly usableReaderCount sourceVersion copiedVersion sourceExpiresAt sourceTtlUntil grants queued paused remoteConfirmed revocationUnverified revoked consented sourceBindingId destinationBindingId sourceInstallationId destinationInstallationId local_alias local_data_version applied_revision desired_data_version operation requestId`.split(' '));
 /** An allowlist, including nested objects: routine JSON cannot print arbitrary response payloads. */
 export function sanitiseLinkMetadata(value:unknown):unknown {
   if(Array.isArray(value))return value.map(sanitiseLinkMetadata);
@@ -29,8 +29,12 @@ export async function linkingOperation(operation:()=>Promise<unknown>,options:Li
   }
 }
 export function profileOrigin(name:string):string {
+  // The shared HTTP client intentionally supports ambient auth for ordinary commands.
+  // A two-profile credential exchange must never inherit those overrides/fallbacks.
+  if(['ZNVAULT_API_KEY','ZNVAULT_USERNAME','ZNVAULT_PASSWORD'].some(key=>process.env[key]!==undefined))throw new Error('LINKING_AMBIENT_AUTH_FORBIDDEN');
   const profile=getProfile(name);
   if(!profile||profile.insecure)throw new Error('LINKING_SECURE_PROFILE_REQUIRED');
+  if(profile.apiKey||!profile.credentials?.accessToken)throw new Error('LINKING_PROFILE_SESSION_REQUIRED');
   const url=new URL(profile.url);
   if(url.protocol!=='https:'||url.username||url.password||url.port||url.pathname!=='/'||url.search||url.hash)throw new Error('LINKING_SECURE_PROFILE_REQUIRED');
   return url.origin;

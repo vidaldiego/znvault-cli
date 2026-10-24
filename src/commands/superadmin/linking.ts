@@ -39,6 +39,16 @@ export function registerLinkingCommands(parent:Command):void {
     .option('--export-key-file <path>','Owner-only regular file; otherwise masked prompt')
     .option('--json','Redacted metadata')
     .action(async(options:ConsentOptions&LinkOutputOptions)=>{await linkingOperation(async()=>await consentProfiles(options),options,'Tenant consent recorded; no secrets selected.');});
+  linking.command('revoke-local <bindingId>').description('Stop an incoming binding locally using a destination tenant JWT; retains copies and grants')
+    .requiredOption('--request-id <uuid>','Keep and reuse this exact request UUID on retries')
+    .option('-y, --yes','Confirm local incoming-transport revocation').option('--json','Redacted metadata')
+    .action(async(id:string,options:ActionOptions&{requestId:string})=>{
+      if(!options.yes&&!await promptConfirm('Revoke incoming transport locally? Retained copies and human grants remain.',false))return;
+      await linkingOperation(async()=>{
+        if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(options.requestId))throw new Error('LINKING_INVALID_REQUEST');
+        return await client.post(`/v1/linking/bindings/${encodeURIComponent(id)}/revoke`,{requestId:options.requestId});
+      },options,'Incoming transport revoked locally; retained copies and grants remain');
+    });
   for(const action of ['test','sync','pause','resume','revoke'] as const)linking.command(`${action} <bindingId>`)
     .option('--json','Redacted metadata').option('-y, --yes','Confirm transport revocation')
     .action(async(id:string,options:ActionOptions)=>{

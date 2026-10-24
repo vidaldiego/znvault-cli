@@ -43,3 +43,14 @@ znvault --profile zincapp secret revoke SOURCE_UUID --link offsite --user DESTIN
 Verify the user UUID/current key version/fingerprint. A changed key requires regrant. `grants --recipients` explicitly prepares destination keys; ordinary status/grants are metadata-only. No flag keeps existing local-grant behaviour; linked operations never fall back to root recovery. Human revocation is separate from transport revocation and remains pending until received. A storage ACK never proves destination human decrypt.
 
 Destination copies are read only. Origin deletion retains the last received copy/history and remaining grants; a deletion before first copy has no value. A protection/SAK change permanently closes the old selection even while stopped; a new selection needs a new target alias/UUID/grants. During source isolation, only last-received authorisation applies and is marked stale. Post-activation rollback needs a linking-capable server with retained schema.
+
+For a destination-local stop while source is unavailable, use a destination **tenant JWT** profile with strict replicate permission:
+
+```sh
+znvault --profile zincapp-offsite superadmin linking revoke-local DESTINATION_BINDING_UUID \
+  --request-id RETAINED_REQUEST_UUID --yes --json
+```
+
+Keep and reuse that request UUID after an unknown/lost outcome. If reconciling an existing source revocation, use its `revoke_request_id` from source status so the sender can recover the matching receipt. Otherwise create one UUID once. The operation stops all incoming copies on that binding and retains values/grants. The namespace does not grant superadmin authority on the tenant route.
+
+Two-profile create/consent refuses `ZNVAULT_API_KEY`, `ZNVAULT_USERNAME` or `ZNVAULT_PASSWORD` in the process environment and profiles lacking stored JWT sessions or containing API keys. Use an invocation without those overrides; the CLI does not modify or clear your environment. This prevents the shared HTTP client's ordinary ambient authentication from being sent to the other installation.

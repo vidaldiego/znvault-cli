@@ -3,7 +3,7 @@ import {Command} from 'commander';
 const net=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),delete:vi.fn()}));
 vi.mock('../../src/lib/client.js',()=>({client:net,VaultClient:vi.fn(function(){return net;})}));
 vi.mock('../../src/lib/output.js',()=>({json:vi.fn(),info:vi.fn(),error:vi.fn(),success:vi.fn()}));
-vi.mock('../../src/lib/config.js',()=>({getActiveProfileName:vi.fn(()=> 'source'),setRuntimeProfile:vi.fn(),getProfile:vi.fn((name:string)=>({url:`https://${name}.example.com`,insecure:false}))}));
+vi.mock('../../src/lib/config.js',()=>({getActiveProfileName:vi.fn(()=> 'source'),setRuntimeProfile:vi.fn(),getProfile:vi.fn((name:string)=>({url:`https://${name}.example.com`,insecure:false,credentials:{accessToken:`${name}-jwt`}}))}));
 vi.mock('../../src/lib/prompts.js',()=>({promptPassword:vi.fn(),promptConfirm:vi.fn(()=>true)}));
 import {client} from '../../src/lib/client.js';
 import * as output from '../../src/lib/output.js';
@@ -86,5 +86,10 @@ describe('explicit linking CLI',()=>{
     vi.mocked(client.get).mockResolvedValue({...state,selections:[{...state.selections[0],id:'closed',lifecycle:'closed'},state.selections[0]]});
     await program().parseAsync(['secret','replication','sync',id,'--link','offsite','--selection','selection','--json'],{from:'user'});
     expect(client.post).toHaveBeenCalledWith(`/v1/secrets/${id}/replication/selection/sync`,{});
+  });
+  it('destination-local revoke uses tenant endpoint and reuses the operator request ID',async()=>{
+    for(let attempt=0;attempt<2;attempt++)await program().parseAsync(['linking','revoke-local','incoming','--request-id',id,'--json','--yes'],{from:'user'});
+    expect(client.post).toHaveBeenNthCalledWith(1,'/v1/linking/bindings/incoming/revoke',{requestId:id});
+    expect(client.post).toHaveBeenNthCalledWith(2,'/v1/linking/bindings/incoming/revoke',{requestId:id});
   });
 });
