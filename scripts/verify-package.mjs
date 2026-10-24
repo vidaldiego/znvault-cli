@@ -26,14 +26,25 @@ try {
   const lmk = run('superadmin', 'lmk', '--help');
   if (/^  ceremony/m.test(lmk) || !/^  preflight/m.test(lmk)) throw new Error('Trust boundary failure');
   const secrets = run('secret', '--help');
-  for (const command of ['grants', 'grant', 'revoke', 'recover', 'recover-grant', 'protection']) {
+  for (const command of ['grants', 'grant', 'revoke', 'recover', 'recover-grant', 'protection', 'replication']) {
     if (!new RegExp(`^  ${command} `, 'm').test(secrets)) throw new Error(`User-Sealed command missing: ${command}`);
+  }
+  const linking = run('superadmin', 'linking', '--help');
+  for (const command of ['create', 'list', 'status', 'test', 'sync', 'pause', 'resume', 'revoke', 'consent', 'revoke-local']) {
+    if (!new RegExp(`^  ${command}(?: |\\[)`, 'm').test(linking)) throw new Error(`Linking command missing: ${command}`);
+  }
+  const replication = run('secret', 'replication', '--help');
+  for (const command of ['enable', 'status', 'sync', 'stop', 'resume']) {
+    if (!new RegExp(`^  ${command} `, 'm').test(replication)) throw new Error(`Replication command missing: ${command}`);
+  }
+  for (const command of ['grants', 'grant', 'revoke']) {
+    if (!run('secret', command, '--help').includes('--link <name-or-id>')) throw new Error(`Explicit linked grant option missing: ${command}`);
   }
   const decrypt = run('secret', 'decrypt', '--help');
   if (!decrypt.includes('--version <number>')) throw new Error('Historical secret decrypt option missing');
   if (!run('dynasec', 'permit', '--help').includes('lookup')) throw new Error('DR permit lookup missing');
   if (!run('emergency', '--help').includes('Usage:')) throw new Error('Emergency command missing');
-  console.log(`Exact package verified: ${expectedVersion}; Trust, User-Sealed and DR command surfaces present`);
+  console.log(`Exact package verified: ${expectedVersion}; Trust, User-Sealed, linking and DR command surfaces present`);
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }
