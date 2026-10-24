@@ -20,6 +20,7 @@ import { registerCopyCommand } from './copy.js';
 import { registerPatchCommand } from './patch.js';
 import { registerCanDecryptCommand } from './can-decrypt.js';
 import {registerGrantCommands} from './grants.js';
+import {registerReplicationCommands} from './replication.js';
 import {registerProtectionCommand} from './protection.js';
 
 // Help text for secret identifier format
@@ -61,6 +62,7 @@ export function registerSecretCommands(program: Command): void {
   registerCanDecryptCommand(secretCmd);
   registerGrantCommands(secretCmd);
   registerProtectionCommand(secretCmd);
+  registerReplicationCommands(secretCmd);
 }
 
 // Re-export types for external use
