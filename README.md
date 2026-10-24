@@ -2,6 +2,8 @@
 
 Official command-line interface for ZnVault secrets management.
 
+For selected-secret copies between independent Vaults, see [linking setup, operation and User-Sealed grants](docs/LINKING.md).
+
 ## Installation
 
 ```bash
