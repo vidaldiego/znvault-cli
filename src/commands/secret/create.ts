@@ -16,6 +16,8 @@ import { formatBytes } from './helpers.js';
 import { analyzeFileForSuggestion, formatPemType, type FileAnalysisInfo } from './pem-analysis.js';
 import { validateTokenAlias, validateFieldPath, buildLinkData } from './references.js';
 import {interactiveSecretValuePromptType} from './input-policy.js';
+import {parseTotpInput, readTotpConfig} from '../../lib/totp.js';
+import {safeSecretError, SecretInputError} from './editing.js';
 
 export function registerCreateCommand(secretCmd: Command): void {
   secretCmd
@@ -239,7 +241,7 @@ Examples:
 
         } catch (err) {
           spinner.fail('Failed to get AI suggestions');
-          output.error(err instanceof Error ? err.message : String(err));
+          output.error(safeSecretError(err));
 
           // Continue without suggestions?
           const { continueWithout } = await inquirer.prompt<{ continueWithout: boolean }>([
@@ -284,6 +286,14 @@ Examples:
         process.exit(1);
       }
 
+      if (actualSubType === 'totp' && (
+        options.data !== undefined || options.text !== undefined || options.username !== undefined
+        || options.password !== undefined || options.file !== undefined
+      )) {
+        output.error('Use secret totp import with stdin or a masked prompt for authenticator seeds.');
+        process.exit(1);
+      }
+
       // Check for non-interactive data options first. A --link owns the value
       // (its pointer), so it bypasses both interactive and other non-interactive
       // data collection.
@@ -310,8 +320,8 @@ Examples:
           let stdinData: string;
           try {
             stdinData = await readStdinUtf8();
-          } catch (error) {
-            output.error(`Failed to read --data-stdin: ${(error as Error).message}`);
+          } catch {
+            output.error('Failed to read --data-stdin');
             process.exit(1);
           }
 
@@ -354,6 +364,17 @@ Examples:
             content: content.toString('base64'),
             contentType: options.contentType ?? 'application/octet-stream',
           };
+        }
+      } else if (actualSubType === 'totp') {
+        actualType = 'credential';
+        const {seedOrUri} = await inquirer.prompt<{seedOrUri: string}>([{
+          type: 'password', name: 'seedOrUri', message: 'TOTP seed or otpauth URI:', mask: '*',
+        }]);
+        try {
+          data = {totp: parseTotpInput(seedOrUri)};
+        } catch {
+          output.error('Invalid TOTP configuration.');
+          process.exit(1);
         }
       } else {
         // Interactive mode: prompt for data
@@ -431,6 +452,19 @@ Examples:
         }
       }
 
+      if (options.data !== undefined) {
+        try {
+          if (readTotpConfig(data) !== undefined) {
+            output.error('TOTP seeds cannot be supplied through --data; use secret totp import with stdin or a masked prompt.');
+            process.exit(1);
+          }
+        } catch {
+          output.error('Invalid TOTP configuration.');
+          process.exit(1);
+        }
+      }
+      if (actualSubType === 'totp') actualType = 'credential';
+
       const spinner = output.spinner('Creating secret...').start();
 
       try {
@@ -447,7 +481,7 @@ Examples:
           body.protectionMode = 'USER_SESSION_ONLY';
           if (options.grantUser !== undefined) body.grantUserIds = options.grantUser;
         } else if (options.protection !== 'standard') {
-          throw new Error('--protection must be standard or user-session');
+          throw new SecretInputError('--protection must be standard or user-session');
         }
 
         if (actualSubType) body.subType = actualSubType;
@@ -479,7 +513,7 @@ Examples:
         }
       } catch (error) {
         spinner.fail('Failed to create secret');
-        output.error((error as Error).message);
+        output.error(safeSecretError(error));
         process.exit(1);
       }
     });

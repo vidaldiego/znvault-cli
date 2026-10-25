@@ -737,7 +737,7 @@ describe('secret patch command', () => {
 
     expect(client.post).toHaveBeenCalledWith('/v1/secrets/secret-1/decrypt?resolve=false', {});
     // Note: "2.0" is inferred as a number (2) by the value type inference
-    expect(client.put).toHaveBeenCalledWith('/v1/secrets/secret-1', expect.objectContaining({
+    expect(client.put).toHaveBeenCalledWith('/v1/secrets/secret-1/value', expect.objectContaining({
       data: expect.objectContaining({ version: 2 }),
     }));
     expect(success).toHaveBeenCalledWith('Secret patched successfully!');
@@ -761,7 +761,7 @@ describe('secret patch command', () => {
 
     const { client } = await import('../../src/lib/client.js');
 
-    expect(client.put).toHaveBeenCalledWith('/v1/secrets/secret-1', expect.objectContaining({
+    expect(client.put).toHaveBeenCalledWith('/v1/secrets/secret-1/value', expect.objectContaining({
       data: expect.not.objectContaining({ version: expect.anything() }),
     }));
 
@@ -860,7 +860,7 @@ describe('secret patch command', () => {
 
     const { client } = await import('../../src/lib/client.js');
 
-    expect(client.put).toHaveBeenCalledWith('/v1/secrets/secret-1', expect.objectContaining({
+    expect(client.put).toHaveBeenCalledWith('/v1/secrets/secret-1/value', expect.objectContaining({
       data: expect.objectContaining({
         database: expect.objectContaining({
           host: 'db.prod.example.com',

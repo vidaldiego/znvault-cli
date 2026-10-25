@@ -29,6 +29,8 @@ import {
 import { getParser, detectFormat } from './patch/parsers.js';
 import { generateDiff, displayDiff, displayOperationsSummary } from './patch/diff.js';
 import {supportsArgvPatch} from './input-policy.js';
+import {readTotpConfig} from '../../lib/totp.js';
+import {requireEditableSecret, safeSecretError, secretEditorData} from './editing.js';
 
 /**
  * Extract the raw content from a decrypted secret's data
@@ -67,6 +69,10 @@ function wrapContent(
 /**
  * Collect repeatable option values
  */
+function isTotpPatchArgument(value: string): boolean {
+  return /^totp(?:[.[=]|$)/.test(value.trimStart().replace(/^\.+/, ''));
+}
+
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
 }
@@ -129,6 +135,11 @@ Value Types:
         process.exit(1);
       }
 
+      if ((options.set ?? []).some(isTotpPatchArgument)) {
+        output.error('Use secret totp commands to change an authenticator; TOTP values cannot be supplied in patch arguments.');
+        process.exit(1);
+      }
+
       // Validate format option
       if (options.format !== undefined && !SUPPORTED_FORMATS.includes(options.format)) {
         output.error(`Invalid format: ${options.format}. Supported: ${SUPPORTED_FORMATS.join(', ')}`);
@@ -154,10 +165,19 @@ Value Types:
         // reference secret never bakes a resolved snapshot over its template.
         // Byte-identical for non-reference secrets (server short-circuits).
         secret = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt?resolve=false`, {});
+        requireEditableSecret(secret, true);
+        if (readTotpConfig(secret.data) !== undefined && (options.unset ?? []).some(isTotpPatchArgument)) {
+          output.error('Use secret totp remove to remove an attached authenticator.');
+          process.exit(1);
+        }
+        if (secret.subType === 'totp') {
+          output.error('Use secret totp commands for a standalone authenticator.');
+          process.exit(1);
+        }
         spinner.stop();
       } catch (error) {
         spinner.fail('Failed to fetch secret');
-        output.error((error as Error).message);
+        output.error(safeSecretError(error));
         process.exit(1);
       }
 
@@ -178,7 +198,8 @@ Value Types:
 
       // Extract content from secret data
       const originalData = secret.data;
-      const originalContent = extractContent(originalData);
+      const canonicalTotp = readTotpConfig(originalData);
+      const originalContent = extractContent(secretEditorData(originalData));
 
       // Detect format
       const format = detectFormat(
@@ -267,11 +288,13 @@ Value Types:
 
       try {
         // Wrap content back into the appropriate data structure
-        const newData = wrapContent(originalData, modifiedContent, format);
+        const newData = wrapContent(secretEditorData(originalData), modifiedContent, format);
+        if (canonicalTotp !== undefined) newData.totp = originalData.totp;
 
         // Update the secret
-        const result = await client.put<SecretMetadata>(`/v1/secrets/${id}`, {
+        const result = await client.put<SecretMetadata>(`/v1/secrets/${id}/value`, {
           data: newData,
+          expectedVersion: secret.version,
         });
 
         updateSpinner.stop();
@@ -296,7 +319,7 @@ Value Types:
         displayOperationsSummary(appliedOps);
       } catch (error) {
         updateSpinner.fail('Failed to update secret');
-        output.error((error as Error).message);
+        output.error(safeSecretError(error));
         process.exit(1);
       }
     });

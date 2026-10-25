@@ -22,6 +22,7 @@ import { registerCanDecryptCommand } from './can-decrypt.js';
 import {registerGrantCommands} from './grants.js';
 import {registerReplicationCommands} from './replication.js';
 import {registerProtectionCommand} from './protection.js';
+import {registerTotpCommands} from './totp.js';
 
 // Help text for secret identifier format
 const SECRET_ID_HELP = `
@@ -63,6 +64,7 @@ export function registerSecretCommands(program: Command): void {
   registerGrantCommands(secretCmd);
   registerProtectionCommand(secretCmd);
   registerReplicationCommands(secretCmd);
+  registerTotpCommands(secretCmd);
 }
 
 // Re-export types for external use

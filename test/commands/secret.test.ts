@@ -588,7 +588,7 @@ describe('secret commands', () => {
         '--enable-references', '--data', '{"a":1}',
       ]);
       expect(client.put).toHaveBeenCalledWith(
-        '/v1/secrets/secret-1',
+        '/v1/secrets/secret-1/value',
         expect.objectContaining({ enableReferences: true }),
       );
     });
@@ -600,7 +600,7 @@ describe('secret commands', () => {
         '--no-enable-references', '--data', '{"a":1}',
       ]);
       expect(client.put).toHaveBeenCalledWith(
-        '/v1/secrets/secret-1',
+        '/v1/secrets/secret-1/value',
         expect.objectContaining({ enableReferences: false }),
       );
     });
@@ -630,6 +630,57 @@ describe('secret commands', () => {
       await program.parseAsync(['node', 'test', 'secret', 'history', 'secret-1']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/secrets/secret-1/history');
+    });
+  });
+
+  describe('TOTP input safety in generic creation', () => {
+    const syntheticSeed = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+    it('uses a masked authenticator prompt for sub-type totp', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({ seedOrUri: syntheticSeed } as never);
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'create', 'lab/authenticator', '--sub-type', 'totp']);
+      expect(inquirer.prompt).toHaveBeenCalledWith([expect.objectContaining({type: 'password', name: 'seedOrUri', mask: '*'})]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        type: 'credential', subType: 'totp', data: {totp: {type: 'totp', secret: syntheticSeed, algorithm: 'SHA1', digits: 6, period: 30}},
+      }));
+    });
+
+    it('does not echo an HTTP error after a masked TOTP import', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({seedOrUri: syntheticSeed} as never);
+      const {client} = await import('../../src/lib/client.js');
+      const {error} = await import('../../src/lib/output.js');
+      vi.mocked(client.post).mockRejectedValueOnce(Object.assign(new Error(`untrusted ${syntheticSeed} otpauth://totp/alice?secret=${syntheticSeed}`), {statusCode: 422}));
+      await expect(program.parseAsync(['node', 'test', 'secret', 'create', 'lab/authenticator', '--sub-type', 'totp'])).rejects.toThrow('exit:1');
+      expect(JSON.stringify(vi.mocked(error).mock.calls)).not.toContain(syntheticSeed);
+      expect(JSON.stringify(vi.mocked(error).mock.calls)).not.toContain('otpauth://');
+      expect(error).toHaveBeenCalledWith('Secret operation failed.');
+    });
+
+    it('does not echo an untrusted advisor response while preparing creation', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({continueWithout: false} as never);
+      const {client} = await import('../../src/lib/client.js');
+      const {error} = await import('../../src/lib/output.js');
+      vi.mocked(client.post).mockRejectedValueOnce(new Error(`untrusted ${syntheticSeed} otpauth://totp/alice?secret=${syntheticSeed}`));
+      await expect(program.parseAsync(['node', 'test', 'secret', 'create', 'lab/authenticator', '--suggest'])).rejects.toThrow('exit:0');
+      expect(JSON.stringify(vi.mocked(error).mock.calls)).not.toContain(syntheticSeed);
+      expect(error).toHaveBeenCalledWith('Secret operation failed.');
+    });
+
+    it('does not echo errors from a failed stdin read', async () => {
+      const {error} = await import('../../src/lib/output.js');
+      mockReadStdinUtf8.mockRejectedValueOnce(new Error(syntheticSeed));
+      await expect(program.parseAsync(['node', 'test', 'secret', 'create', 'lab/authenticator', '--sub-type', 'totp', '--data-stdin'])).rejects.toThrow('exit:1');
+      expect(JSON.stringify(vi.mocked(error).mock.calls)).not.toContain(syntheticSeed);
+      expect(error).toHaveBeenCalledWith('Failed to read --data-stdin');
+    });
+
+    it('rejects canonical seeds supplied through generic --data argv', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await expect(program.parseAsync(['node', 'test', 'secret', 'create', 'lab/authenticator', '--data', JSON.stringify({totp: {type: 'totp', secret: syntheticSeed, algorithm: 'SHA1', digits: 6, period: 30}})])).rejects.toThrow('exit:1');
+      expect(client.post).not.toHaveBeenCalled();
     });
   });
 

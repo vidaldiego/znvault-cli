@@ -5,6 +5,20 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] - 2026-10-25
+
+### Added
+
+- Native `secret totp import/code/remove` for standalone or attached authenticators, with masked/stdin import and existing User-Sealed protection/grants.
+
+### Fixed
+
+- Preserve complete raw payloads, reference expressions and attached TOTP through update/rotate/patch, with mandatory version checks. Keep seeds outside editors, diffs, argv and error output.
+
+### Compatibility
+
+- Read-modify-write commands require Vault 1.77.0 conditional value routes. Upgrade the server first; a 404 fails without falling back to an unguarded write.
+
 ## [Unreleased]
 
 ## [5.2.0] - 2026-10-24

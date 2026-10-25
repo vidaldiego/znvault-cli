@@ -1,106 +1,48 @@
 // Path: src/commands/secret/rotate.ts
-
-/**
- * Secret rotate command
- */
-
-import type { Command } from 'commander';
-
+import type {Command} from 'commander';
 import inquirer from 'inquirer';
-import { client } from '../../lib/client.js';
+import {client} from '../../lib/client.js';
 import * as output from '../../lib/output.js';
-import type { RotateOptions, DecryptedSecret, SecretMetadata } from './types.js';
-import { resolveSecretId } from './resolve.js';
-import {readStdinUtf8} from '../../lib/stdin.js';
-import {interactiveSecretValuePromptType} from './input-policy.js';
+import type {RotateOptions, DecryptedSecret, SecretMetadata} from './types.js';
+import {resolveSecretId} from './resolve.js';
+import {mergeSecretEdits, promptSecretReplacement, readSecretJsonStdin, requireEditableSecret, safeSecretError} from './editing.js';
 
 export function registerRotateCommand(secretCmd: Command): void {
-  secretCmd
-    .command('rotate <id-or-alias>')
-    .description('Rotate secret (supports UUID or tenant/alias format)')
+  secretCmd.command('rotate <id-or-alias>')
+    .description('Rotate secret fields while preserving existing data (supports UUID or alias)')
     .option('--json', 'Output as JSON')
-    .option('--data-stdin', 'Read replacement JSON data from stdin')
+    .option('--data-stdin', 'Read replacement JSON fields from stdin')
     .action(async (idOrAlias: string, options: RotateOptions) => {
-      const spinner = output.spinner('Resolving secret...').start();
-
+      const spinner = output.spinner('Fetching current secret...').start();
       try {
-        // Resolve alias to UUID if needed
         const id = await resolveSecretId(idOrAlias);
-        spinner.text = 'Fetching current secret...';
         const metadata = await client.get<SecretMetadata>(`/v1/secrets/${id}/meta`);
-
-        // Pre-fetch the RAW template so rotating a reference secret never bakes a
-        // resolved snapshot into the new version. Byte-identical for others.
-        const current = await client.post<DecryptedSecret>(
-          `/v1/secrets/${id}/decrypt?resolve=false`,
-          {},
-        );
+        const current = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt?resolve=false`, {});
+        requireEditableSecret(current, true);
+        if (metadata.protectionMode === 'USER_SESSION_ONLY') current.protectionMode = metadata.protectionMode;
+        else current.protectionMode ??= metadata.protectionMode;
         spinner.stop();
+        if (options.json !== true) console.log(`Current secret: ${current.alias} (v${current.version})`);
 
-        console.log(`Current secret: ${current.alias} (v${current.version})`);
-
-        // Prompt for new data
         let newData: Record<string, unknown>;
+        if (options.dataStdin === true) newData = mergeSecretEdits(current.data, await readSecretJsonStdin());
+        else if (current.type === 'credential' && current.subType !== 'totp') {
+          const answers = await inquirer.prompt<{password: string}>([{
+            type: 'password', name: 'password', message: 'New password:', mask: '*',
+            validate: (input: string) => input.length > 0 || 'Password is required',
+          }]);
+          newData = {...current.data, password: answers.password};
+        } else newData = await promptSecretReplacement(current);
 
-        if (options.dataStdin) {
-          try {
-            const parsed: unknown = JSON.parse(await readStdinUtf8());
-            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-              throw new Error('secret data must be a JSON object');
-            }
-            newData = parsed as Record<string, unknown>;
-          } catch (error) {
-            output.error(`Invalid JSON received by --data-stdin: ${(error as Error).message}`);
-            process.exit(1);
-          }
-        } else if (current.type === 'credential') {
-          const answers = await inquirer.prompt<{ password: string }>([
-            {
-              type: 'password',
-              name: 'password',
-              message: 'New password:',
-              mask: '*',
-              validate: (input: string) => input.length > 0 || 'Password is required',
-            },
-          ]);
-          newData = {
-            username: current.data.username,
-            password: answers.password,
-          };
-        } else {
-          const { dataJson } = await inquirer.prompt<{ dataJson: string }>([
-            {
-              type: interactiveSecretValuePromptType(metadata.protectionMode, 'editor'),
-              name: 'dataJson',
-              message: 'Enter new data (JSON):',
-              ...(metadata.protectionMode === 'USER_SESSION_ONLY'
-                ? {mask: '*'}
-                : {default: JSON.stringify(current.data, null, 2)}),
-            },
-          ]);
-          try {
-            newData = JSON.parse(dataJson) as Record<string, unknown>;
-          } catch {
-            output.error('Invalid JSON data');
-            process.exit(1);
-          }
+        const result = await client.post<SecretMetadata>(`/v1/secrets/${id}/rotate/value`, {data: newData, expectedVersion: current.version});
+        if (options.json === true) output.json(result);
+        else {
+          output.success('Secret rotated successfully!');
+          console.log(`  New Version: ${result.version}`);
         }
-
-        const rotateSpinner = output.spinner('Rotating secret...').start();
-
-        const result = await client.post<SecretMetadata>(`/v1/secrets/${id}/rotate`, { data: newData });
-        rotateSpinner.stop();
-
-        if (options.json) {
-          output.json(result);
-          return;
-        }
-
-        output.success('Secret rotated successfully!');
-        console.log(`  New Version: ${result.version}`);
       } catch (error) {
         spinner.fail('Failed to rotate secret');
-        output.error((error as Error).message);
+        output.error(safeSecretError(error));
         process.exit(1);
       }
     });

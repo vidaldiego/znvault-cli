@@ -32,6 +32,8 @@ export interface BannerContext {
 export function shouldSkipProfileIndicator(ctx: BannerContext): boolean {
   if (ctx.opts.json === true) return true;
 
+  if (ctx.name === 'code' && ctx.parent === 'totp') return true;
+
   if (ctx.name === 'completion' || ctx.parent === 'completion') return true;
 
   if (ctx.name === 'forward' && ctx.parent === 'ssh' && ctx.opts.printPort === true) return true;

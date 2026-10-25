@@ -131,9 +131,51 @@ znvault secret decrypt <alias> --version 2           # Retained historical versi
 znvault secret create <alias> --text "secret"        # Create plain text
 printf '%s\n' '{"k":"v"}' | \
   znvault secret create <alias> --data-stdin         # JSON without argv/files
-znvault secret update <alias> --data '{"k":"new"}' # Replace JSON data
+znvault secret update <alias> --data '{"k":"new"}' # Merge JSON fields
 znvault secret delete <alias>                        # Delete secret
 ```
+
+### Authenticator / TOTP Secrets
+
+Store an authenticator on its own or attach one to an existing secret. Import a
+Base32 seed or `otpauth://totp` URI through the masked prompt or bounded stdin.
+Seed-only imports use SHA1, six digits and a thirty-second period. Supported URI
+settings are SHA1/SHA256/SHA512, six/eight digits and a 1..300-second period.
+
+```bash
+znvault secret totp import app/authenticator          # Masked standalone import
+znvault secret totp import app/login --attach         # Masked attachment
+znvault secret totp import app/authenticator --seed-stdin
+znvault secret totp import app/authenticator \
+  --protection user-session --grant-user HUMAN_USER_ID
+znvault secret totp code app/login                    # Only the current code
+znvault secret totp code app/login --json             # code, validUntil, period
+znvault secret totp remove app/login                  # Remove an attachment
+znvault secret delete app/authenticator               # Delete a standalone secret
+```
+
+For `--seed-stdin`, pipe directly from a trusted source; keep seed material out of
+command arguments, shell history and temporary files. `validUntil` is a Unix
+timestamp in milliseconds. Code generation uses the normal authorised decrypt
+operation and the local clock.
+
+An attachment shares its secret's protection, user grants, permissions and
+lifecycle. Choose a standalone secret when it needs separate access controls.
+User-Sealed authenticators retain the HUMAN password-session and explicit grant
+requirements. Linked replicas are read-only, and attachment to link pointers or
+public-key secrets is refused. Existing custom fields named `totp` are left intact
+and must be resolved explicitly before attachment.
+
+Updates and rotations preserve other raw fields and reference templates. The
+CLI keeps canonical TOTP fields out of generic temporary-file editors and patch
+diffs. Use `secret totp import --attach` to replace an attached seed. These
+read-modify-write operations require server support for conditional writes;
+upgrade the server first. A missing conditional endpoint or version conflict
+stops the command without retrying an older payload or using a legacy endpoint.
+
+Import, replacement and removal create ordinary encrypted secret versions, so
+old seeds remain in retained history and normal encrypted backups/replication.
+Removing the vault copy leaves the remote account's MFA configuration in place.
 
 ### User-Sealed Secrets
 
