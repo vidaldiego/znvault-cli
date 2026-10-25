@@ -10,7 +10,7 @@ import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { GetOptions, SecretMetadata } from './types.js';
-import { formatDate, formatType, formatBytes } from './helpers.js';
+import { formatDate, formatType, formatBytes, formatReplication } from './helpers.js';
 import { resolveSecretId } from './resolve.js';
 
 /**
@@ -79,6 +79,11 @@ export function registerGetCommand(secretCmd: Command): void {
         }
         if (secret.contentType) {
           table.push(['Content Type', secret.contentType]);
+        }
+
+        const replication = formatReplication(secret.replication);
+        if (replication !== null) {
+          table.push(['Replication', replication]);
         }
 
         const refsRow = referencesRowValue(secret);

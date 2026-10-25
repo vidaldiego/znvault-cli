@@ -10,7 +10,7 @@ import Table from 'cli-table3';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type { ListOptions, SecretsListResponse } from './types.js';
-import { formatDate, formatType, formatTags, truncateAlias, formatExpiry, formatPaginationInfo } from './helpers.js';
+import { formatDate, formatType, formatTags, truncateAlias, formatExpiry, formatPaginationInfo, formatReplication } from './helpers.js';
 
 export function registerListCommand(secretCmd: Command): void {
   secretCmd
@@ -53,8 +53,8 @@ export function registerListCommand(secretCmd: Command): void {
         }
 
         const table = new Table({
-          head: ['ID', 'Alias', 'Tenant', 'Type', 'Ver', 'Expires', 'Tags', 'Updated'],
-          colWidths: [12, 42, 12, 16, 5, 14, 20, 20],
+          head: ['ID', 'Alias', 'Tenant', 'Type', 'Ver', 'Replication', 'Expires', 'Tags', 'Updated'],
+          colWidths: [12, 42, 12, 16, 5, 28, 14, 20, 20],
           wordWrap: true,
         });
 
@@ -65,6 +65,7 @@ export function registerListCommand(secretCmd: Command): void {
             secret.tenant.slice(0, 10),
             formatType(secret.type, secret.subType),
             String(secret.version),
+            formatReplication(secret.replication) ?? '-',
             formatExpiry(secret.expiresAt ?? secret.ttlUntil),
             formatTags(secret.tags),
             formatDate(secret.updatedAt).split(',')[0], // Just date

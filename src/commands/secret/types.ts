@@ -32,7 +32,14 @@ export interface SecretMetadata {
   hasReferences?: boolean;
   protectionMode?: 'STANDARD' | 'USER_SESSION_ONLY';
   grantCount?: number;
-  replication?: { role: 'source' | 'replica'; readonly: boolean };
+  replication?: {
+    role: 'source' | 'replica';
+    readonly: boolean;
+    selectedCount?: number;
+    hasCopy?: boolean;
+    lifecycle?: 'active' | 'origin_deleted' | 'paused' | 'revoked' | 'closed' | 'no_copy';
+    syncState?: 'current' | 'pending' | 'stale' | 'error';
+  } | null;
 }
 
 export interface DecryptedSecret extends SecretMetadata {
