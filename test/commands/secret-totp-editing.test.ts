@@ -112,6 +112,13 @@ describe('existing editors preserve attached TOTP', () => {
     expect(state.put).not.toHaveBeenCalled();
   });
 
+  it('retains normal generic editing of public-key subtypes', async () => {
+    current = {...current, type: 'opaque', subType: 'rsa_public_key', data: {publicKey: 'public fixture', keep: true}};
+    state.stdin.mockResolvedValueOnce('{"publicKey":"updated public fixture"}');
+    await run('update', '--data-stdin');
+    expect(state.put).toHaveBeenCalledWith(`/v1/secrets/${id}/value`, {expectedVersion: 7, data: {publicKey: 'updated public fixture', keep: true}});
+  });
+
   it('keeps canonical TOTP out of patch dry-run diffs', async () => {
     current = {...current, type: 'setting', subType: 'json'};
     await run('patch', '--set', 'username=bob', '--dry-run', '--json');

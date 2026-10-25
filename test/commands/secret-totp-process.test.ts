@@ -1,6 +1,6 @@
 import {spawn} from 'node:child_process';
 import {createServer, type Server} from 'node:http';
-import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
@@ -24,11 +24,16 @@ async function files(directoryPath: string): Promise<string[]> {
   return contents.flat();
 }
 
-async function cli(args: string[], stdin = ''): Promise<{code: number | null; stdout: string; stderr: string}> {
+async function cli(args: string[], stdin = '', authentication: 'api-key' | 'user' = 'api-key'): Promise<{code: number | null; stdout: string; stderr: string}> {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('ZNVAULT_') && name !== 'DATABASE_URL'));
+  if (authentication === 'user') {
+    await writeFile(join(directory, 'config.json'), JSON.stringify({activeProfile: 'default', plugins: [], profiles: {default: {
+      url, insecure: false, timeout: 30000, credentials: {accessToken: 'synthetic-test-access-token', refreshToken: 'synthetic-test-refresh-token', expiresAt: Date.now() + 3600000, userId: 'synthetic-user', username: 'alice', role: 'user', tenantId: 'lab'},
+    }}}), {mode: 0o600});
+  }
   const child = spawn(process.execPath, ['dist/index.js', '--no-plugins', '--url', url, ...args], {
     cwd: process.cwd(),
-    env: {...env, CI: '1', ZNVAULT_CONFIG_DIR: directory, ZNVAULT_NO_PLUGINS: '1', ZNVAULT_NO_UPDATE_CHECK: '1', ZNVAULT_API_KEY: 'synthetic-test-api-key'},
+    env: {...env, CI: '1', ZNVAULT_CONFIG_DIR: directory, ZNVAULT_NO_PLUGINS: '1', ZNVAULT_NO_UPDATE_CHECK: '1', ...(authentication === 'api-key' ? {ZNVAULT_API_KEY: 'synthetic-test-api-key'} : {})},
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let stdout = '';
@@ -58,7 +63,7 @@ beforeEach(async () => {
       response.end(JSON.stringify(meta));
     } else if (status !== 200) {
       response.statusCode = status;
-      response.end(JSON.stringify({error: status === 409 ? 'SECRET_VERSION_CONFLICT' : 'not_found', code: status === 409 ? 'SECRET_VERSION_CONFLICT' : 'not_found', message: `untrusted server error containing ${seed}`}));
+      response.end(JSON.stringify({error: status === 409 ? 'SECRET_VERSION_CONFLICT' : 'not_found', code: status === 409 ? 'SECRET_VERSION_CONFLICT' : 'not_found', message: `untrusted server error containing ${seed} and otpauth://totp/Acme:alice?secret=${seed}`}));
     } else {
       data = input.data as Record<string, unknown>;
       response.end(JSON.stringify({...meta, version: 8}));
@@ -85,6 +90,27 @@ describe('built TOTP CLI process boundaries', () => {
     expect(requests[0]).toMatchObject({method: 'POST', url: '/v1/secrets', apiKey: 'synthetic-test-api-key', data: {type: 'credential', subType: 'totp', data: {totp: {...totp, issuer: 'Acme', accountName: 'alice'}}}});
     expect([...args, result.stdout, result.stderr, ...await files(directory)].join('\n')).not.toContain(seed);
     expect(JSON.parse(result.stdout)).toEqual({id, alias: 'lab/authenticator', version: 8});
+  });
+
+  it.each(['standard', 'user-session'])('generic %s create never echoes seed or URI from an HTTP error', async (protection) => {
+    status = 422;
+    const grants = protection === 'user-session' ? ['--grant-user', 'synthetic-user'] : [];
+    const result = await cli(['secret', 'create', 'lab/authenticator', '--sub-type', 'totp', '--data-stdin', '--protection', protection, ...grants, '--json'], JSON.stringify({totp}), 'user');
+    expect(result.code).toBe(1);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({method: 'POST', url: '/v1/secrets', data: {type: 'credential', subType: 'totp', data: {totp}}});
+    expect(result.stdout + result.stderr + (await files(directory)).join('')).not.toContain(seed);
+    expect(result.stdout + result.stderr).not.toContain('otpauth://');
+    expect(result.stderr).toContain('Secret operation failed.');
+  });
+
+  it('generic create emits a fixed error for malformed stdin JSON containing seed material', async () => {
+    const result = await cli(['secret', 'create', 'lab/authenticator', '--sub-type', 'totp', '--data-stdin', '--json'], `{"totp":{"secret":"${seed}","uri":"otpauth://totp/alice?secret=${seed}"}, invalid}`, 'user');
+    expect(result.code).toBe(1);
+    expect(requests).toHaveLength(0);
+    expect(result.stdout + result.stderr).not.toContain(seed);
+    expect(result.stdout + result.stderr).not.toContain('otpauth://');
+    expect(result.stderr).toContain('Invalid JSON received by --data-stdin');
   });
 
   it('prints a bare code and restricted JSON through normal API-key authentication', async () => {

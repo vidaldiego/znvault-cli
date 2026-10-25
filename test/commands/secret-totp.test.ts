@@ -103,6 +103,13 @@ describe('native secret totp commands', () => {
     expect(state.put).not.toHaveBeenCalled();
   });
 
+  it.each(['rsa_public_key', 'ed25519_public_key', 'ecdsa_public_key'])('refuses attachment to publishable subtype %s without a write', async (subType) => {
+    decrypted = {...decrypted, subType};
+    await expect(run(['import', id, '--attach', '--seed-stdin'])).rejects.toThrow('exit');
+    expect(state.put).not.toHaveBeenCalled();
+    expect(state.error).toHaveBeenCalledWith('Authenticators cannot be attached to public-key secrets.');
+  });
+
   it('does not alter protection or grants when attaching', async () => {
     await expect(run(['import', id, '--attach', '--seed-stdin', '--protection', 'standard'])).rejects.toThrow('exit');
     expect(state.put).not.toHaveBeenCalled();

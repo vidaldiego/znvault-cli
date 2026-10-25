@@ -59,6 +59,9 @@ export function registerTotpCommands(secretCmd: Command): void {
             throw new SecretInputError('Protection and grants cannot be changed while attaching TOTP.');
           }
           const current = await rawSecret(idOrAlias);
+          if (['rsa_public_key', 'ed25519_public_key', 'ecdsa_public_key'].includes(current.subType ?? '')) {
+            throw new SecretInputError('Authenticators cannot be attached to public-key secrets.');
+          }
           if (Object.hasOwn(current.data, 'totp') && readTotpConfig(current.data) === undefined) {
             throw new SecretInputError('The existing totp field is not a canonical authenticator; resolve the legacy field before importing.');
           }

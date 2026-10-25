@@ -17,6 +17,7 @@ import { analyzeFileForSuggestion, formatPemType, type FileAnalysisInfo } from '
 import { validateTokenAlias, validateFieldPath, buildLinkData } from './references.js';
 import {interactiveSecretValuePromptType} from './input-policy.js';
 import {parseTotpInput, readTotpConfig} from '../../lib/totp.js';
+import {safeSecretError, SecretInputError} from './editing.js';
 
 export function registerCreateCommand(secretCmd: Command): void {
   secretCmd
@@ -240,7 +241,7 @@ Examples:
 
         } catch (err) {
           spinner.fail('Failed to get AI suggestions');
-          output.error(err instanceof Error ? err.message : String(err));
+          output.error(safeSecretError(err));
 
           // Continue without suggestions?
           const { continueWithout } = await inquirer.prompt<{ continueWithout: boolean }>([
@@ -319,8 +320,8 @@ Examples:
           let stdinData: string;
           try {
             stdinData = await readStdinUtf8();
-          } catch (error) {
-            output.error(`Failed to read --data-stdin: ${(error as Error).message}`);
+          } catch {
+            output.error('Failed to read --data-stdin');
             process.exit(1);
           }
 
@@ -480,7 +481,7 @@ Examples:
           body.protectionMode = 'USER_SESSION_ONLY';
           if (options.grantUser !== undefined) body.grantUserIds = options.grantUser;
         } else if (options.protection !== 'standard') {
-          throw new Error('--protection must be standard or user-session');
+          throw new SecretInputError('--protection must be standard or user-session');
         }
 
         if (actualSubType) body.subType = actualSubType;
@@ -512,7 +513,7 @@ Examples:
         }
       } catch (error) {
         spinner.fail('Failed to create secret');
-        output.error((error as Error).message);
+        output.error(safeSecretError(error));
         process.exit(1);
       }
     });

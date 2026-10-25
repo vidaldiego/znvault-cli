@@ -162,9 +162,9 @@ operation and the local clock.
 An attachment shares its secret's protection, user grants, permissions and
 lifecycle. Choose a standalone secret when it needs separate access controls.
 User-Sealed authenticators retain the HUMAN password-session and explicit grant
-requirements. Linked replicas are read-only, and attachment to link pointers is
-refused. Existing custom fields named `totp` are left intact and must be resolved
-explicitly before attachment.
+requirements. Linked replicas are read-only, and attachment to link pointers or
+public-key secrets is refused. Existing custom fields named `totp` are left intact
+and must be resolved explicitly before attachment.
 
 Updates and rotations preserve other raw fields and reference templates. The
 CLI keeps canonical TOTP fields out of generic temporary-file editors and patch
