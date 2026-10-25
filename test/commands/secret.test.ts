@@ -588,7 +588,7 @@ describe('secret commands', () => {
         '--enable-references', '--data', '{"a":1}',
       ]);
       expect(client.put).toHaveBeenCalledWith(
-        '/v1/secrets/secret-1',
+        '/v1/secrets/secret-1/value',
         expect.objectContaining({ enableReferences: true }),
       );
     });
@@ -600,7 +600,7 @@ describe('secret commands', () => {
         '--no-enable-references', '--data', '{"a":1}',
       ]);
       expect(client.put).toHaveBeenCalledWith(
-        '/v1/secrets/secret-1',
+        '/v1/secrets/secret-1/value',
         expect.objectContaining({ enableReferences: false }),
       );
     });
@@ -630,6 +630,26 @@ describe('secret commands', () => {
       await program.parseAsync(['node', 'test', 'secret', 'history', 'secret-1']);
 
       expect(client.get).toHaveBeenCalledWith('/v1/secrets/secret-1/history');
+    });
+  });
+
+  describe('TOTP input safety in generic creation', () => {
+    const syntheticSeed = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+    it('uses a masked authenticator prompt for sub-type totp', async () => {
+      const inquirer = (await import('inquirer')).default;
+      vi.mocked(inquirer.prompt).mockResolvedValueOnce({ seedOrUri: syntheticSeed } as never);
+      const { client } = await import('../../src/lib/client.js');
+      await program.parseAsync(['node', 'test', 'secret', 'create', 'lab/authenticator', '--sub-type', 'totp']);
+      expect(inquirer.prompt).toHaveBeenCalledWith([expect.objectContaining({type: 'password', name: 'seedOrUri', mask: '*'})]);
+      expect(client.post).toHaveBeenCalledWith('/v1/secrets', expect.objectContaining({
+        type: 'credential', subType: 'totp', data: {totp: {type: 'totp', secret: syntheticSeed, algorithm: 'SHA1', digits: 6, period: 30}},
+      }));
+    });
+
+    it('rejects canonical seeds supplied through generic --data argv', async () => {
+      const { client } = await import('../../src/lib/client.js');
+      await expect(program.parseAsync(['node', 'test', 'secret', 'create', 'lab/authenticator', '--data', JSON.stringify({totp: {type: 'totp', secret: syntheticSeed, algorithm: 'SHA1', digits: 6, period: 30}})])).rejects.toThrow('exit:1');
+      expect(client.post).not.toHaveBeenCalled();
     });
   });
 

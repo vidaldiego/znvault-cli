@@ -26,6 +26,10 @@ describe('shouldSkipProfileIndicator', () => {
     expect(shouldSkipProfileIndicator({ name: 'decrypt', parent: 'secret', opts: { field: 'password' } })).toBe(true);
   });
 
+  it('skips the banner for TOTP code-only stdout', () => {
+    expect(shouldSkipProfileIndicator({ name: 'code', parent: 'totp', opts: {} })).toBe(true);
+  });
+
   it('keeps the banner for a plain `secret decrypt`', () => {
     expect(shouldSkipProfileIndicator({ name: 'decrypt', parent: 'secret', opts: {} })).toBe(false);
   });

@@ -32,6 +32,7 @@ export interface SecretMetadata {
   hasReferences?: boolean;
   protectionMode?: 'STANDARD' | 'USER_SESSION_ONLY';
   grantCount?: number;
+  replication?: { role: 'source' | 'replica'; readonly: boolean };
 }
 
 export interface DecryptedSecret extends SecretMetadata {
