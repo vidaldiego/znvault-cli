@@ -4,6 +4,8 @@
  * Helper functions for secret commands
  */
 
+import type { SecretMetadata } from './types.js';
+
 // Re-export common formatters from centralized location
 export { formatDate, formatBytes, formatPaginationInfo } from '../../lib/format-helpers.js';
 
@@ -39,4 +41,18 @@ export function formatExpiry(expiresAt?: string): string {
   if (days <= 7) return `${days}d (!)`;
   if (days <= 30) return `${days}d`;
   return `${days}d`;
+}
+
+/** Relationship only: a source link does not prove a received or usable copy. */
+export function formatReplication(state: SecretMetadata['replication']): string | null {
+  if (!state) return null;
+  if (state.role === 'source') {
+    if (state.selectedCount === 0) return null;
+    const count = state.selectedCount;
+    return count !== undefined && Number.isSafeInteger(count) && count > 0 ? `Linked · ${count}` : 'Linked';
+  }
+  const lifecycle = {active: '', origin_deleted: 'Origin deleted', paused: 'Paused', revoked: 'Revoked', closed: 'Closed', no_copy: 'No copy'}[state.lifecycle ?? 'active'];
+  const sync = {current: '', pending: 'Pending', stale: 'Stale', error: 'Error'}[state.syncState ?? 'current'];
+  const status = state.hasCopy === false ? 'No copy' : lifecycle || sync;
+  return ['Replica', status, 'read only'].filter(Boolean).join(' · ');
 }

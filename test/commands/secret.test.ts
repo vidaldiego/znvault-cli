@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
+import {stripVTControlCharacters} from 'node:util';
 
 const { mockReadStdinUtf8 } = vi.hoisted(() => ({
   mockReadStdinUtf8: vi.fn(),
@@ -188,6 +189,50 @@ describe('secret commands', () => {
       await program.parseAsync(['node', 'test', 'secret', 'get', 'secret-1', '--json']);
 
       expect(json).toHaveBeenCalledWith(mockSecretMetadata);
+    });
+  });
+
+  describe('secret Vault-link markers', () => {
+    const cases = [
+      {name: 'source destinations', replication: {role: 'source', readonly: false, selectedCount: 2}, want: 'Linked · 2'},
+      {name: 'source without an old-server count', replication: {role: 'source', readonly: false}, want: 'Linked'},
+      {name: 'read-only current replica', replication: {role: 'replica', readonly: true, hasCopy: true, lifecycle: 'active', syncState: 'current'}, want: 'Replica · read only'},
+      {name: 'stale replica', replication: {role: 'replica', readonly: true, hasCopy: true, lifecycle: 'active', syncState: 'stale'}, want: 'Replica · Stale · read only'},
+      {name: 'origin-deleted replica', replication: {role: 'replica', readonly: true, hasCopy: true, lifecycle: 'origin_deleted', syncState: 'current'}, want: 'Replica · Origin deleted · read only'},
+      {name: 'no copy despite a current sync flag', replication: {role: 'replica', readonly: true, hasCopy: false, lifecycle: 'active', syncState: 'current'}, want: 'Replica · No copy · read only'},
+    ];
+    it.each(cases)('marks $name in list and get from metadata alone', async ({replication, want}) => {
+      const {client} = await import('../../src/lib/client.js');
+      const metadata = {...mockSecretMetadata, id: '6bb3c4d5-1111-4111-8111-111111111111', replication};
+      vi.mocked(client.get).mockImplementation((path: string) => Promise.resolve(path.includes('/v1/secrets?')
+        ? {items: [metadata], pagination: {total: 1, limit: 20, offset: 0, hasMore: false}} : metadata));
+      await program.parseAsync(['node', 'test', 'secret', 'list']);
+      const list = consoleSpy.mock.calls.map(c => String(c[0])).join('\n');
+      expect(list).toContain('Replication');
+      // Read the actual rendered column, including wrapped continuation lines.
+      const rows = stripVTControlCharacters(list).split('\n').filter(line => line.startsWith('│')).map(line => line.split('│').slice(1, -1).map(cell => cell.trim()));
+      const column = rows[0].indexOf('Replication');
+      expect(rows.slice(1).map(row => row[column]).join(' ').replace(/\s/g, '')).toBe(want.replace(/\s/g, ''));
+      consoleSpy.mockClear();
+      await program.parseAsync(['node', 'test', 'secret', 'get', metadata.id]);
+      const get = consoleSpy.mock.calls.map(c => String(c[0])).join('\n');
+      expect(get).toContain('Replication');
+      expect(get).toContain(want);
+      expect(client.get).toHaveBeenCalledTimes(2);
+      expect(client.post).not.toHaveBeenCalled();
+    });
+    it.each([undefined, null])('keeps absent metadata and local references unmarked and preserves JSON (%s)', async replication => {
+      const {client} = await import('../../src/lib/client.js');
+      const {json} = await import('../../src/lib/output.js');
+      const metadata = {...mockSecretMetadata, subType: 'link', hasReferences: true, replication};
+      const response = {items: [metadata], pagination: {total: 1, limit: 20, offset: 0, hasMore: false}};
+      vi.mocked(client.get).mockImplementation((path: string) => Promise.resolve(path.includes('/v1/secrets?') ? response : metadata));
+      await program.parseAsync(['node', 'test', 'secret', 'get', 'secret-1']);
+      expect(consoleSpy.mock.calls.map(c => String(c[0])).join('\n')).not.toContain('Replication');
+      await program.parseAsync(['node', 'test', 'secret', 'list', '--json']);
+      expect(json).toHaveBeenLastCalledWith(response);
+      await program.parseAsync(['node', 'test', 'secret', 'get', 'secret-1', '--json']);
+      expect(json).toHaveBeenLastCalledWith(metadata);
     });
   });
 
