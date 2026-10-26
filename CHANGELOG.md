@@ -5,6 +5,17 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.2] - 2026-10-26
+
+### Fixed
+
+- Keep tenant commands working when Vault redirects superadmin management to
+  `/v1/superadmin/tenants`. Follow exactly one HTTP 307 on the same origin with
+  the same tenant path, query, method, body and authentication. Ordinary tenant
+  calls continue to use their JWT-scoped routes.
+- Reject unsupported, external, altered-target and repeated HTTP redirects
+  instead of reporting an empty successful response.
+
 ## [5.3.1] - 2026-10-25
 
 ### Fixed
