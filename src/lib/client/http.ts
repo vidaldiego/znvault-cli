@@ -483,6 +483,11 @@ export class HttpClient {
       }
     }
 
+    return this.sendRequest<T>(url, headers, options);
+  }
+
+  /** Send with the prepared origin and authentication, including one safe replay. */
+  private sendRequest<T>(url: URL, headers: Record<string, string>, options: RequestOptions): Promise<T> {
     const requestOptions: https.RequestOptions = {
       hostname: url.hostname,
       port: url.port || (url.protocol === 'https:' ? 443 : 80),
@@ -512,6 +517,32 @@ export class HttpClient {
         res.on('data', (chunk: Buffer | string) => (data += String(chunk)));
         res.on('end', () => {
           const statusCode = res.statusCode ?? 0;
+          if (statusCode >= 300 && statusCode < 400) {
+            // Only the server's tenant-isolation migration is replayable. Keep
+            // the exact suffix/query, origin, method, payload and prepared auth.
+            if (statusCode === 307 && !options._followedTenantRedirect &&
+                /^\/v1\/tenants(?:\/|$)/.test(url.pathname) && res.headers.location) {
+              try {
+                const target = new URL(res.headers.location, url);
+                const expected = new URL(url);
+                expected.pathname = `/v1/superadmin${url.pathname.slice('/v1'.length)}`;
+                if (target.href === expected.href) {
+                  this.sendRequest<T>(target, headers, {
+                    ...options,
+                    path: target.pathname,
+                    _followedTenantRedirect: true,
+                  }).then(resolve, reject);
+                  return;
+                }
+              } catch {
+                // Malformed locations fail closed below, without exposing them.
+              }
+            }
+            reject(Object.assign(new Error(
+              `Refusing HTTP ${statusCode.toString()} redirect: only one exact same-origin tenant-management redirect is allowed`,
+            ), {statusCode}));
+            return;
+          }
           try {
             // Parse response - empty string becomes empty object for successful responses
             const parsed: unknown = data ? JSON.parse(data) : (statusCode === 204 ? undefined : {});

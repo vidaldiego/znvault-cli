@@ -28,6 +28,8 @@ export interface RequestOptions {
   // token itself is rejected — surface that to the user as a hard
   // re-login).
   _retriedAfter401Refresh?: boolean;
+  // Internal: permit at most one exact tenant-management namespace redirect.
+  _followedTenantRedirect?: boolean;
 }
 
 export interface MessageResponse {
