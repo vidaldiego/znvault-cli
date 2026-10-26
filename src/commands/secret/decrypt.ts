@@ -208,7 +208,7 @@ Raw output (value only — nothing else on stdout):
         const apiError = error as Error & {errorCode?: string};
         output.error(apiError.message);
         if (apiError.errorCode === 'SECRET_REQUIRES_USER_SESSION') {
-          output.info('Start a fresh human session with `znvault login --web` or `znvault login -u <username>`, then retry.');
+          output.info('Start a fresh human session with a password (`znvault login -u <username>`) or a linked PRF-capable passkey (`znvault login --web`), then retry.');
         }
         process.exit(1);
       }

@@ -63,7 +63,7 @@ export function registerGrantCommands(secretCmd: Command): void {
   secretCmd.command('grants <secretId>')
     .option('--selection <id>', 'Disambiguate a retained or current selection UUID')
     .option('--link <name-or-id>', 'Destination link; no flag preserves local grants')
-    .option('--recipients', 'Prepare and list eligible destination humans and pinned fingerprints (password session required)')
+    .option('--recipients', 'Prepare and list eligible destination humans and pinned fingerprints (unlocked HUMAN session: password or linked PRF passkey)')
     .description('List users assigned to a User-Sealed Secret')
     .option('--json', 'Output as JSON')
     .action(async (secretId: string, options: { json?: boolean; link?:string;selection?:string; recipients?:boolean }) => {

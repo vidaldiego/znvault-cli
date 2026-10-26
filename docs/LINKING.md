@@ -30,7 +30,7 @@ Requires a server release with linking/schema/fleet capability 1; User-Sealed al
 
 `sync` queues work; it does not claim a remote receipt. `stop`/`resume` operate on a selection; superadmin `linking {test,sync,pause,resume,revoke} BINDING_UUID` operate on transport. Use `--selection UUID` if retained/current selections share a source UUID. Names must resolve unambiguously. Metadata and JSON output exclude values, credential envelopes and encrypted grants.
 
-For User-Sealed, the destination HUMAN first logs in there with their independent password/key. The source human needs a current password-unlocked session, explicit native grant, ordinary read/update and strict replicate rights:
+For User-Sealed, the destination HUMAN first unlocks their independent account there. Both sites retain separate users, keys, passkeys and sessions: linking a passkey on one Vault does not link it on the other. The source human needs a current unlocked HUMAN session (password, or a previously linked PRF-capable passkey via `znvault login --web` on a supporting server), explicit native grant, ordinary read/update and strict replicate rights. An unlinked or non-PRF passkey cannot unlock User-Sealed values:
 
 ```sh
 znvault --profile zincapp secret grants SOURCE_UUID --link offsite --recipients --json
