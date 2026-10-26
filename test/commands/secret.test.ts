@@ -363,6 +363,13 @@ describe('secret commands', () => {
       ).rejects.toThrow('exit:1');
 
       expect(info).toHaveBeenCalledWith(expect.stringContaining('znvault login --web'));
+      expect(info).toHaveBeenCalledWith(expect.stringContaining('linked PRF-capable passkey'));
+    });
+
+    it('explains both eligible unlock methods in linked-recipient help', () => {
+      const secret = program.commands.find(command => command.name() === 'secret');
+      const grants = secret?.commands.find(command => command.name() === 'grants');
+      expect(grants?.helpInformation().replace(/\s+/g, ' ')).toContain('password or linked PRF');
     });
 
     it('should output JSON when --json flag is used', async () => {

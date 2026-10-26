@@ -161,9 +161,9 @@ operation and the local clock.
 
 An attachment shares its secret's protection, user grants, permissions and
 lifecycle. Choose a standalone secret when it needs separate access controls.
-User-Sealed authenticators retain the HUMAN password-session and explicit grant
-requirements. Linked replicas are read-only, and attachment to link pointers or
-public-key secrets is refused. Existing custom fields named `totp` are left intact
+User-Sealed authenticators retain the unlocked HUMAN session and explicit grant
+requirements described below. Linked replicas are read-only, and attachment to
+link pointers or public-key secrets is refused. Existing custom fields named `totp` are left intact
 and must be resolved explicitly before attachment.
 
 Updates and rotations preserve other raw fields and reference templates. The
@@ -179,8 +179,11 @@ Removing the vault copy leaves the remote account's MFA configuration in place.
 
 ### User-Sealed Secrets
 
-`USER_SESSION_ONLY` values require an eligible HUMAN username/password session
-and an explicit user grant. API keys and service accounts cannot decrypt them.
+`USER_SESSION_ONLY` values require an eligible unlocked HUMAN session and an
+explicit user grant. Unlock with a password, or with a previously linked
+PRF-capable passkey through `znvault login --web` on a server supporting linked
+passkey unlock. An unlinked passkey or one without PRF support signs in normally
+but cannot unlock these values. API keys and service accounts cannot decrypt them.
 Use interactive or stdin input so plaintext does not enter argv or shell history.
 
 ```bash

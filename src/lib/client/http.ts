@@ -458,8 +458,8 @@ export class HttpClient {
 
     // Refresh remains unauthenticated for ordinary token rotation, but the
     // current access token is supplied as an optional same-family proof. The
-    // server accepts it only while it is signed, unexpired, unrevoked and still
-    // backed by the distributed User-Sealed envelope.
+    // server validates its signature, family, provenance, revocation and unlock
+    // deadlines. Access-token expiry alone does not discard a continuity proof.
     if (options.skipAuth && options._refreshAccessToken) {
       headers.Authorization = `Bearer ${options._refreshAccessToken}`;
     }

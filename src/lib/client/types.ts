@@ -12,8 +12,9 @@ export interface RequestOptions {
   skipAuth?: boolean;
   /**
    * Internal access-token proof attached only to /auth/refresh. It lets the
-   * server continue a still-live User-Sealed password capability without ever
-   * placing that capability in the refresh token itself.
+   * server continue an eligible User-Sealed password or linked-passkey
+   * capability, including an expired access proof within server policy, without
+   * ever placing that capability in the refresh token itself.
    */
   _refreshAccessToken?: string;
   /**
