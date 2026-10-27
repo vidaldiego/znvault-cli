@@ -1,6 +1,8 @@
 // Path: znvault-cli/src/commands/unseal.ts
 
-import { type Command } from 'commander';
+import { type Command, Option } from 'commander';
+import {runIPhoneApproval, reportApprovalError} from './user-sealed.js';
+import {withApprovalSession} from '../lib/session-approval.js';
 
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -27,7 +29,7 @@ const __dirname = dirname(__filename);
 interface UnsealStatusResponse {
   unsealed: boolean;
   unsealedUntil: string | null;
-  method: 'otp' | 'device' | null;
+  method: 'otp' | 'device' | 'iphone' | null;
   deviceId?: string;
   scope: string;
   remainingSeconds: number;
@@ -37,15 +39,20 @@ interface UnsealOptions {
   otp?: boolean;
   device?: boolean;
   auto?: boolean;
+  iphone?: boolean;
+  iphoneDevice?: string;
+  scope?: 'crypto' | 'root';
   json?: boolean;
 }
 
 interface UnsealStatusOptions {
   json?: boolean;
+  scope?: 'crypto' | 'root';
 }
 
 interface SealOptions {
   json?: boolean;
+  scope?: 'crypto' | 'root' | 'all';
 }
 
 interface ChallengeResponse {
@@ -174,8 +181,19 @@ export function registerUnsealCommands(program: Command): void {
     .option('--otp', 'Force OTP unseal')
     .option('--device', 'Force device unseal')
     .option('--auto', 'Auto-unseal using stored TOTP secret (no prompts)')
+    .option('--iphone', 'Approve unseal with a paired iPhone')
+    .option('--iphone-device <id>', 'Select a ready iPhone (requires --iphone)')
+    .addOption(new Option('--scope <scope>', 'Unseal scope').choices(['crypto', 'root']))
     .option('--json', 'Output as JSON')
     .action(async (options: UnsealOptions) => {
+      if ([options.auto, options.otp, options.device, options.iphone].filter(Boolean).length > 1
+        || (options.iphoneDevice && !options.iphone)) {
+        reportApprovalError(new Error('SESSION_APPROVAL_METHOD_REQUIRED'), options.json); return;
+      }
+      if (options.iphone) {
+        try {await runIPhoneApproval('unseal', options);} catch (error) {reportApprovalError(error, options.json);}
+        return;
+      }
       try {
         if (options.auto) {
           // Auto-unseal using stored TOTP secret
@@ -221,12 +239,15 @@ export function registerUnsealCommands(program: Command): void {
   unsealCmd
     .command('status')
     .description('Check current unseal status')
+    .addOption(new Option('--scope <scope>', 'Scope to query').choices(['crypto', 'root']))
     .option('--json', 'Output as JSON')
     .action(async (options: UnsealStatusOptions) => {
       const spinner = output.spinner('Checking unseal status...').start();
 
       try {
-        const status = await client.get<UnsealStatusResponse>('/v1/auth/unseal/status');
+        const scope = options.scope ?? unsealCmd.opts<UnsealOptions>().scope;
+        const status = await withApprovalSession(async session => await session.request<UnsealStatusResponse>(
+          'GET', `/v1/auth/unseal/status?scope=${scope ?? 'crypto'}`));
         spinner.stop();
 
         if (options.json) {
@@ -235,6 +256,7 @@ export function registerUnsealCommands(program: Command): void {
         }
 
         const statusData: Record<string, { value: string; status?: 'success' | 'warning' | 'error' | 'info' }> = {
+          'Scope': {value: status.scope},
           'Unsealed': {
             value: status.unsealed ? 'Yes' : 'No',
             status: status.unsealed ? 'success' : 'warning'
@@ -243,7 +265,6 @@ export function registerUnsealCommands(program: Command): void {
 
         if (status.unsealed) {
           statusData.Method = { value: status.method ?? 'unknown' };
-          statusData.Scope = { value: status.scope };
           statusData.Expires = { value: status.unsealedUntil ?? 'unknown' };
           statusData.Remaining = {
             value: formatDuration(status.remainingSeconds),
@@ -264,19 +285,21 @@ export function registerUnsealCommands(program: Command): void {
   // Seal command (revoke unseal)
   program
     .command('seal')
-    .description('Seal the vault (revoke current unseal session)')
+    .description('Close approval in this session (default: crypto; all includes User-Sealed)')
+    .addOption(new Option('--scope <scope>', 'Scope to close').choices(['crypto', 'root', 'all']))
     .option('--json', 'Output as JSON')
     .action(async (options: SealOptions) => {
       const spinner = output.spinner('Sealing vault...').start();
 
       try {
-        await client.post<{ sealed: boolean }>('/v1/auth/unseal/seal', {});
-        spinner.succeed('Vault sealed');
+        const scope = options.scope ?? 'crypto';
+        await withApprovalSession(async session => await session.request('POST', `/v1/auth/unseal/seal?scope=${scope}`, {}));
+        spinner.succeed(`${scope === 'all' ? 'Crypto, root and User-Sealed' : scope} approval closed`);
 
         if (options.json) {
-          output.json({ sealed: true });
+          output.json({ sealed: true, scope });
         } else {
-          output.success('Crypto access has been revoked. Re-unseal when needed.');
+          output.success(`${scope === 'all' ? 'Crypto, root and User-Sealed' : scope} access closed in this session.`);
         }
       } catch (err) {
         spinner.fail('Failed to seal vault');
@@ -421,6 +444,7 @@ async function unsealWithOTP(options: UnsealOptions): Promise<void> {
   try {
     const result = await client.post<UnsealStatusResponse>('/v1/auth/unseal', {
       totpCode: code,
+      ...(options.scope ? {scope: options.scope} : {}),
     });
 
     spinner.succeed('Vault unsealed');
@@ -454,6 +478,7 @@ async function unsealWithAutoOTP(options: UnsealOptions): Promise<void> {
 
     const result = await client.post<UnsealStatusResponse>('/v1/auth/unseal', {
       totpCode: code,
+      ...(options.scope ? {scope: options.scope} : {}),
     });
 
     spinner.succeed('Vault unsealed (auto)');
@@ -506,7 +531,7 @@ async function unsealWithDevice(options: UnsealOptions): Promise<void> {
   const challengeSpinner = output.spinner('Getting challenge from server...').start();
   let challenge: string;
   try {
-    const result = await client.post<ChallengeResponse>('/v1/auth/unseal/challenge', {});
+    const result = await client.post<ChallengeResponse>('/v1/auth/unseal/challenge', options.scope ? {scope: options.scope} : {});
     challenge = result.challenge;
     challengeSpinner.succeed('Challenge received');
   } catch (err) {

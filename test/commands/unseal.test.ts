@@ -2,12 +2,18 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
+const {boundRequest} = vi.hoisted(() => ({boundRequest: vi.fn()}));
+vi.mock('../../src/lib/session-approval.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../src/lib/session-approval.js')>(),
+  withApprovalSession: vi.fn(async operation => await operation({request: boundRequest})),
+}));
 
 // Mock dependencies
 vi.mock('../../src/lib/client.js', () => ({
   client: {
     get: vi.fn(),
     post: vi.fn(),
+    request: vi.fn(),
   },
 }));
 
@@ -71,11 +77,27 @@ describe('unseal commands', () => {
   });
 
   describe('unseal status', () => {
+    it('queries root explicitly and closes only the selected root scope', async () => {
+      const {client} = await import('../../src/lib/client.js');
+      boundRequest.mockResolvedValue({unsealed:true,scope:'root',method:'iphone',remainingSeconds:600});
+      await program.parseAsync(['node','test','unseal','status','--scope','root']);
+      expect(boundRequest).toHaveBeenCalledWith('GET','/v1/auth/unseal/status?scope=root');
+      boundRequest.mockResolvedValue({sealed:true});
+      await program.parseAsync(['node','test','seal','--scope','root','--json']);
+      expect(boundRequest).toHaveBeenCalledWith('POST','/v1/auth/unseal/seal?scope=root',{});
+      const {json} = await import('../../src/lib/output.js');expect(json).toHaveBeenCalledWith({sealed:true,scope:'root'});
+    });
+    it('supports an explicit seal all that includes User-Sealed',async()=>{
+      const {client}=await import('../../src/lib/client.js');boundRequest.mockResolvedValue({sealed:true});
+      await program.parseAsync(['node','test','seal','--scope','all','--json']);
+      expect(boundRequest).toHaveBeenCalledWith('POST','/v1/auth/unseal/seal?scope=all',{});
+      const {json}=await import('../../src/lib/output.js');expect(json).toHaveBeenCalledWith({sealed:true,scope:'all'});
+    });
     it('should display unseal status when sealed', async () => {
       const { client } = await import('../../src/lib/client.js');
       const visual = await import('../../src/lib/visual.js');
 
-      vi.mocked(client.get).mockResolvedValue({
+      boundRequest.mockResolvedValue({
         unsealed: false,
         unsealedUntil: null,
         method: null,
@@ -85,7 +107,7 @@ describe('unseal commands', () => {
 
       await program.parseAsync(['node', 'test', 'unseal', 'status']);
 
-      expect(client.get).toHaveBeenCalledWith('/v1/auth/unseal/status');
+      expect(boundRequest).toHaveBeenCalledWith('GET', '/v1/auth/unseal/status?scope=crypto');
       expect(visual.statusBox).toHaveBeenCalledWith('UNSEAL STATUS', expect.objectContaining({
         'Unsealed': expect.objectContaining({ value: 'No', status: 'warning' }),
       }));
@@ -95,7 +117,7 @@ describe('unseal commands', () => {
       const { client } = await import('../../src/lib/client.js');
       const visual = await import('../../src/lib/visual.js');
 
-      vi.mocked(client.get).mockResolvedValue({
+      boundRequest.mockResolvedValue({
         unsealed: true,
         unsealedUntil: '2024-01-01T13:00:00Z',
         method: 'otp',
@@ -105,7 +127,7 @@ describe('unseal commands', () => {
 
       await program.parseAsync(['node', 'test', 'unseal', 'status']);
 
-      expect(client.get).toHaveBeenCalledWith('/v1/auth/unseal/status');
+      expect(boundRequest).toHaveBeenCalledWith('GET', '/v1/auth/unseal/status?scope=crypto');
       expect(visual.statusBox).toHaveBeenCalledWith('UNSEAL STATUS', expect.objectContaining({
         'Unsealed': expect.objectContaining({ value: 'Yes', status: 'success' }),
         'Method': expect.objectContaining({ value: 'otp' }),
@@ -119,7 +141,7 @@ describe('unseal commands', () => {
     it('should call API for status check', async () => {
       const { client } = await import('../../src/lib/client.js');
 
-      vi.mocked(client.get).mockResolvedValue({
+      boundRequest.mockResolvedValue({
         unsealed: true,
         unsealedUntil: '2024-01-01T13:00:00Z',
         method: 'otp',
@@ -129,7 +151,7 @@ describe('unseal commands', () => {
 
       await program.parseAsync(['node', 'test', 'unseal', 'status']);
 
-      expect(client.get).toHaveBeenCalledWith('/v1/auth/unseal/status');
+      expect(boundRequest).toHaveBeenCalledWith('GET', '/v1/auth/unseal/status?scope=crypto');
     });
   });
 
@@ -201,23 +223,23 @@ describe('unseal commands', () => {
       const { client } = await import('../../src/lib/client.js');
       const { success } = await import('../../src/lib/output.js');
 
-      vi.mocked(client.post).mockResolvedValue({ sealed: true });
+      boundRequest.mockResolvedValue({ sealed: true });
 
       await program.parseAsync(['node', 'test', 'seal']);
 
-      expect(client.post).toHaveBeenCalledWith('/v1/auth/unseal/seal', {});
-      expect(success).toHaveBeenCalledWith(expect.stringContaining('Crypto access has been revoked'));
+      expect(boundRequest).toHaveBeenCalledWith('POST','/v1/auth/unseal/seal?scope=crypto', {});
+      expect(success).toHaveBeenCalledWith('crypto access closed in this session.');
     });
 
     it('should output JSON when --json flag is used', async () => {
       const { client } = await import('../../src/lib/client.js');
       const { json } = await import('../../src/lib/output.js');
 
-      vi.mocked(client.post).mockResolvedValue({ sealed: true });
+      boundRequest.mockResolvedValue({ sealed: true });
 
       await program.parseAsync(['node', 'test', 'seal', '--json']);
 
-      expect(json).toHaveBeenCalledWith({ sealed: true });
+      expect(json).toHaveBeenCalledWith({ sealed: true, scope: 'crypto' });
     });
   });
 });

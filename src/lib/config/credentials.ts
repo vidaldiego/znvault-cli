@@ -17,9 +17,10 @@ import { debug } from '../debug.js';
  * `pendingRefresh: undefined` to clear a marker — omission alone does not strip
  * a spread key.
  */
-export function storeCredentials(credentials: StoredCredentials): void {
+export function storeCredentials(credentials: StoredCredentials, beforeWrite?: () => void): void {
   const profileName = getActiveProfileName();
   mutateProfileAuthentication(profileName, (profile) => {
+    beforeWrite?.();
     if (profile.apiKey) {
       throw new Error('Profile is configured for API key authentication');
     }
@@ -67,13 +68,13 @@ export function decodeRefreshJti(refreshToken: string): string | null {
  * if there are no credentials to mark. While a marker is present the marked
  * token must NEVER be presented (design §A.1). presentedJti is the real jti.
  */
-export function writePendingRefreshMarker(presentedJti: string): boolean {
+export function writePendingRefreshMarker(presentedJti: string, beforeWrite?: () => void): boolean {
   const credentials = getCredentials();
   if (!credentials) return false;
   storeCredentials({
     ...credentials,
     pendingRefresh: { presentedJti, startedAt: Date.now() },
-  });
+  }, beforeWrite);
   return true;
 }
 

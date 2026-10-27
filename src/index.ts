@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { applyTenantContextPatch } from './lib/command-context.js';
 import { registerAuthCommands } from './commands/auth.js';
+import { registerUserSealedCommands } from './commands/user-sealed.js';
 
 // Apply the global Commander patch that gates `--tenant` options by registration
 // context. Must run before any command registration.
@@ -223,6 +224,7 @@ registerSelfUpdateCommands(program);
 registerAdvisorCommands(program);
 registerCompletionCommands(program);
 registerUnsealCommands(program);
+registerUserSealedCommands(program);
 registerDeviceCommands(program);
 registerCryptoCommands(program);
 registerPluginCommands(program);
