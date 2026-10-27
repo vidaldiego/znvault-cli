@@ -21,6 +21,7 @@ import {
   clearAutoUnsealSecret,
   parseOTPAuthURI,
   getActiveProfileName,
+  hasApiKey,
 } from '../lib/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -246,8 +247,10 @@ export function registerUnsealCommands(program: Command): void {
 
       try {
         const scope = options.scope ?? unsealCmd.opts<UnsealOptions>().scope;
-        const status = await withApprovalSession(async session => await session.request<UnsealStatusResponse>(
-          'GET', `/v1/auth/unseal/status?scope=${scope ?? 'crypto'}`));
+        const status = hasApiKey() && (scope === undefined || scope === 'crypto')
+          ? await client.get<UnsealStatusResponse>('/v1/auth/unseal/status')
+          : await withApprovalSession(async session => await session.request<UnsealStatusResponse>(
+            'GET', `/v1/auth/unseal/status?scope=${scope ?? 'crypto'}`));
         spinner.stop();
 
         if (options.json) {
@@ -293,7 +296,8 @@ export function registerUnsealCommands(program: Command): void {
 
       try {
         const scope = options.scope ?? 'crypto';
-        await withApprovalSession(async session => await session.request('POST', `/v1/auth/unseal/seal?scope=${scope}`, {}));
+        if (hasApiKey() && scope === 'crypto') await client.post('/v1/auth/unseal/seal', {});
+        else await withApprovalSession(async session => await session.request('POST', `/v1/auth/unseal/seal?scope=${scope}`, {}));
         spinner.succeed(`${scope === 'all' ? 'Crypto, root and User-Sealed' : scope} approval closed`);
 
         if (options.json) {

@@ -11,7 +11,7 @@ const token=(family='family-a',user='human-a')=>`e30.${Buffer.from(JSON.stringif
 const profile=(name:string)=>({url:`https://${name}.example.test`,insecure:false,timeout:1000,
   credentials:{accessToken:token(name==='a'?'family-a':'family-b',name==='a'?'human-a':'human-b'),refreshToken:`public-refresh-${name}`,expiresAt:Date.now()+3600000,userId:`human-${name}`,username:`human-${name}`,role:'user' as const,tenantId:'tenant'}});
 const window={required:true,approved:true,method:'iphone',expiresAt:new Date(Date.now()+900000).toISOString()};
-interface Sent {hostname:string;path:string;body:Record<string,unknown>;authorization:string|undefined}
+interface Sent {hostname:string;path:string;body:Record<string,unknown>;authorization:string|undefined;apiKey?:string}
 vi.mock('../../src/lib/client/refresh-lock.js',()=>({computeLockKey:()=> 'synthetic-lock',acquireRefreshLock:async()=>null}));
 let sent:Sent[],unlocked=true,approved=true,lost=false,unauthorized=false,rejectPath='',approvalDenied=false,htmlFailure=false;
 let onRequest:(request:Sent)=>void;
@@ -20,7 +20,7 @@ beforeEach(()=>{
   store.set('profiles',{a:profile('a'),b:profile('b')});store.set('activeProfile','a');setRuntimeProfile(null);invalidateAllProfileCaches();
   for(const key of ['ZNVAULT_API_KEY','ZNVAULT_USERNAME','ZNVAULT_PASSWORD','ZNVAULT_URL','ZNVAULT_PROFILE'])vi.stubEnv(key,undefined);
   vi.spyOn(https,'request').mockImplementation((options,callback)=>{
-    const opts=options as https.RequestOptions,request:Sent={hostname:String(opts.hostname),path:String(opts.path),body:{},authorization:(opts.headers as Record<string,string>).Authorization};sent.push(request);
+    const opts=options as https.RequestOptions,request:Sent={hostname:String(opts.hostname),path:String(opts.path),body:{},authorization:(opts.headers as Record<string,string>).Authorization,apiKey:(opts.headers as Record<string,string>)['X-API-Key']};sent.push(request);
     const req=new EventEmitter() as EventEmitter&{write:(data:string)=>void;end:()=>void;destroy:()=>void};
     req.write=data=>{request.body=JSON.parse(data) as Record<string,unknown>;};req.destroy=()=>{};
     req.end=()=>{
@@ -164,5 +164,15 @@ describe('session approval binds the named profile, actor and refresh family',()
     await expect(program.parseAsync(['node','test','seal','--scope','all','--json'])).rejects.toThrow('Expected command failure');
     expect(store.get('profiles').a.credentials!.accessToken).toBe(token('new-login-family'));
     expect(sent.filter(request=>request.path.includes('/unseal/seal'))).toHaveLength(0);
+  });
+  it('preserves legacy API-key crypto status and closure without granting a HUMAN approval',async()=>{
+    vi.spyOn(console,'log').mockImplementation(()=>{});
+    vi.spyOn(process,'exit').mockImplementation(()=>{throw new Error('Unexpected command failure');});
+    const profiles=store.get('profiles');profiles.a.apiKey='public-fixture-api-key';delete profiles.a.credentials;store.set('profiles',profiles);invalidateAllProfileCaches();
+    for(const args of [['unseal','status'],['seal']]){
+      const command=new Command();registerUnsealCommands(command);await command.parseAsync(['node','test',...args,'--json']);
+    }
+    expect(sent).toHaveLength(2);expect(sent.every(request=>request.apiKey==='public-fixture-api-key'&&!request.authorization)).toBe(true);
+    expect(sent.filter(request=>request.path.endsWith('/start')||request.path.endsWith('/totp'))).toHaveLength(0);
   });
 });
