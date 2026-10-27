@@ -225,10 +225,12 @@ export class HttpClient {
    * The synchronization ensures that only one refresh happens even if multiple
    * concurrent requests detect an expired token simultaneously.
    */
-  private async ensureValidToken(): Promise<void> {
+  private async ensureValidToken(sessionGuard?: RequestOptions['sessionGuard']): Promise<void> {
+    sessionGuard?.();
     // If a refresh is already in progress, wait for it
     if (this.refreshPromise) {
       await this.refreshPromise;
+      sessionGuard?.();
       return;
     }
 
@@ -253,11 +255,12 @@ export class HttpClient {
     const inFlight = this.refreshPromise as Promise<void> | null;
     if (inFlight !== null) {
       await inFlight;
+      sessionGuard?.();
       return;
     }
 
     // We're the first to detect expiry - start the refresh
-    this.refreshPromise = this.refreshToken().finally(() => {
+    this.refreshPromise = this.refreshToken(sessionGuard ? {sessionGuard} : undefined).finally(() => {
       this.refreshPromise = null;
     });
 
@@ -275,7 +278,9 @@ export class HttpClient {
    * atomically with the new tokens on success, retries once on a 409 with a
    * DIFFERENT token, and keeps the marker on an ambiguous failure.
    */
-  async refreshToken(opts?: { skipIfLive?: boolean }): Promise<void> {
+  async refreshToken(opts?: { skipIfLive?: boolean; sessionGuard?: RequestOptions['sessionGuard'] }): Promise<void> {
+    const guard = opts?.sessionGuard;
+    guard?.();
     // `skipIfLive` (default true) lets the proactive path no-op when the token
     // is already live (a peer rotated in the window since `ensureValidToken`
     // checked). The 401-replay path passes `false`: there the token is often
@@ -305,6 +310,7 @@ export class HttpClient {
     let lock = await acquireRefreshLock(lockKey); // null on 5s timeout -> best-effort
 
     try {
+      guard?.();
       // The 5s profile cache from the pre-acquire getCredentials() can mask a peer's
       // rotation that happened DURING the lock wait. Invalidate so the re-reads below
       // hit disk — that's the whole point of re-reading after acquiring the lock.
@@ -323,6 +329,7 @@ export class HttpClient {
           await lock.release();
           lockKey = reKey;
           lock = await acquireRefreshLock(lockKey);
+          guard?.();
           // Same staleness applies after the reacquire wait — invalidate again so
           // this re-read hits disk and can observe a peer's rotation.
           invalidateProfileCache(profile);
@@ -333,17 +340,19 @@ export class HttpClient {
         }
       }
 
-      await this.postRefreshWithRetry(fresh ?? credentials, 0);
+      await this.postRefreshWithRetry(fresh ?? credentials, 0, guard);
     } finally {
       await lock?.release();
     }
   }
 
   /** One POST; on 409 a single retry with a DIFFERENT token; second 409 is terminal. */
-  private async postRefreshWithRetry(credentials: StoredCredentials, attempt: number): Promise<void> {
+  private async postRefreshWithRetry(credentials: StoredCredentials, attempt: number, guard?: RequestOptions['sessionGuard']): Promise<void> {
+    guard?.();
     // Marker stores the REAL jti claim (C2), not a token slice.
     const presentedJti = decodeRefreshJti(credentials.refreshToken) ?? credentials.refreshToken.slice(0, 16);
-    writePendingRefreshMarker(presentedJti); // write-ahead intent before POST
+    if (guard) writePendingRefreshMarker(presentedJti, guard);
+    else writePendingRefreshMarker(presentedJti); // write-ahead intent before POST
     let response: LoginResponse;
     try {
       response = await this.request<LoginResponse>({
@@ -352,9 +361,11 @@ export class HttpClient {
         body: { refreshToken: credentials.refreshToken },
         skipAuth: true,
         _refreshAccessToken: credentials.accessToken,
+        ...(guard ? {sessionGuard: guard} : {}),
       });
     } catch (err) {
       if (isConflict(err)) {
+        guard?.();
         // 409 refresh_in_progress: at most ONE retry, only with a DIFFERENT token.
         if (attempt >= 1) throw new RefreshHardReauthError();
         const reread = getCredentials();
@@ -362,7 +373,7 @@ export class HttpClient {
           // No different token available -> terminal, never re-present the same JTI.
           throw new RefreshHardReauthError();
         }
-        await this.postRefreshWithRetry(reread, attempt + 1);
+        await this.postRefreshWithRetry(reread, attempt + 1, guard);
         return;
       }
       // Ambiguous (network/5xx): KEEP the marker, do not clear, do not assume "not rotated".
@@ -372,13 +383,15 @@ export class HttpClient {
     // (Spreading ...credentials carries a pre-existing marker forward, so we must
     //  explicitly set pendingRefresh: undefined to clear it — omission alone does NOT
     //  strip a spread key. decidePendingRefresh treats undefined as "no marker".)
-    storeCredentials({
+    const nextCredentials: StoredCredentials = {
       ...credentials,
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       expiresAt: Date.now() + response.expiresIn * 1000,
       pendingRefresh: undefined, // explicit clear (overrides the spread)
-    });
+    };
+    if (guard) storeCredentials(nextCredentials, () => {guard(response.accessToken);});
+    else storeCredentials(nextCredentials);
   }
 
   /**
@@ -409,6 +422,7 @@ export class HttpClient {
    * Make an HTTP request
    */
   async request<T>(options: RequestOptions): Promise<T> {
+    options.sessionGuard?.();
     const url = new URL(this.baseUrl);
     url.pathname = options.path;
 
@@ -437,7 +451,8 @@ export class HttpClient {
         const credentials = getCredentials();
         if (credentials) {
           if (isTokenExpired() && credentials.refreshToken) {
-            await this.ensureValidToken();
+            await this.ensureValidToken(options.sessionGuard);
+            options.sessionGuard?.();
           }
           const updatedCredentials = getCredentials();
           if (updatedCredentials) {
@@ -488,6 +503,7 @@ export class HttpClient {
 
   /** Send with the prepared origin and authentication, including one safe replay. */
   private sendRequest<T>(url: URL, headers: Record<string, string>, options: RequestOptions): Promise<T> {
+    options.sessionGuard?.();
     const requestOptions: https.RequestOptions = {
       hostname: url.hostname,
       port: url.port || (url.protocol === 'https:' ? 443 : 80),
@@ -496,6 +512,7 @@ export class HttpClient {
       headers,
       timeout: this.timeout,
       rejectUnauthorized: !this.insecure,
+      ...(options.signal ? {signal: options.signal} : {}),
     };
 
     if (this.tlsSpkiSha256Override !== undefined) {
@@ -561,6 +578,8 @@ export class HttpClient {
               if (
                 statusCode === 401 &&
                 !options.skipAuth &&
+                !options.skipAuthRefresh &&
+                !(options.method === 'POST' && /^\/v1\/(?:auth\/unseal(?:\/|$)|user-sealed\/approval(?:\/|$))/.test(options.path)) &&
                 !options._retriedAfter401Refresh
               ) {
                 const credentials = getCredentials();
@@ -571,7 +590,7 @@ export class HttpClient {
                 if (credentials?.refreshToken && replayDecision.action !== 'clean-relogin') {
                   // skipIfLive=false: the token is clock-valid but server-rejected
                   // here (v3.3.0 fix), so force a real refresh — never short-circuit.
-                  this.refreshToken({ skipIfLive: false })
+                  this.refreshToken({ skipIfLive: false, ...(options.sessionGuard ? {sessionGuard: options.sessionGuard} : {}) })
                     .then(() => {
                       // Recurse with the retry flag set, using the
                       // freshly-stored credentials.
@@ -596,7 +615,9 @@ export class HttpClient {
                 const renderedMessage = symbolicCode !== undefined && !errorMessage.includes(symbolicCode)
                   ? `${symbolicCode}: ${errorMessage}`
                   : errorMessage;
-                const e = new Error(renderedMessage);
+                const advice = symbolicCode === 'USER_SEALED_APPROVAL_REQUIRED'
+                  ? ' Run znvault user-sealed approve --iphone or --otp, then explicitly repeat the operation.' : '';
+                const e = new Error(renderedMessage + advice);
                 // Preserve the machine-readable parts of the error body so
                 // callers (e.g. dynamic-secrets provision/routines commands)
                 // can render a partial-progress report instead of just a
@@ -627,7 +648,7 @@ export class HttpClient {
             }
           } catch (parseError) {
             if (statusCode >= 400) {
-              reject(new Error(`Request failed with status ${statusCode}`));
+              reject(Object.assign(new Error(`Request failed with status ${statusCode}`), {statusCode}));
             } else if (parseError instanceof Error && parseError.message.includes('Unexpected')) {
               // Re-throw validation errors
               reject(parseError);

@@ -5,6 +5,24 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] - 2026-10-27
+
+### Added
+
+- Explicit iPhone administrative unseal and User-Sealed iPhone/TOTP approval,
+  status and closure in the initiating HUMAN profile/family. User-Sealed needs
+  its existing primary unlock and uses a separate15-minute approval window.
+- Root/crypto status and scoped closure, including `seal --scope all`.
+  Retain legacy API-key crypto status/closure and OTP/device/auto-unseal.
+
+### Fixed
+
+- Prevent approval replay after401 and refresh writes into a replaced login.
+  Resolve a lost completion response using the actual window. SIGINT cancels
+  pending phone requests; JSON output excludes private claimants and tokens.
+- Explain the explicit approval command when User-Sealed access needs its
+  additional factor. No automatic retry of secret mutations.
+
 ## [5.3.3] - 2026-10-26
 
 ### Fixed

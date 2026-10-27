@@ -10,6 +10,11 @@ export interface RequestOptions {
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
   skipAuth?: boolean;
+  /** Single-use approvals must never be replayed after a 401. */
+  skipAuthRefresh?: boolean;
+  signal?: AbortSignal;
+  /** Check the initiating named profile/family before transport and refresh writes. */
+  sessionGuard?: (candidateAccessToken?: string) => void;
   /**
    * Internal access-token proof attached only to /auth/refresh. It lets the
    * server continue an eligible User-Sealed password or linked-passkey
