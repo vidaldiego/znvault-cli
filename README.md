@@ -40,6 +40,21 @@ znvault health
 
 ### Login
 
+With ZnVault 1.81.2 or later and an already paired iPhone with device sign-in
+enabled, scan a terminal QR using **ZnVault Authenticator → Scan QR**, choose the
+account for that Vault and approve with biometrics:
+
+    znvault --profile production login --qr
+    znvault --profile vault-sec-tenant login --qr
+
+The QR expires within two minutes; no browser or local callback is used.
+An SSH session needs a terminal (ssh -t), and credentials are stored on the
+computer running the CLI. Enlarge the terminal if instructed so the whole QR
+fits. QR login requires a user profile, interactive output and a configured
+HTTPS Vault origin; it cannot be combined with --web, --json or password/TOTP
+options. Crypto unseal and User-Sealed approval remain separate operations.
+Existing browser login (login --web) and password login remain available.
+
 ```bash
 znvault login -u admin -p 'password'
 znvault login -u admin -p 'password' -t 123456  # With TOTP

@@ -96,6 +96,11 @@ vi.mock('../../src/lib/web-login.js', () => ({
     user: { id: '123', username: 'admin', role: 'superadmin', tenantId: null },
   }),
 }));
+vi.mock('../../src/lib/qr-login-presentation.js', () => ({
+  terminalQrLogin: vi.fn().mockResolvedValue({
+    success: true, user: {id: '123', username: 'admin', role: 'superadmin', tenantId: null, mfaVerified: true},
+  }),
+}));
 
 describe('auth commands', () => {
   let program: Command;
@@ -118,6 +123,26 @@ describe('auth commands', () => {
   });
 
   describe('login', () => {
+    it('offers terminal QR login alongside existing methods', () => {
+      const login = program.commands.find(command => command.name() === 'login');
+      expect(login?.options.some(option => option.long === '--qr')).toBe(true);
+    });
+    it('uses the existing client for terminal QR login without opening the browser', async () => {
+      const {client} = await import('../../src/lib/client.js');
+      const {terminalQrLogin} = await import('../../src/lib/qr-login-presentation.js');
+      const {webLogin} = await import('../../src/lib/web-login.js');
+      await program.parseAsync(['node', 'test', 'login', '--qr']);
+      expect(terminalQrLogin).toHaveBeenCalledWith(client);
+      expect(webLogin).not.toHaveBeenCalled();
+      expect(client.login).not.toHaveBeenCalled();
+    });
+    it.each(['--web', '--json', '--username', '--password', '--password-file', '--totp'])('rejects QR combined with %s', async option => {
+      const {terminalQrLogin} = await import('../../src/lib/qr-login-presentation.js');
+      const args = ['node', 'test', 'login', '--qr', option];
+      if (!['--web', '--json'].includes(option)) args.push('fixture');
+      await expect(program.parseAsync(args)).rejects.toMatchObject({code: 'commander.conflictingOption'});
+      expect(terminalQrLogin).not.toHaveBeenCalled();
+    });
     it('should call client.login with provided credentials', async () => {
       const { client } = await import('../../src/lib/client.js');
 

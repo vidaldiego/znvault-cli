@@ -21,6 +21,8 @@ try {
   }
   const run = (...args) => execFileSync(process.execPath, [join(root, 'dist/index.js'), '--no-plugins', ...args], { env, cwd: scratch, encoding: 'utf8' });
   if (run('--version').trim() !== expectedVersion) throw new Error('CLI version mismatch');
+  const login = run('login', '--help');
+  if (!login.includes('--qr') || !login.includes('--web')) throw new Error('QR/browser login surface missing');
   const escrow = run('superadmin', 'lmk', 'escrow', '--help');
   if (!/^  verify/m.test(escrow) || !/^  restore/m.test(escrow) || /^  snapshot/m.test(escrow)) throw new Error('Legacy escrow compatibility failure');
   const lmk = run('superadmin', 'lmk', '--help');
