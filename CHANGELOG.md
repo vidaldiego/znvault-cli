@@ -5,6 +5,20 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - 2026-10-29
+
+### Added
+
+- Terminal QR sign-in with `znvault login --qr`: scan with an already paired,
+  device-sign-in-enabled iPhone and approve with biometrics without opening a
+  browser. Reuses Vault's device-login/session authority and key envelope;
+  unseal and User-Sealed approvals remain independent.
+- Pin the initiating profile and authentication snapshot through completion and
+  the locked credential write. Denial, cancellation, expiry, inconsistent
+  transfers and uncertain completion never overwrite another login or replay
+  completion. Display only the public locator, with a full quiet zone and
+  terminal-size checks; retain password and browser login.
+
 ## [5.4.0] - 2026-10-27
 
 ### Added

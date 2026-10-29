@@ -1,4 +1,4 @@
-import { type Command } from 'commander';
+import { Option, type Command } from 'commander';
 import { readFileSync, existsSync } from 'node:fs';
 
 import React from 'react';
@@ -21,6 +21,7 @@ import {
 import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import { webLogin, isWebLoginSupported } from '../lib/web-login.js';
+import { terminalQrLogin } from '../lib/qr-login-presentation.js';
 import { registerProfileApiKeyCommands } from './profile-api-key.js';
 
 /**
@@ -54,6 +55,7 @@ interface LoginOptions {
   totp?: string;
   json?: boolean;
   web?: boolean;
+  qr?: boolean;
 }
 
 interface LogoutOptions {
@@ -126,19 +128,21 @@ export function registerAuthCommands(program: Command): void {
     .option('--password-file <path>', 'Read password from file (more secure than -p)')
     .option('-t, --totp <code>', 'TOTP code (if 2FA enabled)')
     .option('--web', 'Login via web browser (supports 2FA and passkeys)')
+    .addOption(new Option('--qr', 'Sign in by scanning a terminal QR with ZnVault Authenticator')
+      .conflicts(['web', 'username', 'password', 'passwordFile', 'totp', 'json']))
     .option('--json', 'Output as JSON')
     .action(async (options: LoginOptions) => {
       const profileName = getActiveProfileName();
 
       try {
         // Web-based login flow
-        if (options.web) {
+        if (options.web || options.qr) {
           if (!isWebLoginSupported()) {
             output.error('Web login requires Node.js 18+ with fetch API support');
             process.exit(1);
           }
 
-          const result = await webLogin(client.getBaseUrl());
+          const result = options.qr ? await terminalQrLogin(client) : await webLogin(client.getBaseUrl());
 
           if (!result.success) {
             if (options.json) {
