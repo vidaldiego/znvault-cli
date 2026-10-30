@@ -5,7 +5,7 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.6.0] - 2026-10-30
 
 ### Added
 
@@ -23,9 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or deleting profiles, retain pending retirement safely when offline, and never
   copy recovery capabilities to another profile.
 
-## [5.5.1] - 2026-10-30
-
-### Fixed
 
 - Preserve actionable User-Sealed access denials in TOTP commands: distinguish
   a missing primary unlock, the independent approval window and crypto unseal.
