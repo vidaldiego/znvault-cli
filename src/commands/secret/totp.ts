@@ -1,6 +1,7 @@
 import type {Command} from 'commander';
 import inquirer from 'inquirer';
 import {client} from '../../lib/client.js';
+import {getActiveProfileName} from '../../lib/config.js';
 import * as output from '../../lib/output.js';
 import {readStdinUtf8} from '../../lib/stdin.js';
 import {generateTotpCode, parseTotpInput, readTotpConfig, TOTP_INPUT_LIMIT_BYTES, type TotpConfig} from '../../lib/totp.js';
@@ -53,6 +54,7 @@ export function registerTotpCommands(secretCmd: Command): void {
     .option('--grant-user <userId...>', 'Explicit HUMAN user IDs for a standalone User-Sealed secret')
     .option('--json', 'Output metadata as JSON without seed material')
     .action(async (idOrAlias: string, options: ImportOptions, command: Command) => {
+      const profileName = getActiveProfileName();
       try {
         if (options.attach === true) {
           if (command.getOptionValueSource('protection') === 'cli' || options.grantUser !== undefined) {
@@ -88,7 +90,7 @@ export function registerTotpCommands(secretCmd: Command): void {
         });
         report(result, options.json, 'Authenticator imported successfully!');
       } catch (error) {
-        output.error(safeSecretError(error));
+        output.error(safeSecretError(error, profileName));
         process.exit(1);
       }
     });
@@ -97,6 +99,7 @@ export function registerTotpCommands(secretCmd: Command): void {
     .description('Print only the current code after normal authorised decryption')
     .option('--json', 'Output code, validUntil (Unix milliseconds) and period')
     .action(async (idOrAlias: string, options: {json?: boolean}) => {
+      const profileName = getActiveProfileName();
       try {
         const id = await resolveSecretId(idOrAlias);
         const current = await client.post<DecryptedSecret>(`/v1/secrets/${id}/decrypt`, {});
@@ -106,7 +109,7 @@ export function registerTotpCommands(secretCmd: Command): void {
         if (options.json === true) output.json(code);
         else console.log(code.code);
       } catch (error) {
-        output.error(safeSecretError(error));
+        output.error(safeSecretError(error, profileName));
         process.exit(1);
       }
     });
@@ -115,6 +118,7 @@ export function registerTotpCommands(secretCmd: Command): void {
     .description('Remove an attached authenticator (old versions remain in normal secret history)')
     .option('--json', 'Output metadata as JSON')
     .action(async (idOrAlias: string, options: {json?: boolean}) => {
+      const profileName = getActiveProfileName();
       try {
         const current = await rawSecret(idOrAlias);
         if (current.subType === 'totp') throw new SecretInputError('Use secret delete to delete a standalone authenticator.');
@@ -124,7 +128,7 @@ export function registerTotpCommands(secretCmd: Command): void {
         const result = await client.put<SecretMetadata>(`/v1/secrets/${current.id}/value`, {data, expectedVersion: current.version});
         report(result, options.json, 'Authenticator removed successfully!');
       } catch (error) {
-        output.error(safeSecretError(error));
+        output.error(safeSecretError(error, profileName));
         process.exit(1);
       }
     });

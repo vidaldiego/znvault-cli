@@ -177,7 +177,18 @@ operation and the local clock.
 An attachment shares its secret's protection, user grants, permissions and
 lifecycle. Choose a standalone secret when it needs separate access controls.
 User-Sealed authenticators retain the unlocked HUMAN session and explicit grant
-requirements described below. Linked replicas are read-only, and attachment to
+requirements described below. If the Vault requires additional User-Sealed
+approval, approve it in the same profile before requesting a code. Crypto unseal
+and User-Sealed approval have independent windows; unseal alone does not open both.
+
+```bash
+znvault --profile production user-sealed approve --iphone  # Or --otp
+znvault --profile production secret totp code app/login
+```
+
+A locked primary key first needs a fresh `login --qr` or `login --web` in that
+profile. Code-only output stays empty on failure; the CLI reports the required
+step on stderr. Linked replicas are read-only, and attachment to
 link pointers or public-key secrets is refused. Existing custom fields named `totp` are left intact
 and must be resolved explicitly before attachment.
 
