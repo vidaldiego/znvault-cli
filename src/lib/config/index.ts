@@ -7,7 +7,7 @@
  */
 
 // Types
-export type { Profile, ConfigStore, ProfileInfo, ApiKeyInfo } from './types.js';
+export type { Profile, StoredCliRecovery, ConfigStore, ProfileInfo, ApiKeyInfo } from './types.js';
 export { CONFIG_DEFAULTS, DEFAULT_PROFILE } from './types.js';
 
 // Store
@@ -39,6 +39,9 @@ export {
   getProfile,
   renameProfile,
   mutateProfileAuthentication,
+  authenticationFingerprint,
+  beginProfileAuthentication,
+  cancelProfileAuthentication,
 } from './profile.js';
 
 // Credentials

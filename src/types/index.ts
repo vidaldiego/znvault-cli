@@ -26,6 +26,8 @@ export interface StoredCredentials {
 
 export interface FullConfig extends CLIConfig {
   credentials?: StoredCredentials;
+  authGeneration?: string;
+  cliRecovery?: import('../lib/config/types.js').StoredCliRecovery;
 }
 
 // API Response types

@@ -10,6 +10,7 @@
 export {
   // Types
   type Profile,
+  type StoredCliRecovery,
   type ConfigStore,
   type ProfileInfo,
   type ApiKeyInfo,
@@ -46,6 +47,9 @@ export {
   getProfile,
   renameProfile,
   mutateProfileAuthentication,
+  authenticationFingerprint,
+  beginProfileAuthentication,
+  cancelProfileAuthentication,
 
   // Credentials
   storeCredentials,

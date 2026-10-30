@@ -6,6 +6,7 @@
 
 import type { ApiKeyInfo } from './types.js';
 import { getActiveProfileName, getCurrentProfile, mutateProfileAuthentication } from './profile.js';
+import {randomUUID} from 'node:crypto';
 
 /**
  * Check if we have API key authentication (env or stored in profile)
@@ -27,10 +28,12 @@ export function getApiKey(): string | undefined {
 export function storeApiKey(apiKey: string, keyId?: string, keyName?: string): void {
   const profileName = getActiveProfileName();
   mutateProfileAuthentication(profileName, (profile) => {
+    if (profile.cliRecovery) throw new Error('Retire CLI recovery with logout before storing an API key.');
     if (profile.credentials) {
       throw new Error('Profile is configured for JWT authentication');
     }
     profile.apiKey = apiKey;
+    profile.authGeneration = randomUUID();
     if (keyId) profile.apiKeyId = keyId;
     if (keyName) profile.apiKeyName = keyName;
     return profile;
@@ -59,6 +62,7 @@ export function clearApiKey(): void {
     delete profile.apiKey;
     delete profile.apiKeyId;
     delete profile.apiKeyName;
+    profile.authGeneration = randomUUID();
     return profile;
   });
 }

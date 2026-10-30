@@ -8,6 +8,38 @@ import { store, getRuntimeProfile, withStoreMutation } from './store.js';
 import { ensureMigrated } from './migration.js';
 import { CONFIG_DEFAULTS, DEFAULT_PROFILE, type Profile, type ProfileInfo } from './types.js';
 import { getCachedProfile, cacheProfile, invalidateProfileCache } from './cache.js';
+import {randomUUID} from 'node:crypto';
+
+const retirementRequired = (): never => {throw new Error('Retire CLI recovery with logout before replacing or deleting this profile.');};
+
+/** In-memory guard only; never log or serialize this fingerprint as evidence. */
+export function authenticationFingerprint(profile: Profile | undefined, includeCredentials = true): string {
+  return JSON.stringify(profile ? [profile.url, profile.insecure, profile.timeout, profile.defaultTenant,
+    profile.authGeneration, profile.cliRecovery, profile.apiKey, profile.apiKeyId,
+    ...(includeCredentials ? [profile.credentials] : [])] : null);
+}
+
+/** Fresh generation and local clearing are one small transaction; no network inside it. */
+export function beginProfileAuthentication(name: string, beforeStart?: (current: Profile) => void, recover = false): Profile {
+  return mutateProfileAuthentication(name, current => {
+    beforeStart?.(current);
+    if (current.apiKey) throw new Error('Login requires a user profile without an API key.');
+    if (recover ? current.cliRecovery?.state !== 'active' : current.cliRecovery !== undefined) retirementRequired();
+    current.authGeneration = randomUUID();
+    delete current.credentials;
+    return current;
+  });
+}
+
+export function cancelProfileAuthentication(name: string, generation: string | undefined): void {
+  withStoreMutation(() => {
+    const profiles = store.get('profiles');
+    const current = Object.hasOwn(profiles, name) ? profiles[name] : undefined;
+    if (current === undefined || current.authGeneration !== generation) return;
+    current.authGeneration = randomUUID();
+    store.set('profiles', profiles);invalidateProfileCache(name);
+  });
+}
 
 function preserveAuthentication(current: Profile | undefined, proposed: Profile): Profile {
   const next = { ...proposed };
@@ -19,6 +51,10 @@ function preserveAuthentication(current: Profile | undefined, proposed: Profile)
   else delete next.apiKeyId;
   if (current?.apiKeyName !== undefined) next.apiKeyName = current.apiKeyName;
   else delete next.apiKeyName;
+  if (current?.cliRecovery !== undefined) next.cliRecovery = current.cliRecovery;
+  else delete next.cliRecovery;
+  if (current?.authGeneration !== undefined) next.authGeneration = current.authGeneration;
+  else delete next.authGeneration;
   return next;
 }
 
@@ -62,7 +98,15 @@ export function getCurrentProfile(): Profile {
 export function saveProfile(profileName: string, profile: Profile): void {
   withStoreMutation(() => {
     const profiles = store.get('profiles');
-    profiles[profileName] = preserveAuthentication(profiles[profileName], profile);
+    const current = Object.hasOwn(profiles, profileName) ? profiles[profileName] : undefined;
+    const identityChanged = current !== undefined && current.url !== profile.url;
+    if (identityChanged && current.cliRecovery) retirementRequired();
+    const next = preserveAuthentication(current, profile);
+    if (identityChanged) {
+      delete next.credentials;delete next.apiKey;delete next.apiKeyId;delete next.apiKeyName;
+      next.authGeneration = randomUUID();
+    }
+    profiles[profileName] = next;
     store.set('profiles', profiles);
     invalidateProfileCache(profileName);
   });
@@ -159,6 +203,8 @@ export function createProfile(name: string, options: { url?: string; insecure?: 
       delete newProfile.apiKey;
       delete newProfile.apiKeyId;
       delete newProfile.apiKeyName;
+      delete newProfile.cliRecovery;
+      delete newProfile.authGeneration;
     } else {
       newProfile = {
         url: options.url ?? CONFIG_DEFAULTS.url,
@@ -174,6 +220,7 @@ export function createProfile(name: string, options: { url?: string; insecure?: 
       newProfile.insecure = options.insecure;
     }
 
+    newProfile.authGeneration = randomUUID();
     profiles[name] = newProfile;
     store.set('profiles', profiles);
     invalidateProfileCache(name);
@@ -193,6 +240,7 @@ export function deleteProfile(name: string): void {
     if (!(name in profiles)) {
       throw new Error(`Profile '${name}' not found`);
     }
+    if (profiles[name].cliRecovery) retirementRequired();
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete profiles[name];
     store.set('profiles', profiles);
@@ -240,6 +288,8 @@ export function renameProfile(oldName: string, newName: string): void {
     if (newName in profiles) {
       throw new Error(`Profile '${newName}' already exists`);
     }
+    if (profiles[oldName].cliRecovery) retirementRequired();
+    profiles[oldName].authGeneration = randomUUID();
     profiles[newName] = profiles[oldName];
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete profiles[oldName];

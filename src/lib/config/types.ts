@@ -16,12 +16,24 @@ export const CONFIG_DEFAULTS = {
 
 export const DEFAULT_PROFILE = 'default';
 
+/** Opaque recovery proof. The Vault remains the owner of its deadline and authority. */
+export interface StoredCliRecovery {
+  state: 'active' | 'revocation_pending';
+  grantId: string;
+  credential: string;
+  origin: string;
+  installationId?: string;
+  expiresAtSec: number;
+}
+
 export interface Profile {
   url: string;
   insecure: boolean;
   timeout: number;
   defaultTenant?: string;
   credentials?: StoredCredentials;
+  cliRecovery?: StoredCliRecovery;
+  authGeneration?: string;
   apiKey?: string;  // Stored API key for this profile
   apiKeyId?: string;  // API key ID (for revocation on logout)
   apiKeyName?: string;  // API key name (for display)

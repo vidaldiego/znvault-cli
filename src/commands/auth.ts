@@ -17,11 +17,17 @@ import {
   switchProfile,
   renameProfile,
   getProfile,
+  DEFAULT_PROFILE,
+  CONFIG_DEFAULTS,
+  authenticationFingerprint,
+  getConfig,
 } from '../lib/config.js';
+import {getRuntimeProfile, setRuntimeProfile} from '../lib/config/store.js';
 import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
 import * as output from '../lib/output.js';
 import { webLogin, isWebLoginSupported } from '../lib/web-login.js';
-import { terminalQrLogin } from '../lib/qr-login-presentation.js';
+import { terminalQrLogin, terminalCliRecovery } from '../lib/qr-login-presentation.js';
+import {retireStoredCliRecovery} from '../lib/cli-recovery.js';
 import { registerProfileApiKeyCommands } from './profile-api-key.js';
 
 /**
@@ -56,6 +62,8 @@ interface LoginOptions {
   json?: boolean;
   web?: boolean;
   qr?: boolean;
+  recover?: boolean;
+  rememberIphone?: boolean;
 }
 
 interface LogoutOptions {
@@ -129,20 +137,39 @@ export function registerAuthCommands(program: Command): void {
     .option('-t, --totp <code>', 'TOTP code (if 2FA enabled)')
     .option('--web', 'Login via web browser (supports 2FA and passkeys)')
     .addOption(new Option('--qr', 'Sign in by scanning a terminal QR with ZnVault Authenticator')
-      .conflicts(['web', 'username', 'password', 'passwordFile', 'totp', 'json']))
+      .conflicts(['web', 'recover', 'username', 'password', 'passwordFile', 'totp', 'json']))
+    .addOption(new Option('--remember-iphone', 'Allow this same iPhone to recover the CLI for 30 days (requires --qr)')
+      .conflicts(['web', 'recover', 'username', 'password', 'passwordFile', 'totp', 'json']))
+    .addOption(new Option('--recover', 'Recover a remembered CLI session with the original iPhone')
+      .conflicts(['web', 'qr', 'rememberIphone', 'username', 'password', 'passwordFile', 'totp', 'json']))
     .option('--json', 'Output as JSON')
+    .hook('preAction', command => {
+      const options = command.opts<LoginOptions>();
+      if (options.rememberIphone && !options.qr) command.error('--remember-iphone requires --qr.');
+      if (options.qr || options.recover) {
+        if (command.optsWithGlobals().json === true) command.error('Device login requires terminal output; --json is incompatible.');
+        if (!process.stdin.isTTY || !process.stdout.isTTY) command.error('Device login requires an interactive terminal.');
+        if (getProfile(getActiveProfileName())?.apiKey || process.env.ZNVAULT_API_KEY !== undefined) command.error('Device login requires a human profile without an API key.');
+      }
+      if ((options.rememberIphone || options.recover) && ['ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined)) {
+        command.error('Remembered iPhone login cannot use environment credentials.');
+      }
+    })
     .action(async (options: LoginOptions) => {
       const profileName = getActiveProfileName();
+      const previous = getRuntimeProfile();setRuntimeProfile(profileName);
 
       try {
         // Web-based login flow
-        if (options.web || options.qr) {
+        if (options.web || options.qr || options.recover) {
           if (!isWebLoginSupported()) {
             output.error('Web login requires Node.js 18+ with fetch API support');
             process.exit(1);
           }
 
-          const result = options.qr ? await terminalQrLogin(client) : await webLogin(client.getBaseUrl());
+          if (!options.recover) await retireStoredCliRecovery(profileName);
+          const result = options.recover ? await terminalCliRecovery(client) : options.qr ?
+            await (options.rememberIphone ? terminalQrLogin(client, {rememberIphone: true}) : terminalQrLogin(client)) : await webLogin(client.getBaseUrl());
 
           if (!result.success) {
             if (options.json) {
@@ -169,11 +196,16 @@ export function registerAuthCommands(program: Command): void {
               'MFA Verified': result.user?.mfaVerified ? 'Yes' : 'No',
             });
             console.log('\nSession stored. Auto-refreshes when needed (valid for 7 days of inactivity).');
+            const recovery = getProfile(profileName)?.cliRecovery;
+            if (recovery?.state === 'active') console.log('Original iPhone recovery deadline: ' + new Date(recovery.expiresAtSec*1000).toLocaleString());
           }
           return;
         }
 
         // Standard interactive login
+        await retireStoredCliRecovery(profileName);
+        const snapshot = authenticationFingerprint(getProfile(profileName) ?? {...CONFIG_DEFAULTS});
+        const origin = client.getBaseUrl(), pin = client.getTlsSpkiSha256(), insecure = getConfig().insecure;
         const username = options.username ?? await promptUsername();
 
         // Password resolution: file > CLI arg > interactive prompt
@@ -198,7 +230,12 @@ export function registerAuthCommands(program: Command): void {
         const spinner = output.spinner('Authenticating...').start();
 
         try {
-          const response = await client.login(username, password, totp);
+          const response = await client.login(username, password, totp, current => {
+            if (authenticationFingerprint(current) !== snapshot || client.getBaseUrl() !== origin ||
+                client.getTlsSpkiSha256() !== pin || getConfig().insecure !== insecure) {
+              throw new Error('CLI profile changed while entering credentials. Start login again.');
+            }
+          });
 
           spinner.succeed(`Login successful (profile: ${profileName})`);
 
@@ -231,7 +268,7 @@ export function registerAuthCommands(program: Command): void {
       } catch (err) {
         output.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
-      }
+      } finally {setRuntimeProfile(previous);}
     });
 
   // Logout command
@@ -242,10 +279,12 @@ export function registerAuthCommands(program: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (options: LogoutOptions) => {
       const profileName = getActiveProfileName();
+      const previous = getRuntimeProfile();setRuntimeProfile(profileName);
       const hadCredentials = getCredentials() !== undefined;
+      const initial = getProfile(profileName), remembered = initial?.cliRecovery !== undefined;
       let remoteError: string | undefined;
       try {
-        if (hadCredentials) {
+        if (hadCredentials && (!remembered || options.all)) {
           await client.post(options.all ? '/auth/logout-all' : '/auth/logout', {});
         }
       } catch (error) {
@@ -253,7 +292,11 @@ export function registerAuthCommands(program: Command): void {
           ? error.message
           : typeof error === 'string' ? error : 'Unknown server revocation error';
       } finally {
-        clearCredentials();
+        try {
+        if (remembered) {
+          try {await retireStoredCliRecovery(profileName);} catch (error) {remoteError = error instanceof Error ? error.message : 'CLI recovery retirement remains pending.';}
+        } else {clearCredentials({expectedGeneration: initial?.authGeneration});}
+        } finally {setRuntimeProfile(previous);}
       }
 
       if (remoteError !== undefined) {
@@ -337,7 +380,9 @@ export function registerAuthCommands(program: Command): void {
   configCmd
     .command('set <key> <value>')
     .description('Set a configuration value (url, insecure, timeout, defaultTenant)')
-    .action((key: string, value: string) => {
+    .action(async (key: string, value: string) => {
+      const profileName = getActiveProfileName(), previous = getRuntimeProfile();setRuntimeProfile(profileName);
+      try {
       const validKeys = ['url', 'insecure', 'timeout', 'defaultTenant'];
       if (!validKeys.includes(key)) {
         output.error(`Invalid config key. Valid keys: ${validKeys.join(', ')}`);
@@ -355,8 +400,10 @@ export function registerAuthCommands(program: Command): void {
         }
       }
 
+      if (key === 'url' && getProfile(profileName)?.url !== parsedValue) await retireStoredCliRecovery(profileName);
       setConfigValue(key as 'url' | 'insecure' | 'timeout', parsedValue as never);
       output.success(`Set ${key} = ${parsedValue} (profile: ${getActiveProfileName()})`);
+      } finally {setRuntimeProfile(previous);}
     });
 
   configCmd
@@ -515,8 +562,10 @@ export function registerAuthCommands(program: Command): void {
     .alias('rm')
     .description('Delete a profile')
     .option('-f, --force', 'Skip confirmation')
-    .action((name: string, options: ProfileDeleteOptions) => {
+    .action(async (name: string, options: ProfileDeleteOptions) => {
       try {
+        if (name === DEFAULT_PROFILE) throw new Error(`Cannot delete the '${DEFAULT_PROFILE}' profile`);
+        if (!getProfile(name)) throw new Error(`Profile '${name}' not found`);
         if (!options.force) {
           const profile = getProfile(name);
           if (profile?.credentials) {
@@ -524,6 +573,7 @@ export function registerAuthCommands(program: Command): void {
           }
         }
 
+        await retireStoredCliRecovery(name);
         deleteProfile(name);
         output.success(`Deleted profile '${name}'`);
       } catch (err) {
@@ -536,8 +586,12 @@ export function registerAuthCommands(program: Command): void {
   profileCmd
     .command('rename <old-name> <new-name>')
     .description('Rename a profile')
-    .action((oldName: string, newName: string) => {
+    .action(async (oldName: string, newName: string) => {
       try {
+        if (oldName === DEFAULT_PROFILE) throw new Error(`Cannot rename the '${DEFAULT_PROFILE}' profile`);
+        if (!getProfile(oldName)) throw new Error(`Profile '${oldName}' not found`);
+        if (getProfile(newName)) throw new Error(`Profile '${newName}' already exists`);
+        await retireStoredCliRecovery(oldName);
         renameProfile(oldName, newName);
         output.success(`Renamed profile '${oldName}' to '${newName}'`);
       } catch (err) {

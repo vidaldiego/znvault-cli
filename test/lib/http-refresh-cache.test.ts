@@ -32,7 +32,8 @@ const invalidateSpy = vi.fn((_p: string) => {
   cacheValid = false;
 });
 
-vi.mock('../../src/lib/config.js', () => ({
+vi.mock('../../src/lib/config.js', async () => ({
+  ...(await vi.importActual<typeof import('../../src/lib/config.js')>('../../src/lib/config.js')),
   storeCredentials: vi.fn((c: any) => { creds = c; }),
   // Models getCredentials() reading through the 5s profile cache:
   // - while the cache is valid it returns the cached (pre-rotation, expired) creds
@@ -80,13 +81,14 @@ beforeEach(async () => {
   creds = { accessToken: 'a', refreshToken: 'r1', expiresAt: Date.now() - 1, userId: 'u', username: 'al', role: 'user', tenantId: null, live: false };
   // The peer rotates to THIS live token during the lock wait. Same lock key
   // (computeLockKey is stubbed constant) so no TOCTOU reacquire is triggered.
-  diskCreds = { accessToken: 'a2', refreshToken: 'r1', expiresAt: Date.now() + 3_600_000, userId: 'u', username: 'al', role: 'user', tenantId: null, live: true };
+  diskCreds = undefined;
   cacheValid = true; // pre-acquire getCredentials() warmed the cache
 
   invalidateSpy.mockClear();
   releaseSpy.mockClear();
   acquireSpy.mockReset().mockImplementation(async () => {
     // Peer rotated on disk while we "waited" for the lock; the cache is still warm.
+    diskCreds = { accessToken: 'a2', refreshToken: 'r1', expiresAt: Date.now() + 3_600_000, userId: 'u', username: 'al', role: 'user', tenantId: null, live: true };
     return { lockKey: 'lock-key', release: releaseSpy };
   });
 
@@ -123,8 +125,7 @@ it('invalidates the profile cache after acquire so a peer rotation during the lo
   // ...and it MUST run AFTER the lock is acquired (the whole point is to make the
   // post-acquire re-read hit disk). Assert call ordering deterministically.
   const acquireOrder = acquireSpy.mock.invocationCallOrder[0];
-  const invalidateOrder = invalidateSpy.mock.invocationCallOrder[0];
-  expect(invalidateOrder).toBeGreaterThan(acquireOrder);
+  expect(invalidateSpy.mock.invocationCallOrder.some(order => order > acquireOrder)).toBe(true);
 
   // Because the post-acquire re-read now sees the peer's live token, the network
   // POST is skipped. Without the invalidation the stale cache would still report

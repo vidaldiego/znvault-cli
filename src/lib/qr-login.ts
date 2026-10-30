@@ -1,19 +1,20 @@
 import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import type {HttpClient} from './client.js';
-import {getActiveProfileName, getProfile, invalidateProfileCache, mutateProfileAuthentication, setRuntimeProfile, type Profile} from './config.js';
+import {getActiveProfileName, getProfile, invalidateProfileCache, mutateProfileAuthentication, setRuntimeProfile,
+  authenticationFingerprint, beginProfileAuthentication, cancelProfileAuthentication, type Profile, type StoredCliRecovery} from './config.js';
 import {getRuntimeProfile} from './config/store.js';
 import {getVersion} from './version.js';
 import {deviceBytes, parseDeviceBytes} from './device-login/mobile-device-login.js';
 import {openDeviceKey, type DeviceEnvelopeContext} from './device-login/device-key-envelope.js';
 
 export interface QrLoginPending {locator: string; origin: string; expiresAt: number}
-export interface QrLoginOptions {signal?: AbortSignal; onPending: (view: QrLoginPending) => void | Promise<void>}
+export interface QrLoginOptions {signal?: AbortSignal; rememberIphone?: boolean; onPending: (view: QrLoginPending) => void | Promise<void>}
 export interface QrLoginUser {id: string; username: string; role: string; tenantId: string | null; mfaVerified: boolean}
 export type QrLoginResult = {success: true; user: QrLoginUser} | {success: false; error: string};
 export type QrLoginPeer = Pick<HttpClient, 'getBaseUrl' | 'request'> & Partial<Pick<HttpClient, 'getTlsSpkiSha256'>>;
 interface Attempt {requestId: string; claimant: string; expiresAt: number; origin: string; installationId: string}
-interface LoginResponse {accessToken: string; refreshToken: string; expiresIn: number; userSealedUnlocked: boolean; user: QrLoginUser}
+export interface CliLoginResponse {accessToken: string; refreshToken: string; expiresIn: number; userSealedUnlocked: boolean; user: QrLoginUser; cliRecovery?: StoredCliRecovery}
 const base = '/auth/mfa/iphone', uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const invalidMessage = 'Invalid QR sign-in response. Start again.';
 class QrLoginError extends Error {}
@@ -27,22 +28,30 @@ function text(value: unknown, limit = 128): string {
       Array.from(value).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return fail();
   return value;
 }
-function originOf(value: string): string {
+export function cliLoginOrigin(value: string): string {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash ||
       Array.from(value).some(char => char.charCodeAt(0) <= 32 || char.charCodeAt(0) === 127)) return fail('QR sign-in requires a configured HTTPS Vault origin.');
   return url.origin;
 }
-function fingerprint(profile: Profile | undefined): string {
-  return JSON.stringify(profile ? [profile.url, profile.insecure, profile.timeout, profile.credentials, profile.apiKey, profile.apiKeyId] : null);
-}
-function response(value: unknown): LoginResponse {
+export function parseCliLoginResponse(value: unknown, enrollment?: {origin: string; installationId: string}): CliLoginResponse {
   const result = row(value), user = row(result.user);
   if (typeof result.userSealedUnlocked !== 'boolean' || !Number.isSafeInteger(result.expiresIn) || Number(result.expiresIn) < 1 || Number(result.expiresIn) > 31_536_000 ||
       !['user', 'admin', 'superadmin'].includes(text(user.role))) return fail();
+  let cliRecovery: StoredCliRecovery | undefined;
+  if (enrollment) {
+    const grant = row(result.cliRecovery);
+    const credential = text(grant.credential);
+    const decoded = parseDeviceBytes(credential, 32);
+    if (deviceBytes(decoded) !== credential || !uuid.test(text(grant.grantId)) || grant.origin !== enrollment.origin ||
+        grant.installationId !== enrollment.installationId || !Number.isSafeInteger(grant.expiresAtSec) ||
+        Number(grant.expiresAtSec) <= Date.now()/1000 || Number(grant.expiresAtSec) > Date.now()/1000 + 2592001) fail();
+    cliRecovery = {state: 'active', grantId: text(grant.grantId), credential, origin: enrollment.origin,
+      installationId: enrollment.installationId, expiresAtSec: Number(grant.expiresAtSec)};
+  } else if (Object.hasOwn(result, 'cliRecovery')) fail();
   return {accessToken: text(result.accessToken, 16_384), refreshToken: text(result.refreshToken, 16_384),
     expiresIn: Number(result.expiresIn), userSealedUnlocked: result.userSealedUnlocked, user: {id: text(user.id), username: text(user.username),
-      role: text(user.role), tenantId: user.tenantId === null ? null : text(user.tenantId), mfaVerified: true}};
+      role: text(user.role), tenantId: user.tenantId === null ? null : text(user.tenantId), mfaVerified: true}, ...(cliRecovery ? {cliRecovery} : {})};
 }
 const hash = (value: Uint8Array): string => createHash('sha256').update(value).digest('hex');
 
@@ -52,7 +61,7 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
   const controller = new AbortController();
   let attempt: Attempt | undefined, privateKey: CryptoKey | undefined, keyBytes: Uint8Array<ArrayBuffer> | undefined;
   let transferOwner: {userId: string; tenantId: string} | undefined;
-  let completed = false, origin = '', snapshot: string | undefined;
+  let completed = false, stored = false, origin = '', snapshot: string | undefined, generation: string | undefined;
   const initialPin = peer.getTlsSpkiSha256?.();
   let deadline = Date.now() + 120_000;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -64,19 +73,22 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     if (controller.signal.aborted) fail('QR sign-in cancelled.');
     const profile = getProfile(profileName);
     if (!profile || profile.apiKey || process.env.ZNVAULT_API_KEY) fail('QR sign-in requires a user profile without an API key.');
-    origin = originOf(profile.url);
-    if (originOf(peer.getBaseUrl()) !== origin) fail('QR sign-in profile or Vault changed. Start again.');
-    snapshot = fingerprint(profile);
+    if (options.rememberIphone && ['ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined)) fail('Remembering an iPhone requires an interactive user login without environment credentials.');
+    origin = cliLoginOrigin(profile.url);
+    if (cliLoginOrigin(peer.getBaseUrl()) !== origin) fail('QR sign-in profile or Vault changed. Start again.');
+    snapshot = authenticationFingerprint(profile);
     setRuntimeProfile(profileName);
     const check = (current?: Profile): void => {
       if (controller.signal.aborted || Date.now() >= deadline) fail(controller.signal.reason === 'expired' || Date.now() >= deadline ? 'QR sign-in expired. Start again.' : 'QR sign-in cancelled.');
-      if (getActiveProfileName() !== profileName || process.env.ZNVAULT_API_KEY || fingerprint(current ?? getProfile(profileName)) !== snapshot ||
+      if (getActiveProfileName() !== profileName || process.env.ZNVAULT_API_KEY || authenticationFingerprint(current ?? getProfile(profileName)) !== snapshot ||
           peer.getTlsSpkiSha256?.() !== initialPin) {
         fail('QR sign-in profile or session changed. Start again.');
       }
       invalidateProfileCache(profileName);
-      if (originOf(peer.getBaseUrl()) !== origin) fail('QR sign-in profile or Vault changed. Start again.');
+      if (cliLoginOrigin(peer.getBaseUrl()) !== origin) fail('QR sign-in profile or Vault changed. Start again.');
     };
+    const begun = beginProfileAuthentication(profileName, current => {check(current);});
+    generation = begun.authGeneration;snapshot = authenticationFingerprint(begun);
     const request = async (action: string, body?: unknown): Promise<unknown> => {
       check();
       const value = await peer.request<unknown>({method: action === 'protocol' ? 'GET' : 'POST',
@@ -92,10 +104,14 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
       fail('Device sign-in is not enabled on this Vault.');
     }
     if (protocol.origin !== origin || !uuid.test(text(protocol.installationId))) fail();
+    if (options.rememberIphone) {
+      const recovery = row(protocol.cliRecovery);
+      if (recovery.version !== 1 || recovery.enabled !== true) fail('CLI recovery is not enabled on this Vault.');
+    }
     const pair = await crypto.subtle.generateKey({name: 'ECDH', namedCurve: 'P-256'}, false, ['deriveBits']);
     privateKey = pair.privateKey;
     const publicPoint = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
-    const started = row(await request('start', {browserPublicKey: deviceBytes(publicPoint)}));
+    const started = row(await request('start', {browserPublicKey: deviceBytes(publicPoint), ...(options.rememberIphone ? {rememberIphone: true} : {})}));
     if (started.origin !== origin || started.installationId !== protocol.installationId || !uuid.test(text(started.requestId)) ||
         !Number.isSafeInteger(started.expiresAt) || Number(started.expiresAt) * 1000 <= Date.now() ||
         Number(started.expiresAt) * 1000 > Date.now() + 121_000) fail();
@@ -125,7 +141,8 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
           transferOwner = {userId: text(context.userId), tenantId: text(context.tenantId)};
         } else if (status.transfer !== undefined && status.transfer !== '') fail();
         check();
-        const tokens = response(await request('complete', {...proof, ...(keyBytes ? {keyBytes: deviceBytes(keyBytes)} : {})}));
+        const tokens = parseCliLoginResponse(await request('complete', {...proof, ...(keyBytes ? {keyBytes: deviceBytes(keyBytes)} : {})}),
+          options.rememberIphone ? {origin, installationId: attempt.installationId} : undefined);
         completed = true;
         if ((tokens.user.tenantId !== null) !== (keyBytes !== undefined) || tokens.userSealedUnlocked !== (keyBytes !== undefined) ||
             (transferOwner && (tokens.user.id !== transferOwner.userId || tokens.user.tenantId !== transferOwner.tenantId))) fail();
@@ -134,8 +151,9 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
           check(current);
           return {...current, credentials: {accessToken: tokens.accessToken, refreshToken: tokens.refreshToken,
             expiresAt: Date.now() + tokens.expiresIn * 1000, userId: tokens.user.id, username: tokens.user.username,
-            role: tokens.user.role, tenantId: tokens.user.tenantId}};
+            role: tokens.user.role, tenantId: tokens.user.tenantId}, ...(tokens.cliRecovery ? {cliRecovery: tokens.cliRecovery} : {})};
         });
+        stored = true;
         return {success: true, user: tokens.user};
       }
       if (status.state === 'denied') fail('QR sign-in was denied.');
@@ -154,7 +172,7 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     keyBytes?.fill(0); privateKey = undefined;
     if (attempt && !completed) {
       try {
-        if (fingerprint(getProfile(profileName)) === snapshot && originOf(peer.getBaseUrl()) === origin &&
+        if (authenticationFingerprint(getProfile(profileName)) === snapshot && cliLoginOrigin(peer.getBaseUrl()) === origin &&
             peer.getTlsSpkiSha256?.() === initialPin) {
           await peer.request({method: 'POST', path: base + '/device-login/cancel',
             body: {requestId: attempt.requestId, claimant: attempt.claimant}, skipAuth: true, skipAuthRefresh: true,
@@ -162,6 +180,7 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
         }
       } catch { /* Best effort, original deadline remains authoritative. */ }
     }
+    if (!stored && generation !== undefined) cancelProfileAuthentication(profileName, generation);
     setRuntimeProfile(previous); invalidateProfileCache(profileName);
   }
 }

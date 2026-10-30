@@ -8,7 +8,17 @@ const state = vi.hoisted(() => ({
   profile: {} as Record<string, unknown>, writes: 0,
   beforeWrite: undefined as (() => void) | undefined,
 }));
-vi.mock('../../src/lib/config.js', () => ({
+vi.mock('../../src/lib/config.js', async () => ({
+  authenticationFingerprint: (await vi.importActual<typeof import('../../src/lib/config/profile.js')>('../../src/lib/config/profile.js')).authenticationFingerprint,
+  beginProfileAuthentication: (_name: string, check: (profile: Record<string, unknown>) => void) => {
+    check(structuredClone(state.profile));
+    if (state.profile.cliRecovery) throw new Error('Retire recovery first');
+    delete state.profile.credentials;state.profile.authGeneration = randomUUID();
+    return structuredClone(state.profile);
+  },
+  cancelProfileAuthentication: (_name: string, generation: string) => {
+    if (state.profile.authGeneration === generation) state.profile.authGeneration = randomUUID();
+  },
   getActiveProfileName: () => state.runtime ?? state.active,
   getProfile: () => structuredClone(state.profile),
   setRuntimeProfile: (value: string | null) => {state.runtime = value;},
@@ -16,6 +26,7 @@ vi.mock('../../src/lib/config.js', () => ({
   mutateProfileAuthentication: (_name: string, mutate: (profile: Record<string, unknown>) => Record<string, unknown>) => {
     state.beforeWrite?.();
     state.profile = mutate(structuredClone(state.profile)); state.writes++;
+    return structuredClone(state.profile);
   },
 }));
 vi.mock('../../src/lib/config/store.js', () => ({getRuntimeProfile: () => state.runtime}));
@@ -31,7 +42,7 @@ function fixture(origin = 'https://vault-sec.example.test', superadmin = false) 
   let point: Buffer;
   const request = vi.fn(async (options: RequestOptions): Promise<unknown> => {
     options.sessionGuard?.();
-    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, origin, installationId, deviceLogin: {version: 1, enabled: true}};
+    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, origin, installationId, deviceLogin: {version: 1, enabled: true}, cliRecovery: {version: 1, enabled: true}};
     if (options.path.endsWith('/start')) {
       point = Buffer.from((options.body as {browserPublicKey: string}).browserPublicKey, 'base64url');
       return {origin, installationId, requestId: challengeId, claimant, expiresAt};
@@ -57,6 +68,44 @@ function fixture(origin = 'https://vault-sec.example.test', superadmin = false) 
 describe('terminal QR device login', () => {
   beforeEach(() => {state.active = 'offsite'; state.runtime = null; state.writes = 0; state.beforeWrite = undefined;});
   afterEach(() => {vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs();});
+
+  it('requests signed recovery consent and stores enrollment atomically with the QR tokens', async () => {
+    const f = fixture();
+    const enrollment = {grantId: randomUUID(), credential: randomBytes(32).toString('base64url'), origin: f.origin,
+      installationId: f.installationId, expiresAtSec: Math.floor(Date.now()/1000) + 2592000};
+    Object.assign(f.tokens, {cliRecovery: enrollment});
+    expect(await qrLogin(f.peer, {rememberIphone: true, onPending: vi.fn()})).toMatchObject({success: true});
+    expect(f.calls('start')[0][0].body).toMatchObject({rememberIphone: true});
+    expect(state.writes).toBe(1);
+    expect(state.profile).toMatchObject({credentials: {accessToken: f.tokens.accessToken}, cliRecovery: {...enrollment, state: 'active'}});
+  });
+
+  it.each(['missing', 'unsolicited', 'credential', 'origin', 'installation', 'deadline', 'id'])('rejects %s recovery enrollment without installing a partial session', async fault => {
+    const f = fixture();
+    const enrollment: Record<string, unknown> = {grantId: randomUUID(), credential: randomBytes(32).toString('base64url'), origin: f.origin,
+      installationId: f.installationId, expiresAtSec: Math.floor(Date.now()/1000) + 2592000};
+    if (fault === 'credential') enrollment.credential = 'not-a-capability';
+    if (fault === 'origin') enrollment.origin = 'https://elsewhere.example.test';
+    if (fault === 'installation') enrollment.installationId = randomUUID();
+    if (fault === 'deadline') enrollment.expiresAtSec = Math.floor(Date.now()/1000) + 31*86400;
+    if (fault === 'id') enrollment.grantId = 'wrong-id';
+    if (fault !== 'missing') Object.assign(f.tokens, {cliRecovery: enrollment});
+    expect(await qrLogin(f.peer, {rememberIphone: fault !== 'unsolicited', onPending: vi.fn()})).toMatchObject({success: false});
+    expect(state.writes).toBe(0);
+    expect(state.profile.credentials).not.toEqual(expect.objectContaining({accessToken: f.tokens.accessToken}));
+  });
+
+  it('cannot install a late QR result after a profile was deleted and recreated with a new generation', async () => {
+    const f = fixture();state.profile.authGeneration = randomUUID();
+    const original = f.peer.request.getMockImplementation()!;
+    f.peer.request.mockImplementation(async options => {
+      const result = await original(options);
+      if (options.path.endsWith('/complete')) state.profile.authGeneration = randomUUID();
+      return result;
+    });
+    expect(await qrLogin(f.peer, {onPending: vi.fn()})).toMatchObject({success: false});
+    expect(state.writes).toBe(0);
+  });
 
   it.each(['https://vault.example.test', 'https://vault-sec.example.test'])('opens a fresh session on %s without browser credentials or approval grants', async origin => {
     const f = fixture(origin), pending = vi.fn();
@@ -159,8 +208,8 @@ describe('terminal QR device login', () => {
     expect(await qrLogin(f.peer, {onPending: () => {state.active = 'principal';}})).toMatchObject({success: true});
     expect(state.writes).toBe(1); expect(state.runtime).toBeNull();
   });
-  it('never retries complete after an uncertain response and preserves old credentials', async () => {
-    const f = fixture(), old = structuredClone(state.profile.credentials), original = f.peer.request.getMockImplementation()!;
+  it('never retries complete after an uncertain response or restores the cleared old login', async () => {
+    const f = fixture(), original = f.peer.request.getMockImplementation()!;
     f.peer.request.mockImplementation(async options => {
       if (options.path.endsWith('/complete')) throw new Error('private response ' + f.claimant);
       return await original(options);
@@ -168,7 +217,7 @@ describe('terminal QR device login', () => {
     const result = await qrLogin(f.peer, {onPending: vi.fn()});
     expect(result).toMatchObject({success: false}); expect(JSON.stringify(result)).not.toContain(f.claimant);
     expect(f.calls('complete')).toHaveLength(1); expect(f.calls('start')).toHaveLength(1);
-    expect(state.profile.credentials).toEqual(old); expect(state.writes).toBe(0);
+    expect(state.profile.credentials).toBeUndefined(); expect(state.writes).toBe(0);
   });
   it.each(['id', 'tenantId'])('rejects a completion identity inconsistent with transfer %s', async field => {
     const f = fixture(), original = f.peer.request.getMockImplementation()!;
@@ -180,10 +229,10 @@ describe('terminal QR device login', () => {
     expect(state.writes).toBe(0);
   });
   it('reports storage failure without claiming a persisted session', async () => {
-    const f = fixture(), old = structuredClone(state.profile.credentials);
+    const f = fixture();
     state.beforeWrite = () => {throw new Error('fixture disk unavailable');};
     expect(await qrLogin(f.peer, {onPending: vi.fn()})).toMatchObject({success: false});
-    expect(state.profile.credentials).toEqual(old); expect(state.writes).toBe(0);
+    expect(state.profile.credentials).toBeUndefined(); expect(state.writes).toBe(0);
   });
   it('cancels from the pending presentation without polling or storing', async () => {
     const f = fixture(), controller = new AbortController();

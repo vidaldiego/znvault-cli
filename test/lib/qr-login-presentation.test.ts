@@ -1,9 +1,11 @@
 import {randomUUID} from 'node:crypto';
 import {stripVTControlCharacters} from 'node:util';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {renderTerminalQr, terminalQrLogin} from '../../src/lib/qr-login-presentation.js';
+import {renderTerminalQr, terminalQrLogin, terminalCliRecovery} from '../../src/lib/qr-login-presentation.js';
 import {qrLogin} from '../../src/lib/qr-login.js';
+import {recoverCliLogin} from '../../src/lib/cli-recovery.js';
 vi.mock('../../src/lib/qr-login.js', () => ({qrLogin: vi.fn()}));
+vi.mock('../../src/lib/cli-recovery.js', () => ({recoverCliLogin: vi.fn()}));
 const locator = 'znvault-authenticator://login?v=1&origin=https%3A%2F%2Fvault.example.test&installationId=' + randomUUID() + '&challengeId=' + randomUUID();
 const ttyDescriptors = [process.stdin, process.stdout].map(stream => Object.getOwnPropertyDescriptor(stream, 'isTTY'));
 const sizeDescriptors = ['columns', 'rows'].map(key => Object.getOwnPropertyDescriptor(process.stdout, key));
@@ -21,6 +23,24 @@ afterEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks();
 });
 describe('terminal QR presentation', () => {
+  it('does not start recovery without a terminal', async () => {
+    Object.defineProperty(process.stdin, 'isTTY', {configurable: true, value: false});
+    expect(await terminalCliRecovery({getBaseUrl: () => 'https://vault.example.test', request: vi.fn()})).toMatchObject({success: false});
+    expect(recoverCliLogin).not.toHaveBeenCalled();
+  });
+  it('presents only the Vault, comparison number and short expiry and removes its interrupt handler', async () => {
+    for (const stream of [process.stdin, process.stdout]) Object.defineProperty(stream, 'isTTY', {configurable: true, value: true});
+    const before = process.listenerCount('SIGINT'), write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.mocked(recoverCliLogin).mockImplementation(async (_peer, options) => {
+      await options.onPending({origin:'https://vault.example.test', comparisonNumber:'42', expiresAtSec:Math.floor(Date.now()/1000)+120});
+      process.emit('SIGINT');expect(options.signal?.aborted).toBe(true);
+      return {success:false,error:'cancelled'};
+    });
+    await terminalCliRecovery({getBaseUrl: () => 'https://vault.example.test', request: vi.fn()});
+    const text = write.mock.calls.map(([x]) => String(x)).join('');
+    expect(text).toContain('Choose 42');expect(text).toContain('Expires in');expect(text).toContain('remain separate');
+    expect(text).not.toMatch(/credential|claimant|codeVerifier/);expect(process.listenerCount('SIGINT')).toBe(before);
+  });
   it('renders a compact QR with at least four modules of white quiet zone', () => {
     const rendered = stripVTControlCharacters(renderTerminalQr(locator, 120, 80));
     const lines = rendered.split('\n').filter((_, index, all) => index < all.length - 1);
@@ -50,6 +70,25 @@ describe('terminal QR presentation', () => {
     const peer = {getBaseUrl: () => 'https://vault.example.test', request: vi.fn()};
     expect(await terminalQrLogin(peer)).toMatchObject({success: false});
     expect(qrLogin).not.toHaveBeenCalled();
+  });
+  it('never registers a remembered iPhone without an interactive terminal', async () => {
+    Object.defineProperty(process.stdin, 'isTTY', {configurable: true, value: false});
+    const peer = {getBaseUrl: () => 'https://vault.example.test', request: vi.fn()};
+    expect(await terminalQrLogin(peer, {rememberIphone: true})).toMatchObject({success: false});
+    expect(qrLogin).not.toHaveBeenCalled();
+  });
+  it('passes the explicit opt-in and displays its scope before the QR', async () => {
+    for (const stream of [process.stdin, process.stdout]) Object.defineProperty(stream, 'isTTY', {configurable: true, value: true});
+    Object.defineProperty(process.stdout, 'columns', {configurable: true, value: 100});
+    Object.defineProperty(process.stdout, 'rows', {configurable: true, value: 100});
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.mocked(qrLogin).mockImplementation(async (_peer, options) => {
+      expect(options.rememberIphone).toBe(true);
+      await options.onPending({locator, origin: 'https://vault.example.test', expiresAt: Date.now()/1000 +120});
+      return {success: true, user: {id: 'fixture', username: 'fixture', role: 'user', tenantId: 'fixture', mfaVerified: true}};
+    });
+    expect(await terminalQrLogin({getBaseUrl: () => 'https://vault.example.test', request: vi.fn()}, {rememberIphone: true})).toMatchObject({success: true});
+    expect(write.mock.calls.map(([x]) => String(x)).join('')).toContain('30 days');
   });
   it('cleans up the SIGINT listener after login', async () => {
     for (const stream of [process.stdin, process.stdout]) Object.defineProperty(stream, 'isTTY', {configurable: true, value: true});

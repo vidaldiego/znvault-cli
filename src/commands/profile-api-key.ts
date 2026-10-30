@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { fstatSync } from 'node:fs';
 
-import { getProfile, mutateProfileAuthentication } from '../lib/config.js';
+import {getProfile, mutateProfileAuthentication, beginProfileAuthentication, cancelProfileAuthentication} from '../lib/config.js';
 import * as output from '../lib/output.js';
 
 const API_KEY_PATTERN = /^znv_[0-9a-f]{64}$/;
@@ -69,6 +69,7 @@ export function registerProfileApiKeyCommands(profileCmd: Command): void {
     .option('--stdin', 'Read the API key from standard input (required)')
     .option('--json', 'Output a secret-free JSON receipt')
     .action(async (profileName: string, options: ImportApiKeyOptions) => {
+      let generation: string | undefined, stored = false;
       try {
         if (options.stdin !== true) {
           throw new Error('Refusing API key import without --stdin');
@@ -78,17 +79,22 @@ export function registerProfileApiKeyCommands(profileCmd: Command): void {
         if (!profile) {
           throw new Error(`Profile '${profileName}' not found`);
         }
-        if (profile.apiKey || profile.credentials) {
+        if (profile.apiKey || profile.credentials || profile.cliRecovery) {
           throw new Error(`Profile '${profileName}' already has authentication configured`);
         }
 
+        const begun = beginProfileAuthentication(profileName, current => {
+          if (current.apiKey || current.credentials || current.cliRecovery) throw new Error('Profile already has authentication configured; logout first.');
+        });
+        generation = begun.authGeneration;
         const apiKey = await readApiKeyFromStdin();
         mutateProfileAuthentication(profileName, (currentProfile) => {
-          if (currentProfile.apiKey || currentProfile.credentials) {
+          if (currentProfile.authGeneration !== generation || currentProfile.apiKey || currentProfile.credentials || currentProfile.cliRecovery) {
             throw new Error(`Profile '${profileName}' already has authentication configured`);
           }
           return { ...currentProfile, apiKey };
         });
+        stored = true;
 
         const receipt = {
           success: true,
@@ -104,6 +110,10 @@ export function registerProfileApiKeyCommands(profileCmd: Command): void {
       } catch (err) {
         output.error(err instanceof Error ? err.message : 'API key import failed');
         process.exit(1);
+      } finally {
+        if (!stored && generation !== undefined) {
+          try {cancelProfileAuthentication(profileName, generation);} catch { /* No imported key was stored. */ }
+        }
       }
     });
 }

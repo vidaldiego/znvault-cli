@@ -24,11 +24,15 @@ import {
   logPendingRefreshRecovery,
   getActiveProfileName,
   invalidateProfileCache,
+  authenticationFingerprint,
+  beginProfileAuthentication,
+  cancelProfileAuthentication,
+  type Profile,
 } from '../config.js';
 import { acquireRefreshLock, computeLockKey } from './refresh-lock.js';
 import * as output from '../output.js';
 import type { RequestOptions, ClientConfig } from './types.js';
-import type { LoginResponse, StoredCredentials } from '../../types/index.js';
+import type { LoginResponse, StoredCredentials, FullConfig } from '../../types/index.js';
 
 /** Track if insecure warning has been shown (show only once per session) */
 let insecureWarningShown = false;
@@ -64,7 +68,9 @@ export function verifyPinnedServerSpki(
  */
 export class RefreshHardReauthError extends Error {
   constructor() {
-    super('Refresh in progress on another process or recovery needed; please run: znvault login');
+    super(getConfig().cliRecovery?.state === 'active'
+      ? 'Session refresh cannot continue. In an interactive terminal run: znvault login --recover; or complete a normal login.'
+      : 'Refresh in progress on another process or recovery needed; please run: znvault login');
     this.name = 'RefreshHardReauthError';
   }
 }
@@ -220,6 +226,20 @@ export class HttpClient {
     return this.tlsSpkiSha256Override ?? null;
   }
 
+  /** Refresh may change tokens, but never cross a profile/authentication generation. */
+  private authenticationGuard(outer?: RequestOptions['sessionGuard'], configuration: FullConfig = getConfig()): NonNullable<RequestOptions['sessionGuard']> {
+    const name = getActiveProfileName(), fingerprint = authenticationFingerprint(configuration, false);
+    const origin = this.getBaseUrl(), pin = this.getTlsSpkiSha256(), apiKey = getApiKey();
+    const insecure = this.resolveInsecure();
+    return candidate => {
+      outer?.(candidate);invalidateProfileCache(name);
+      if (getActiveProfileName() !== name || authenticationFingerprint(getConfig(), false) !== fingerprint ||
+          this.getBaseUrl() !== origin || this.getTlsSpkiSha256() !== pin || this.resolveInsecure() !== insecure || getApiKey() !== apiKey) {
+        throw new Error('CLI profile or authentication generation changed. Explicitly retry the operation.');
+      }
+    };
+  }
+
   /**
    * Ensure token is valid, refreshing if needed with mutex to prevent race conditions.
    * The synchronization ensures that only one refresh happens even if multiple
@@ -279,8 +299,8 @@ export class HttpClient {
    * DIFFERENT token, and keeps the marker on an ambiguous failure.
    */
   async refreshToken(opts?: { skipIfLive?: boolean; sessionGuard?: RequestOptions['sessionGuard'] }): Promise<void> {
-    const guard = opts?.sessionGuard;
-    guard?.();
+    const guard = this.authenticationGuard(opts?.sessionGuard);
+    guard();
     // `skipIfLive` (default true) lets the proactive path no-op when the token
     // is already live (a peer rotated in the window since `ensureValidToken`
     // checked). The 401-replay path passes `false`: there the token is often
@@ -310,7 +330,7 @@ export class HttpClient {
     let lock = await acquireRefreshLock(lockKey); // null on 5s timeout -> best-effort
 
     try {
-      guard?.();
+      guard();
       // The 5s profile cache from the pre-acquire getCredentials() can mask a peer's
       // rotation that happened DURING the lock wait. Invalidate so the re-reads below
       // hit disk — that's the whole point of re-reading after acquiring the lock.
@@ -329,7 +349,7 @@ export class HttpClient {
           await lock.release();
           lockKey = reKey;
           lock = await acquireRefreshLock(lockKey);
-          guard?.();
+          guard();
           // Same staleness applies after the reacquire wait — invalidate again so
           // this re-read hits disk and can observe a peer's rotation.
           invalidateProfileCache(profile);
@@ -341,6 +361,14 @@ export class HttpClient {
       }
 
       await this.postRefreshWithRetry(fresh ?? credentials, 0, guard);
+    } catch (error) {
+      guard();
+      if (getConfig().cliRecovery?.state === 'active' && !(error instanceof RefreshHardReauthError)) {
+        const status = error !== null && typeof error === 'object' && 'statusCode' in error ? error.statusCode : undefined;
+        throw Object.assign(new Error('Session refresh failed. Retry or explicitly run znvault login --recover in an interactive terminal.'),
+          typeof status === 'number' ? {statusCode: status} : {});
+      }
+      throw error;
     } finally {
       await lock?.release();
     }
@@ -397,12 +425,18 @@ export class HttpClient {
   /**
    * Login with username and password
    */
-  async login(username: string, password: string, totp?: string): Promise<LoginResponse> {
-    const response = await this.request<LoginResponse>({
+  async login(username: string, password: string, totp?: string, beforeStart?: (current: Profile) => void): Promise<LoginResponse> {
+    const configuration = getConfig(), name = getActiveProfileName(), begun = beginProfileAuthentication(name, beforeStart);
+    const guard = this.authenticationGuard(undefined, {...configuration, authGeneration: begun.authGeneration, cliRecovery: begun.cliRecovery});
+    let stored = false;
+    try {
+      const response = await this.request<LoginResponse>({
       method: 'POST',
       path: '/auth/login',
       body: { username, password, totpCode: totp },
       skipAuth: true,
+      skipAuthRefresh: true,
+      sessionGuard: guard,
     });
 
     storeCredentials({
@@ -413,9 +447,9 @@ export class HttpClient {
       username: response.user.username,
       role: response.user.role,
       tenantId: response.user.tenantId,
-    });
-
-    return response;
+    }, () => {guard();});
+    stored = true;return response;
+    } finally {if (!stored) cancelProfileAuthentication(name, begun.authGeneration);}
   }
 
   /**
@@ -534,6 +568,9 @@ export class HttpClient {
         res.on('data', (chunk: Buffer | string) => (data += String(chunk)));
         res.on('end', () => {
           const statusCode = res.statusCode ?? 0;
+          const header = (res.headers as http.IncomingHttpHeaders | undefined)?.['retry-after'];
+          const wait = typeof header === 'string' ? (/^[0-9]+$/.test(header) ? Number(header) : Math.ceil((Date.parse(header)-Date.now())/1000)) : NaN;
+          const retryAfterSeconds = Number.isSafeInteger(wait) && wait >= 0 ? Math.max(1, wait) : undefined;
           if (statusCode >= 300 && statusCode < 400) {
             // Only the server's tenant-isolation migration is replayable. Keep
             // the exact suffix/query, origin, method, payload and prepared auth.
@@ -629,8 +666,10 @@ export class HttpClient {
                   errorCode?: string;
                   steps?: unknown[];
                   details?: unknown;
+                  retryAfterSeconds?: number;
                 };
                 ext.statusCode = statusCode;
+                if (retryAfterSeconds !== undefined) ext.retryAfterSeconds = retryAfterSeconds;
                 if (symbolicCode !== undefined) ext.errorCode = symbolicCode;
                 else if (parsed.error !== undefined) ext.errorCode = parsed.error;
                 if (parsed.steps !== undefined) ext.steps = parsed.steps;
@@ -638,7 +677,7 @@ export class HttpClient {
                 reject(e);
               } else {
                 const e = new Error(`HTTP ${statusCode}: ${JSON.stringify(parsed).slice(0, 200)}`);
-                (e as Error & { statusCode?: number }).statusCode = statusCode;
+                Object.assign(e, {statusCode, ...(retryAfterSeconds !== undefined ? {retryAfterSeconds} : {})});
                 reject(e);
               }
             } else {
@@ -648,7 +687,7 @@ export class HttpClient {
             }
           } catch (parseError) {
             if (statusCode >= 400) {
-              reject(Object.assign(new Error(`Request failed with status ${statusCode}`), {statusCode}));
+              reject(Object.assign(new Error(`Request failed with status ${statusCode}`), {statusCode, ...(retryAfterSeconds !== undefined ? {retryAfterSeconds} : {})}));
             } else if (parseError instanceof Error && parseError.message.includes('Unexpected')) {
               // Re-throw validation errors
               reject(parseError);
