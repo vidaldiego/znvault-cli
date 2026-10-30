@@ -22,7 +22,10 @@ try {
   const run = (...args) => execFileSync(process.execPath, [join(root, 'dist/index.js'), '--no-plugins', ...args], { env, cwd: scratch, encoding: 'utf8' });
   if (run('--version').trim() !== expectedVersion) throw new Error('CLI version mismatch');
   const login = run('login', '--help');
-  if (!login.includes('--qr') || !login.includes('--web')) throw new Error('QR/browser login surface missing');
+  if (!['--qr', '--web', '--recover', '--remember-iphone'].every(option => login.includes(option))) throw new Error('QR/browser/recovery login surface missing');
+  const recovery = run('superadmin', 'cli-recovery', '--help');
+  if (!['status', 'enable', 'disable'].every(command => new RegExp(`^  ${command} `, 'm').test(recovery))) throw new Error('CLI recovery protocol adapter missing');
+  if (!run('superadmin', 'cli-recovery', 'disable', '--help').includes('--expected-epoch')) throw new Error('CLI recovery epoch guard missing');
   const escrow = run('superadmin', 'lmk', 'escrow', '--help');
   if (!/^  verify/m.test(escrow) || !/^  restore/m.test(escrow) || /^  snapshot/m.test(escrow)) throw new Error('Legacy escrow compatibility failure');
   const lmk = run('superadmin', 'lmk', '--help');

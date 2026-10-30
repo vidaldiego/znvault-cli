@@ -50,7 +50,8 @@ vi.mock('../../src/lib/client.js', () => ({
   },
 }));
 
-vi.mock('../../src/lib/config.js', () => ({
+vi.mock('../../src/lib/config.js', async () => ({
+  ...(await vi.importActual<typeof import('../../src/lib/config.js')>('../../src/lib/config.js')),
   getCredentials: vi.fn().mockReturnValue({
     userId: '123',
     username: 'admin',
@@ -75,7 +76,8 @@ vi.mock('../../src/lib/config.js', () => ({
   deleteProfile: vi.fn(),
   switchProfile: vi.fn(),
   renameProfile: vi.fn(),
-  getProfile: vi.fn().mockReturnValue({ name: 'default' }),
+  getProfile: vi.fn().mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000}),
+  DEFAULT_PROFILE: 'default',
   getConfig: vi.fn().mockReturnValue({ url: 'https://localhost:8443', insecure: false, timeout: 30000 }),
 }));
 
@@ -97,6 +99,7 @@ vi.mock('../../src/lib/web-login.js', () => ({
   }),
 }));
 vi.mock('../../src/lib/qr-login-presentation.js', () => ({
+  terminalCliRecovery: vi.fn().mockResolvedValue({success: true, user: {id: '123', username: 'admin', role: 'superadmin', tenantId: null, mfaVerified: true}}),
   terminalQrLogin: vi.fn().mockResolvedValue({
     success: true, user: {id: '123', username: 'admin', role: 'superadmin', tenantId: null, mfaVerified: true},
   }),
@@ -105,10 +108,12 @@ vi.mock('../../src/lib/qr-login-presentation.js', () => ({
 describe('auth commands', () => {
   let program: Command;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
+  const tty = [process.stdin, process.stdout].map(s => Object.getOwnPropertyDescriptor(s, 'isTTY'));
 
   beforeEach(async () => {
     program = new Command();
     program.exitOverride();
+    for (const stream of [process.stdin, process.stdout]) Object.defineProperty(stream, 'isTTY', {configurable: true, value: true});
 
     const { registerAuthCommands } = await import('../../src/commands/auth.js');
     registerAuthCommands(program);
@@ -120,12 +125,35 @@ describe('auth commands', () => {
     consoleSpy.mockRestore();
     vi.clearAllMocks();
     process.exitCode = undefined;
+    [process.stdin, process.stdout].forEach((stream, index) => {
+      if (tty[index]) Object.defineProperty(stream, 'isTTY', tty[index]!);else Reflect.deleteProperty(stream, 'isTTY');
+    });
   });
 
   describe('login', () => {
+    it('uses explicit recovery without a browser, QR or password login', async () => {
+      const {terminalCliRecovery,terminalQrLogin} = await import('../../src/lib/qr-login-presentation.js');
+      const {webLogin} = await import('../../src/lib/web-login.js');const {client} = await import('../../src/lib/client.js');
+      await program.parseAsync(['node','test','login','--recover']);
+      expect(terminalCliRecovery).toHaveBeenCalledExactlyOnceWith(client);
+      expect(terminalQrLogin).not.toHaveBeenCalled();expect(webLogin).not.toHaveBeenCalled();expect(client.login).not.toHaveBeenCalled();
+    });
     it('offers terminal QR login alongside existing methods', () => {
       const login = program.commands.find(command => command.name() === 'login');
       expect(login?.options.some(option => option.long === '--qr')).toBe(true);
+      expect(login?.options.some(option => option.long === '--remember-iphone')).toBe(true);
+      expect(login?.options.some(option => option.long === '--recover')).toBe(true);
+    });
+    it('requires an explicit QR method for remembering the iPhone', async () => {
+      await expect(program.parseAsync(['node', 'test', 'login', '--remember-iphone']))
+        .rejects.toThrow(/requires --qr/);
+      const {client} = await import('../../src/lib/client.js');
+      expect(client.login).not.toHaveBeenCalled();
+    });
+    it.each(['--web', '--qr', '--json', '--username', '--password', '--password-file', '--totp', '--remember-iphone'])('rejects recovery combined with %s', async option => {
+      const args = ['node', 'test', 'login', '--recover', option];
+      if (['--username', '--password', '--password-file', '--totp'].includes(option)) args.push('fixture');
+      await expect(program.parseAsync(args)).rejects.toMatchObject({code: 'commander.conflictingOption'});
     });
     it('uses the existing client for terminal QR login without opening the browser', async () => {
       const {client} = await import('../../src/lib/client.js');
@@ -148,7 +176,7 @@ describe('auth commands', () => {
 
       await program.parseAsync(['node', 'test', 'login', '-u', 'admin', '-p', 'password']);
 
-      expect(client.login).toHaveBeenCalledWith('admin', 'password', undefined);
+      expect(client.login).toHaveBeenCalledWith('admin', 'password', undefined, expect.any(Function));
     });
 
     it('passes the effective global URL to browser login', async () => {
@@ -160,7 +188,47 @@ describe('auth commands', () => {
     });
   });
 
+  it.each(['delete-default','rename-existing'])('does not retire a session for an impossible profile operation: %s', async kind => {
+    const recovery = await import('../../src/lib/cli-recovery.js');const cfg = await import('../../src/lib/config.js');
+    const retire = vi.spyOn(recovery,'retireStoredCliRecovery').mockResolvedValue(undefined);
+    const exit = vi.spyOn(process,'exit').mockImplementation(() => {throw new Error('fixture exit');});
+    vi.mocked(cfg.getProfile).mockImplementation(() => ({url:'https://vault.example.test',insecure:false,timeout:1000}));
+    const mutation = kind === 'delete-default' ? vi.mocked(cfg.deleteProfile) : vi.mocked(cfg.renameProfile);
+    mutation.mockImplementationOnce(() => {throw new Error('invalid profile operation');});
+    try {
+      const args = kind === 'delete-default' ? ['profile','delete','default','--force'] : ['profile','rename','remembered','existing'];
+      await expect(program.parseAsync(['node','test',...args])).rejects.toThrow('fixture exit');
+      expect(retire).not.toHaveBeenCalled();
+    } finally {
+      retire.mockRestore();exit.mockRestore();vi.mocked(cfg.getProfile).mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000});
+      mutation.mockReset();
+    }
+  });
+  it('does not retire a recovery binding when its URL is set to the same value', async () => {
+    const recovery = await import('../../src/lib/cli-recovery.js');const cfg = await import('../../src/lib/config.js');
+    const retire = vi.spyOn(recovery,'retireStoredCliRecovery').mockResolvedValue(undefined);
+    vi.mocked(cfg.getProfile).mockReturnValue({url:'https://vault.example.test',insecure:false,timeout:1000});
+    try {
+      await program.parseAsync(['node','test','config','set','url','https://vault.example.test']);
+      expect(retire).not.toHaveBeenCalled();
+    } finally {retire.mockRestore();vi.mocked(cfg.getProfile).mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000});}
+  });
+
   describe('logout', () => {
+    it('retires a remembered grant even after normal credentials expire without attempting token refresh', async () => {
+      const recovery = await import('../../src/lib/cli-recovery.js');const cfg = await import('../../src/lib/config.js');
+      const {client} = await import('../../src/lib/client.js');
+      const retire = vi.spyOn(recovery,'retireStoredCliRecovery').mockResolvedValue(undefined);
+      vi.mocked(cfg.getCredentials).mockReturnValueOnce({accessToken:'public-expired',refreshToken:'public-expired-refresh',expiresAt:1,
+        userId:'fixture',username:'fixture/alice',role:'user',tenantId:'fixture'});
+      vi.mocked(cfg.getProfile).mockReturnValueOnce({url:'https://vault.example.test',insecure:false,timeout:1000,
+        cliRecovery:{state:'active',grantId:'11111111-1111-4111-8111-111111111111',credential:'A'.repeat(43),origin:'https://vault.example.test',expiresAtSec:2000000000}});
+      try {
+        await program.parseAsync(['node','test','logout']);
+        expect(retire).toHaveBeenCalledExactlyOnceWith('default');expect(client.post).not.toHaveBeenCalled();
+        expect(cfg.clearCredentials).not.toHaveBeenCalled();
+      } finally {retire.mockRestore();}
+    });
     it('should clear credentials', async () => {
       const { client } = await import('../../src/lib/client.js');
       const { clearCredentials } = await import('../../src/lib/config.js');

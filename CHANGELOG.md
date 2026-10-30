@@ -5,6 +5,31 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.0] - 2026-10-30
+
+### Added
+
+- Explicit 30-day iPhone recovery: opt in with `login --qr --remember-iphone`,
+  then use `login --recover` in a terminal. Reuse the paired phone, Mobile MFA,
+  PKCE and existing session authority; never auto-push or extend the original
+  deadline. Recovery does not restore User-Sealed keys or access approvals.
+- `superadmin cli-recovery status|enable|disable` with required expected epochs
+  for configuration changes.
+
+### Fixed
+
+- Fence login/refresh completion with profile generations and preserve recovery
+  grants through ordinary refresh/metadata writes. Retire grants before replacing
+  or deleting profiles, retain pending retirement safely when offline, and never
+  copy recovery capabilities to another profile.
+
+
+- Preserve actionable User-Sealed access denials in TOTP commands: distinguish
+  a missing primary unlock, the independent approval window and crypto unseal.
+  Point each remedy at the initiating profile without reflecting secret values
+  or server error payloads. Unknown denials remain generic; no automatic approval
+  or retry is introduced.
+
 ## [5.5.0] - 2026-10-29
 
 ### Added

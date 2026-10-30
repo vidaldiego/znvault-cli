@@ -7,12 +7,34 @@ import type {DecryptedSecret} from './types.js';
 /** Only messages authored here may pass through secret-value error output. */
 export class SecretInputError extends Error {}
 
-export function safeSecretError(error: unknown): string {
+function secretCommand(profileName: string): string {
+  const profile = /^[A-Za-z0-9._-]+$/.test(profileName)
+    ? profileName
+    : `'${profileName.replace(/'/g, "'\\''")}'`;
+  return `znvault --profile ${profile}`;
+}
+
+export function safeSecretError(error: unknown, profileName?: string): string {
   if (error instanceof SecretInputError) return error.message;
   if (error instanceof Error && error.message === 'Invalid TOTP configuration.') return error.message;
-  const details = error as {statusCode?: number; errorCode?: string} | undefined;
+  const details = error as {statusCode?: number; errorCode?: string; details?: {denialType?: unknown; requiresUnseal?: unknown}} | undefined;
   if (details?.errorCode === 'SECRET_VERSION_CONFLICT') return 'SECRET_VERSION_CONFLICT: Secret changed; read the latest version and retry.';
-  if (details?.statusCode === 401 || details?.statusCode === 403) return 'Secret access denied.';
+  if (details?.statusCode === 401 || details?.statusCode === 403) {
+    // Callers without captured context keep their existing generic denial;
+    // a bare approval command could otherwise target a different active profile.
+    if (profileName === undefined) return 'Secret access denied.';
+    const command = secretCommand(profileName);
+    if (details.errorCode === 'USER_SEALED_APPROVAL_REQUIRED') {
+      return `USER_SEALED_APPROVAL_REQUIRED: User-Sealed needs its own approval; unseal does not grant it. Run ${command} user-sealed approve --iphone or ${command} user-sealed approve --otp, then repeat the operation.`;
+    }
+    if (details.errorCode === 'SECRET_REQUIRES_USER_SESSION') {
+      return `SECRET_REQUIRES_USER_SESSION: The primary User-Sealed key is locked. Run ${command} login --qr with an enabled iPhone, or ${command} login --web with password, linked PRF passkey or enabled iPhone, then repeat the operation.`;
+    }
+    if (details.errorCode === 'UNSEAL_REQUIRED' || (details.details?.denialType === 'unseal_required' && details.details.requiresUnseal === true)) {
+      return `UNSEAL_REQUIRED: Crypto access is sealed. Run ${command} unseal --iphone or ${command} unseal --otp, then repeat the operation. User-Sealed approval remains a separate step.`;
+    }
+    return 'Secret access denied.';
+  }
   if (details?.statusCode === 404) return 'Secret or conditional-write endpoint not found. Check the identifier and server support.';
   return 'Secret operation failed.';
 }

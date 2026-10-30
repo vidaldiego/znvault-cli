@@ -129,7 +129,12 @@ export function getRuntimeProfile(): string | null {
  * Reset all configuration
  */
 export function resetConfig(): void {
-  store.clear();
+  withStoreMutation(() => {
+    if (Object.values(store.get('profiles')).some(profile => profile.cliRecovery !== undefined)) {
+      throw new Error('Retire CLI recovery with logout before resetting configuration.');
+    }
+    store.clear();
+  });
 }
 
 /**

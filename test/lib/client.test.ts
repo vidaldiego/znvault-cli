@@ -3,8 +3,9 @@ import http from 'node:http';
 import { AddressInfo } from 'node:net';
 
 // Mock config module to prevent tests from writing to real config
-vi.mock('../../src/lib/config.js', () => {
+vi.mock('../../src/lib/config.js', async () => {
   return {
+    ...(await vi.importActual<typeof import('../../src/lib/config.js')>('../../src/lib/config.js')),
     storeCredentials: vi.fn(),
     getCredentials: vi.fn().mockReturnValue(null),
     clearCredentials: vi.fn(),
@@ -13,11 +14,6 @@ vi.mock('../../src/lib/config.js', () => {
     getEnvCredentials: vi.fn().mockReturnValue(undefined),
     hasApiKey: vi.fn().mockImplementation(() => !!process.env.ZNVAULT_API_KEY),
     getApiKey: vi.fn().mockImplementation(() => process.env.ZNVAULT_API_KEY),
-    getConfig: vi.fn().mockImplementation(() => ({
-      url: process.env.ZNVAULT_URL || 'http://localhost:8443',
-      insecure: false,
-      timeout: 30000,
-    })),
     getConfigValue: vi.fn(),
     getEffectiveUrl: vi.fn().mockImplementation(() => process.env.ZNVAULT_URL || 'http://localhost:8443'),
   };

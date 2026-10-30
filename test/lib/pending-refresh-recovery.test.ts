@@ -17,7 +17,8 @@ let presented: string[] = [];
 let reuseHits = 0;
 const recoveryLog = vi.fn();
 
-vi.mock('../../src/lib/config.js', () => ({
+vi.mock('../../src/lib/config.js', async () => ({
+  ...(await vi.importActual<typeof import('../../src/lib/config.js')>('../../src/lib/config.js')),
   storeCredentials: vi.fn((c: any) => { creds = c; }),
   getCredentials: vi.fn(() => creds),
   clearCredentials: vi.fn(() => { creds = undefined; }),

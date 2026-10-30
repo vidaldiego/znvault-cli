@@ -23,8 +23,6 @@ import { ManagedKeysClient } from './managed-keys.js';
 import { PoliciesClient, PermissionsClient } from './policies.js';
 import { QuarantineClient } from './quarantine.js';
 
-import type { LoginResponse } from '../../types/index.js';
-
 // Re-export domain clients for direct use
 export { HttpClient } from './http.js';
 export { HealthClient, ClusterClient } from './health.js';
@@ -133,10 +131,6 @@ export class VaultClient extends HttpClient {
   }
 
   // ============ Authentication (inherited from HttpClient) ============
-
-  override async login(username: string, password: string, totp?: string): Promise<LoginResponse> {
-    return super.login(username, password, totp);
-  }
 
   // ============ Health ============
 

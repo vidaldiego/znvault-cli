@@ -16,6 +16,7 @@ let directory: string;
 let server: Server;
 let url: string;
 let status: number;
+let decryptDenial: Record<string, unknown> | undefined;
 let requests: {method: string; url: string; data: Record<string, unknown>; apiKey?: string}[];
 
 async function files(directoryPath: string): Promise<string[]> {
@@ -24,14 +25,14 @@ async function files(directoryPath: string): Promise<string[]> {
   return contents.flat();
 }
 
-async function cli(args: string[], stdin = '', authentication: 'api-key' | 'user' = 'api-key'): Promise<{code: number | null; stdout: string; stderr: string}> {
+async function cli(args: string[], stdin = '', authentication: 'api-key' | 'user' = 'api-key', profileName = 'default'): Promise<{code: number | null; stdout: string; stderr: string}> {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('ZNVAULT_') && name !== 'DATABASE_URL'));
   if (authentication === 'user') {
-    await writeFile(join(directory, 'config.json'), JSON.stringify({activeProfile: 'default', plugins: [], profiles: {default: {
+    await writeFile(join(directory, 'config.json'), JSON.stringify({activeProfile: 'default', plugins: [], profiles: {[profileName]: {
       url, insecure: false, timeout: 30000, credentials: {accessToken: 'synthetic-test-access-token', refreshToken: 'synthetic-test-refresh-token', expiresAt: Date.now() + 3600000, userId: 'synthetic-user', username: 'alice', role: 'user', tenantId: 'lab'},
     }}}), {mode: 0o600});
   }
-  const child = spawn(process.execPath, ['dist/index.js', '--no-plugins', '--url', url, ...args], {
+  const child = spawn(process.execPath, ['dist/index.js', '--no-plugins', '--url', url, ...(authentication === 'user' ? ['--profile', profileName] : []), ...args], {
     cwd: process.cwd(),
     env: {...env, CI: '1', ZNVAULT_CONFIG_DIR: directory, ZNVAULT_NO_PLUGINS: '1', ZNVAULT_NO_UPDATE_CHECK: '1', ...(authentication === 'api-key' ? {ZNVAULT_API_KEY: 'synthetic-test-api-key'} : {})},
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -50,6 +51,7 @@ beforeEach(async () => {
   data = {username: 'alice', password: '${ref:db/account#password}', keep: {nested: true}, totp};
   requests = [];
   status = 200;
+  decryptDenial = undefined;
   directory = await mkdtemp(join(tmpdir(), 'znvault-totp-process-'));
   server = createServer(async (request, response) => {
     let body = '';
@@ -57,7 +59,10 @@ beforeEach(async () => {
     const input = body ? JSON.parse(body) as Record<string, unknown> : {};
     requests.push({method: request.method ?? '', url: request.url ?? '', data: input, apiKey: request.headers['x-api-key'] as string | undefined});
     response.setHeader('Content-Type', 'application/json');
-    if (request.url?.includes('/decrypt')) {
+    if (request.url?.includes('/decrypt') && decryptDenial) {
+      response.statusCode = 403;
+      response.end(JSON.stringify(decryptDenial));
+    } else if (request.url?.includes('/decrypt')) {
       response.end(JSON.stringify({...meta, version: 7, data}));
     } else if (request.url?.includes('/meta') || request.url?.includes('/alias/')) {
       response.end(JSON.stringify(meta));
@@ -122,6 +127,57 @@ describe('built TOTP CLI process boundaries', () => {
     expect(JSON.parse(result.stdout)).toEqual({code: expect.stringMatching(/^\d{6}$/), validUntil: expect.any(Number), period: 30});
     expect(requests.every(request => request.apiKey === 'synthetic-test-api-key' && request.url === `/v1/secrets/${id}/decrypt`)).toBe(true);
     expect([plain.stdout, plain.stderr, result.stdout, result.stderr, ...await files(directory)].join('\n')).not.toContain(seed);
+  });
+
+  describe.each([false, true])('actionable access denials (json=%s)', json => {
+    it.each([
+      {code: 'USER_SEALED_APPROVAL_REQUIRED', actions: ['user-sealed approve --iphone', 'user-sealed approve --otp']},
+      {code: 'SECRET_REQUIRES_USER_SESSION', actions: ['login --qr', 'login --web']},
+      {code: 'UNSEAL_REQUIRED', actions: ['unseal --iphone', 'unseal --otp']},
+    ])('identifies $code and keeps the remedy in the initiating profile', async ({code, actions}) => {
+      decryptDenial = {error: 'Forbidden', code, message: `untrusted response ${seed} otpauth://totp/alice?secret=${seed}`};
+      const result = await cli(['secret', 'totp', 'code', id, ...(json ? ['--json'] : [])], '', 'user', 'vault-sec-tenant');
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain(code);
+      for (const action of actions) expect(result.stderr).toContain(`znvault --profile vault-sec-tenant ${action}`);
+      expect(result.stderr).not.toContain(seed);
+      expect(result.stderr).not.toContain('otpauth://');
+      expect(requests.map(request => [request.method, request.url])).toEqual([['POST', `/v1/secrets/${id}/decrypt`]]);
+      expect((await files(directory)).join('')).not.toContain(seed);
+    });
+
+    it('recognizes the existing crypto-unseal middleware envelope without a code', async () => {
+      decryptDenial = {error: 'Forbidden', denialType: 'unseal_required', requiresUnseal: true, message: `untrusted ${seed}`};
+      const result = await cli(['secret', 'totp', 'code', id, ...(json ? ['--json'] : [])], '', 'user', 'production');
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('znvault --profile production unseal --iphone');
+      expect(result.stderr).not.toContain(seed);
+      expect(requests).toHaveLength(1);
+    });
+  });
+
+  it('does not suggest approval from a command without captured profile context', async () => {
+    decryptDenial = {error: 'Forbidden', code: 'USER_SEALED_APPROVAL_REQUIRED', message: `untrusted ${seed}`};
+    const result = await cli(['secret', 'update', id, '--data-stdin'], '{"username":"replacement"}', 'user', 'production');
+    expect(result.code).toBe(1);
+    expect(result.stdout).not.toContain(seed);
+    expect(result.stderr).not.toContain('approve --');
+    expect(result.stderr).not.toContain(seed);
+    expect(requests.every(request => request.method === 'GET' || request.url.includes('/decrypt'))).toBe(true);
+  });
+
+  it.each(['Forbidden', `USER_SEALED_APPROVAL_REQUIRED:${seed}`])('does not turn an unknown denial into approval or reflect its payload (%s)', async code => {
+    decryptDenial = {error: 'Forbidden', code, message: `USER_SEALED_APPROVAL_REQUIRED ${seed} otpauth://totp/alice?secret=${seed}`};
+    const result = await cli(['secret', 'totp', 'code', id], '', 'user');
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Secret access denied.');
+    expect(result.stderr).not.toContain('approve --');
+    expect(result.stderr).not.toContain(seed);
+    expect(result.stderr).not.toContain('otpauth://');
+    expect(requests).toHaveLength(1);
   });
 
   it.each([404, 409])('does not fall back to a legacy write or retry when conditional writes return %i', async (failureStatus) => {

@@ -129,6 +129,26 @@ describe('profile api-key import --stdin (real CLI process)', () => {
     expect(readFileSync(configPath, 'utf8')).toContain(VALID_KEY);
   });
 
+  it.each(['active', 'revocation_pending'])('refuses API-key replacement and hides %s recovery proof in public output', state => {
+    createEmptyProfile();
+    const configPath = run(['config', 'path']).stdout.trim();
+    const content = JSON.parse(readFileSync(configPath, 'utf8'));
+    const credential = Buffer.alloc(32, 9).toString('base64url');
+    content.profiles.consumer.cliRecovery = {state, grantId: '11111111-1111-4111-8111-111111111111', credential,
+      origin: 'https://vault.example.com', installationId: '22222222-2222-4222-8222-222222222222', expiresAtSec: Math.floor(Date.now()/1000)+2592000};
+    writeFileSync(configPath, JSON.stringify(content), {mode: 0o600});
+    const result = run(['profile', 'api-key', 'import', 'consumer', '--stdin', '--json'], VALID_KEY);
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).not.toContain(VALID_KEY);
+    expect(result.stdout + result.stderr).not.toContain(credential);
+    const shown = run(['profile','show','consumer','--json']);
+    expect(shown.status).toBe(0);expect(shown.stdout + shown.stderr).not.toContain(credential);
+    expect(JSON.parse(readFileSync(configPath,'utf8')).profiles.consumer.apiKey).toBeUndefined();
+    const login = run(['--profile','consumer','login','--recover']);
+    expect(login.status).toBe(1);expect(login.stdout +login.stderr).toContain('interactive terminal');
+    expect(JSON.parse(readFileSync(configPath,'utf8')).profiles.consumer.cliRecovery).toEqual(content.profiles.consumer.cliRecovery);
+  });
+
   it.each([VALID_KEY, `${VALID_KEY}\r\n`])(
     'accepts an exact key with no terminator or one CRLF',
     (input) => {

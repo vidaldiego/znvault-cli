@@ -8,6 +8,7 @@ import type { StoredCredentials } from '../../types/index.js';
 import { getActiveProfileName, getCurrentProfile, mutateProfileAuthentication } from './profile.js';
 import { TOKEN_REFRESH_BUFFER_MS, PENDING_REFRESH_TTL } from '../constants.js';
 import { debug } from '../debug.js';
+import {randomUUID} from 'node:crypto';
 
 /**
  * Store credentials after login/refresh.
@@ -32,10 +33,12 @@ export function storeCredentials(credentials: StoredCredentials, beforeWrite?: (
 /**
  * Clear stored credentials
  */
-export function clearCredentials(): void {
+export function clearCredentials(guard?: {expectedGeneration?: string}): void {
   const profileName = getActiveProfileName();
   mutateProfileAuthentication(profileName, (profile) => {
+    if (guard && profile.authGeneration !== guard.expectedGeneration) return profile;
     delete profile.credentials;
+    profile.authGeneration = randomUUID();
     return profile;
   });
 }

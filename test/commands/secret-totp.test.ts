@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   error: vi.fn(), json: vi.fn(), success: vi.fn(),
 }));
 vi.mock('../../src/lib/client.js', () => ({client: {get: state.get, post: state.post, put: state.put}}));
+vi.mock('../../src/lib/config.js', () => ({getActiveProfileName: () => 'totp-test'}));
 vi.mock('../../src/lib/stdin.js', () => ({readStdinUtf8: state.stdin}));
 vi.mock('inquirer', () => ({default: {prompt: state.prompt}}));
 vi.mock('../../src/lib/output.js', () => ({

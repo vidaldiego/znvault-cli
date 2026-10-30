@@ -55,6 +55,31 @@ HTTPS Vault origin; it cannot be combined with --web, --json or password/TOTP
 options. Crypto unseal and User-Sealed approval remain separate operations.
 Existing browser login (login --web) and password login remain available.
 
+
+On a Vault with CLI recovery enabled and a compatible Authenticator build, opt in
+during a **new** QR login:
+
+    znvault --profile production login --qr --remember-iphone
+    znvault --profile production login --recover
+
+The same iPhone must approve recovery with number matching and biometrics.
+The original recovery deadline is **30 days from the QR login**; refreshing or
+recovering never moves it. Ordinary refresh still has its seven-day inactivity
+policy. Recovery is explicit and requires a terminal: background commands never
+send a push, and `--recover` cannot be combined with other login methods,
+credentials or JSON output. Both tenant accounts and global superadmins use the
+same flow.
+
+Recovery authenticates the session without restoring a User-Sealed primary key
+or granting unseal/additional approval. Use a fresh full login when a primary
+unlock is needed, and approve each separate access window as usual.
+
+Logout retires the recovery grant even after the ordinary tokens have expired.
+Replacing the login, changing its Vault URL, or deleting the profile first retires
+that grant at its original Vault. If that Vault is unreachable, local tokens are
+cleared and retirement remains pending; retry logout before replacing/deleting
+the profile. Copying a profile never copies its recovery capability.
+
 ```bash
 znvault login -u admin -p 'password'
 znvault login -u admin -p 'password' -t 123456  # With TOTP
@@ -177,7 +202,18 @@ operation and the local clock.
 An attachment shares its secret's protection, user grants, permissions and
 lifecycle. Choose a standalone secret when it needs separate access controls.
 User-Sealed authenticators retain the unlocked HUMAN session and explicit grant
-requirements described below. Linked replicas are read-only, and attachment to
+requirements described below. If the Vault requires additional User-Sealed
+approval, approve it in the same profile before requesting a code. Crypto unseal
+and User-Sealed approval have independent windows; unseal alone does not open both.
+
+```bash
+znvault --profile production user-sealed approve --iphone  # Or --otp
+znvault --profile production secret totp code app/login
+```
+
+A locked primary key first needs a fresh `login --qr` or `login --web` in that
+profile. Code-only output stays empty on failure; the CLI reports the required
+step on stderr. Linked replicas are read-only, and attachment to
 link pointers or public-key secrets is refused. Existing custom fields named `totp` are left intact
 and must be resolved explicitly before attachment.
 

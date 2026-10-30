@@ -27,6 +27,8 @@ export function getConfig(): FullConfig {
     timeout: envTimeout ? parseInt(envTimeout, 10) : profile.timeout,
     defaultTenant: profile.defaultTenant,
     credentials: profile.credentials,
+    authGeneration: profile.authGeneration,
+    cliRecovery: profile.cliRecovery,
   };
 }
 

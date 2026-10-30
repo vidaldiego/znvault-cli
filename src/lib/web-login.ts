@@ -21,7 +21,8 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { URL } from 'node:url';
-import { getConfig, storeCredentials } from './config.js';
+import {getConfig, storeCredentials, getActiveProfileName, getProfile, invalidateProfileCache,
+  authenticationFingerprint, beginProfileAuthentication, cancelProfileAuthentication} from './config.js';
 import * as output from './output.js';
 import { getVersion } from './version.js';
 
@@ -314,8 +315,20 @@ export async function webLogin(baseUrlOverride?: string): Promise<{
   error?: string;
 }> {
   const config = getConfig();
+  const name = getActiveProfileName();
+  let generation: string | undefined, stored = false;
 
   try {
+    const begun = beginProfileAuthentication(name);
+    generation = begun.authGeneration;
+    const snapshot = authenticationFingerprint(begun, false);
+    const check = (): void => {
+      invalidateProfileCache(name);
+      if (getActiveProfileName() !== name || authenticationFingerprint(getProfile(name), false) !== snapshot ||
+          getConfig().url !== config.url || getConfig().insecure !== config.insecure) {
+        throw new Error('CLI profile or authentication generation changed. Start web login again.');
+      }
+    };
     // 1. Generate PKCE parameters
     const pkce = generatePKCE();
 
@@ -346,6 +359,7 @@ export async function webLogin(baseUrlOverride?: string): Promise<{
 
     // 7. Wait for callback
     const callbackResult = await callbackPromise;
+    check();
 
     output.info('Authorization received. Exchanging for tokens...');
 
@@ -356,6 +370,7 @@ export async function webLogin(baseUrlOverride?: string): Promise<{
       pkce.codeVerifier,
       callbackResult.state
     );
+    check();
 
     // 9. Store credentials
     storeCredentials({
@@ -366,7 +381,8 @@ export async function webLogin(baseUrlOverride?: string): Promise<{
       username: tokens.user.username,
       role: tokens.user.role,
       tenantId: tokens.user.tenantId,
-    });
+    }, check);
+    stored = true;
 
     return {
       success: true,
@@ -378,6 +394,10 @@ export async function webLogin(baseUrlOverride?: string): Promise<{
       success: false,
       error: message,
     };
+  } finally {
+    if (!stored && generation !== undefined) {
+      try {cancelProfileAuthentication(name, generation);} catch { /* No new session was stored. */ }
+    }
   }
 }
 
