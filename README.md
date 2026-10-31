@@ -40,6 +40,10 @@ znvault health
 
 ### Login
 
+Run `znvault login` in a terminal to choose iPhone QR, browser or password.
+Explicit `--qr`, `--web` and supplied credentials keep their existing meaning;
+scripts and CI do not get a method picker.
+
 With ZnVault 1.81.2 or later and an already paired iPhone with device sign-in
 enabled, scan a terminal QR using **ZnVault Authenticator → Scan QR**, choose the
 account for that Vault and approve with biometrics:
@@ -56,11 +60,20 @@ options. Crypto unseal and User-Sealed approval remain separate operations.
 Existing browser login (login --web) and password login remain available.
 
 
-On a Vault with CLI recovery enabled and a compatible Authenticator build, opt in
-during a **new** QR login:
+On a Vault with CLI recovery enabled and a compatible Authenticator build,
+a **new** iPhone QR login automatically asks the phone to sign in and remember
+this CLI for up to 30 days. No separate activation command is needed:
 
-    znvault --profile production login --qr --remember-iphone
-    znvault --profile production login --recover
+    znvault --profile production login --qr
+
+The phone's biometric approval includes that consent. Disable remembered recovery
+for this profile with `login --qr --no-remember-iphone`; ordinary later QR logins
+keep it disabled. Re-enable with `login --qr --remember-iphone` (this explicit
+option requires server support). Logout preserves the preference and retires
+the grant. A disabled/old recovery server permits ordinary QR with an unavailable
+notice; malformed responses or failed/denied consent never silently retry.
+An older app may require updating, or an explicit login without remembering.
+Browser/password login does not enroll recovery: choose iPhone QR to do so.
 
 The same iPhone must approve recovery with number matching and biometrics.
 The original recovery deadline is **30 days from the QR login**; refreshing or
@@ -68,6 +81,7 @@ recovering never moves it. Ordinary refresh still has its seven-day inactivity
 policy. Ordinary commands automatically try the remembered iPhone when their
 HUMAN session cannot continue. This also works in agents, scripts, pipes and CI:
 number matching and progress go to stderr; JSON and raw stdout stay intact.
+The comparison number is large in a wide terminal and compact in logs or narrow terminals.
 Recovery never reads stdin or opens a browser. `login --recover` starts the same
 flow explicitly and supports JSON; initial QR enrollment still requires a terminal.
 API keys, environment credentials, local mode and authentication control commands

@@ -8,8 +8,8 @@ import {getVersion} from './version.js';
 import {deviceBytes, parseDeviceBytes} from './device-login/mobile-device-login.js';
 import {openDeviceKey, type DeviceEnvelopeContext} from './device-login/device-key-envelope.js';
 
-export interface QrLoginPending {locator: string; origin: string; expiresAt: number}
-export interface QrLoginOptions {signal?: AbortSignal; rememberIphone?: boolean; onPending: (view: QrLoginPending) => void | Promise<void>}
+export interface QrLoginPending {locator: string; origin: string; expiresAt: number; rememberIphone?: boolean}
+export interface QrLoginOptions {signal?: AbortSignal; rememberIphone?: boolean | 'auto'; expectedPreference?: 'auto' | 'off' | null; onPending: (view: QrLoginPending) => void | Promise<void>}
 export interface QrLoginUser {id: string; username: string; role: string; tenantId: string | null; mfaVerified: boolean}
 export interface RecoveryReceipt {profileName: string; authGeneration: string; grantId: string; expiresAtSec: number; origin: string; tlsSpkiSha256?: string | null; insecure?: boolean}
 export type QrLoginResult = {success: true; user: QrLoginUser; recoveryReceipt?: RecoveryReceipt} | {success: false; error: string; statusCode?: number; errorCode?: string; retryAfterSeconds?: number};
@@ -62,6 +62,7 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
   const controller = new AbortController();
   let attempt: Attempt | undefined, privateKey: CryptoKey | undefined, keyBytes: Uint8Array<ArrayBuffer> | undefined;
   let transferOwner: {userId: string; tenantId: string} | undefined;
+  let rememberIphone = false;
   let completed = false, stored = false, origin = '', snapshot: string | undefined, generation: string | undefined;
   const initialPin = peer.getTlsSpkiSha256?.();
   let deadline = Date.now() + 120_000;
@@ -74,13 +75,16 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     if (controller.signal.aborted) fail('QR sign-in cancelled.');
     const profile = getProfile(profileName);
     if (!profile || profile.apiKey || process.env.ZNVAULT_API_KEY) fail('QR sign-in requires a user profile without an API key.');
-    if (options.rememberIphone && ['ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined)) fail('Remembering an iPhone requires an interactive user login without environment credentials.');
+    if (options.rememberIphone !== undefined && options.rememberIphone !== false && ['ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined)) fail('Remembering an iPhone requires an interactive user login without environment credentials.');
     origin = cliLoginOrigin(profile.url);
     if (cliLoginOrigin(peer.getBaseUrl()) !== origin) fail('QR sign-in profile or Vault changed. Start again.');
     snapshot = authenticationFingerprint(profile);
     setRuntimeProfile(profileName);
     const check = (current?: Profile): void => {
       if (controller.signal.aborted || Date.now() >= deadline) fail(controller.signal.reason === 'expired' || Date.now() >= deadline ? 'QR sign-in expired. Start again.' : 'QR sign-in cancelled.');
+      if (options.expectedPreference !== undefined && ((current ?? getProfile(profileName))?.cliRecoveryPreference ?? null) !== options.expectedPreference) {
+        fail('CLI recovery preference changed. Start login again.');
+      }
       if (getActiveProfileName() !== profileName || process.env.ZNVAULT_API_KEY || authenticationFingerprint(current ?? getProfile(profileName)) !== snapshot ||
           peer.getTlsSpkiSha256?.() !== initialPin) {
         fail('QR sign-in profile or session changed. Start again.');
@@ -105,14 +109,20 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
       fail('Device sign-in is not enabled on this Vault.');
     }
     if (protocol.origin !== origin || !uuid.test(text(protocol.installationId))) fail();
-    if (options.rememberIphone) {
-      const recovery = row(protocol.cliRecovery);
-      if (recovery.version !== 1 || recovery.enabled !== true) fail('CLI recovery is not enabled on this Vault.');
+    if (options.rememberIphone !== undefined && options.rememberIphone !== false) {
+      let available = false;
+      if (Object.hasOwn(protocol, 'cliRecovery')) {
+        const recovery = row(protocol.cliRecovery);
+        if (recovery.version !== 1 || typeof recovery.enabled !== 'boolean') fail();
+        available = recovery.enabled;
+      }
+      if (options.rememberIphone === true && !available) fail('CLI recovery is not enabled on this Vault.');
+      rememberIphone = available;
     }
     const pair = await crypto.subtle.generateKey({name: 'ECDH', namedCurve: 'P-256'}, false, ['deriveBits']);
     privateKey = pair.privateKey;
     const publicPoint = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
-    const started = row(await request('start', {browserPublicKey: deviceBytes(publicPoint), ...(options.rememberIphone ? {rememberIphone: true} : {})}));
+    const started = row(await request('start', {browserPublicKey: deviceBytes(publicPoint), ...(rememberIphone ? {rememberIphone: true} : {})}));
     if (started.origin !== origin || started.installationId !== protocol.installationId || !uuid.test(text(started.requestId)) ||
         !Number.isSafeInteger(started.expiresAt) || Number(started.expiresAt) * 1000 <= Date.now() ||
         Number(started.expiresAt) * 1000 > Date.now() + 121_000) fail();
@@ -124,7 +134,7 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     const locator = new URL('znvault-authenticator://login');
     locator.searchParams.set('v', '1'); locator.searchParams.set('origin', origin);
     locator.searchParams.set('installationId', attempt.installationId); locator.searchParams.set('challengeId', attempt.requestId);
-    await options.onPending({locator: locator.toString(), origin, expiresAt: Math.floor(deadline / 1000)});
+    await options.onPending({locator: locator.toString(), origin, expiresAt: Math.floor(deadline / 1000), rememberIphone});
     check();
     const proof = {requestId: attempt.requestId, claimant: attempt.claimant};
     for (;;) {
@@ -143,7 +153,7 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
         } else if (status.transfer !== undefined && status.transfer !== '') fail();
         check();
         const tokens = parseCliLoginResponse(await request('complete', {...proof, ...(keyBytes ? {keyBytes: deviceBytes(keyBytes)} : {})}),
-          options.rememberIphone ? {origin, installationId: attempt.installationId} : undefined);
+          rememberIphone ? {origin, installationId: attempt.installationId} : undefined);
         completed = true;
         if ((tokens.user.tenantId !== null) !== (keyBytes !== undefined) || tokens.userSealedUnlocked !== (keyBytes !== undefined) ||
             (transferOwner && (tokens.user.id !== transferOwner.userId || tokens.user.tenantId !== transferOwner.tenantId))) fail();

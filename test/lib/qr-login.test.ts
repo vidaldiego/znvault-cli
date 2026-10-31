@@ -69,6 +69,52 @@ describe('terminal QR device login', () => {
   beforeEach(() => {state.active = 'offsite'; state.runtime = null; state.writes = 0; state.beforeWrite = undefined;});
   afterEach(() => {vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs();});
 
+  it.each([false, true])('automatically enrolls a fresh QR login without the remember flag (global=%s)', async superadmin => {
+    const f = fixture(undefined, superadmin), pending = vi.fn();
+    Object.assign(f.tokens, {cliRecovery: {grantId: randomUUID(), credential: randomBytes(32).toString('base64url'),
+      origin: f.origin, installationId: f.installationId, expiresAtSec: Math.floor(Date.now()/1000) + 2592000}});
+    expect(await qrLogin(f.peer, {rememberIphone: 'auto', onPending: pending})).toMatchObject({success: true, user: f.user});
+    expect(f.calls('start')[0][0].body).toMatchObject({rememberIphone: true});
+    expect(pending.mock.calls[0][0].rememberIphone).toBe(true);
+    expect(state.profile.cliRecovery).toMatchObject({state: 'active', origin: f.origin});
+  });
+
+  it.each(['absent', 'disabled'])('auto login on %s recovery server does not claim enrollment', async capability => {
+    const f = fixture(), original = f.peer.request.getMockImplementation()!, pending = vi.fn();
+    f.peer.request.mockImplementation(async options => {
+      const value = await original(options);
+      if (!options.path.endsWith('/protocol')) return value;
+      const result = value as Record<string, unknown>;
+      if (capability === 'absent') delete result.cliRecovery;else result.cliRecovery = {version: 1, enabled: false};
+      return result;
+    });
+    expect(await qrLogin(f.peer, {rememberIphone: 'auto', onPending: pending})).toMatchObject({success: true});
+    expect(f.calls('start')[0][0].body).not.toHaveProperty('rememberIphone');
+    expect(pending.mock.calls[0][0].rememberIphone).toBe(false);
+    expect(state.profile.cliRecovery).toBeUndefined();
+  });
+
+  it.each([null, {}, {version: 2, enabled: true}, {version: 1, enabled: 'false'}])('does not downgrade malformed auto capability %j', async capability => {
+    const f = fixture(), original = f.peer.request.getMockImplementation()!;
+    f.peer.request.mockImplementation(async options => {
+      const value = await original(options);
+      return options.path.endsWith('/protocol') ? {...value as object, cliRecovery: capability} : value;
+    });
+    expect(await qrLogin(f.peer, {rememberIphone: 'auto', onPending: vi.fn()})).toMatchObject({success: false});
+    expect(f.calls('start')).toHaveLength(0);
+  });
+
+  it('rejects an auto policy captured before another process opted out at the presenter handoff', async () => {
+    const f = fixture();state.profile.cliRecoveryPreference = 'off';
+    expect(await qrLogin(f.peer, {rememberIphone: 'auto', expectedPreference: null, onPending: vi.fn()})).toMatchObject({success: false});
+    expect(f.calls('start')).toHaveLength(0);expect(state.writes).toBe(0);
+  });
+  it('invalidates an in-flight login when another process changes the remember preference', async () => {
+    const f = fixture();state.profile.cliRecoveryPreference = 'auto';
+    expect(await qrLogin(f.peer, {onPending: () => {state.profile.cliRecoveryPreference = 'off';}})).toMatchObject({success: false});
+    expect(f.calls('complete')).toHaveLength(0);expect(state.writes).toBe(0);
+  });
+
   it('requests signed recovery consent and stores enrollment atomically with the QR tokens', async () => {
     const f = fixture();
     const enrollment = {grantId: randomUUID(), credential: randomBytes(32).toString('base64url'), origin: f.origin,

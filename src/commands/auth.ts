@@ -21,6 +21,7 @@ import {
   CONFIG_DEFAULTS,
   authenticationFingerprint,
   getConfig,
+  mutateProfileAuthentication,
 } from '../lib/config.js';
 import {getRuntimeProfile, setRuntimeProfile} from '../lib/config/store.js';
 import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib/prompts.js';
@@ -127,6 +128,7 @@ interface ProfileShowOptions {
 }
 
 export function registerAuthCommands(program: Command): void {
+  const rememberFlags = new Set<boolean>();
   // Login command
   program
     .command('login')
@@ -140,12 +142,17 @@ export function registerAuthCommands(program: Command): void {
       .conflicts(['web', 'recover', 'username', 'password', 'passwordFile', 'totp', 'json']))
     .addOption(new Option('--remember-iphone', 'Allow this same iPhone to recover the CLI for 30 days (requires --qr)')
       .conflicts(['web', 'recover', 'username', 'password', 'passwordFile', 'totp', 'json']))
+    .addOption(new Option('--no-remember-iphone', 'Disable remembered iPhone recovery for this profile (requires --qr)')
+      .conflicts(['web', 'recover', 'username', 'password', 'passwordFile', 'totp', 'json']))
+    .on('option:remember-iphone', () => {rememberFlags.add(true);})
+    .on('option:no-remember-iphone', () => {rememberFlags.add(false);})
     .addOption(new Option('--recover', 'Recover a remembered CLI session with the original iPhone')
       .conflicts(['web', 'qr', 'rememberIphone', 'username', 'password', 'passwordFile', 'totp']))
     .option('--json', 'Output as JSON')
     .hook('preAction', command => {
       const options = command.opts<LoginOptions>();
-      if (options.rememberIphone && !options.qr) command.error('--remember-iphone requires --qr.');
+      if (rememberFlags.size > 1) command.error('Conflicting --remember-iphone and --no-remember-iphone options.');
+      if (options.rememberIphone !== undefined && !options.qr) command.error('--remember-iphone / --no-remember-iphone requires --qr.');
       if (options.qr || options.recover) {
         if (options.qr && command.optsWithGlobals().json === true) command.error('Device login requires terminal output; --json is incompatible.');
         if (options.qr && (!process.stdin.isTTY || !process.stdout.isTTY)) command.error('Device login requires an interactive terminal.');
@@ -155,11 +162,22 @@ export function registerAuthCommands(program: Command): void {
         command.error('Remembered iPhone login cannot use environment credentials.');
       }
     })
-    .action(async (options: LoginOptions) => {
+    .action(async (options: LoginOptions, command: Command) => {
       const profileName = getActiveProfileName();
       const previous = getRuntimeProfile();setRuntimeProfile(profileName);
 
       try {
+        const ambientAuth = ['ZNVAULT_API_KEY', 'ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined);
+        if (!options.web && !options.qr && !options.recover && options.username === undefined &&
+            options.password === undefined && options.passwordFile === undefined && options.totp === undefined &&
+            !options.json && command.optsWithGlobals().json !== true && !['true', '1'].includes(process.env.CI ?? '') &&
+            process.stdin.isTTY && process.stdout.isTTY && !ambientAuth && !getProfile(profileName)?.apiKey) {
+          const method = await promptSelect('How do you want to sign in?', [
+            {name: 'iPhone (scan QR; remember this CLI when available)', value: 'qr'},
+            {name: 'Web browser', value: 'web'}, {name: 'Username and password', value: 'password'},
+          ]);
+          options.qr = method === 'qr';options.web = method === 'web';
+        }
         // Web-based login flow
         if (options.web || options.qr || options.recover) {
           if (!isWebLoginSupported()) {
@@ -167,13 +185,27 @@ export function registerAuthCommands(program: Command): void {
             process.exit(1);
           }
 
+          // Resolve policy before retirement, and refuse a concurrent preference change.
+          let preference = getProfile(profileName)?.cliRecoveryPreference;
+          if (options.qr && options.rememberIphone !== undefined) {
+            const snapshot = authenticationFingerprint(getProfile(profileName));
+            preference = options.rememberIphone ? 'auto' : 'off';
+            mutateProfileAuthentication(profileName, current => {
+              if (authenticationFingerprint(current) !== snapshot) throw new Error('CLI profile changed. Start login again.');
+              return {...current, cliRecoveryPreference: preference};
+            });
+          }
+          const rememberIphone = options.rememberIphone ?? (preference === 'off' ? false : 'auto');
           if (!options.recover) await retireStoredCliRecovery(profileName);
+          if (options.qr && getProfile(profileName)?.cliRecoveryPreference !== preference) {
+            throw new Error('CLI recovery preference changed. Start login again.');
+          }
           const result = options.recover ? await (async () => {
             try {const receipt = await coordinateCliRecovery(client, terminalCliRecovery);
               const credentials = getCredentials();if (!credentials || getProfile(profileName)?.authGeneration !== receipt.authGeneration) throw new Error('CLI recovery session changed.');return {success: true as const, user: {id: credentials.userId, username: credentials.username, role: credentials.role, tenantId: credentials.tenantId, mfaVerified: true}};
             } catch (error) {return {success: false as const, error: error instanceof Error ? error.message : 'CLI recovery failed.'};}
           })() : options.qr ?
-            await (options.rememberIphone ? terminalQrLogin(client, {rememberIphone: true}) : terminalQrLogin(client)) : await webLogin(client.getBaseUrl());
+            await terminalQrLogin(client, {rememberIphone, expectedPreference: preference ?? null}) : await webLogin(client.getBaseUrl());
 
           if (!result.success) {
             if (options.json) {

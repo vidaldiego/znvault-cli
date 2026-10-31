@@ -33,6 +33,7 @@ export interface Profile {
   defaultTenant?: string;
   credentials?: StoredCredentials;
   cliRecovery?: StoredCliRecovery;
+  cliRecoveryPreference?: 'auto' | 'off';
   authGeneration?: string;
   apiKey?: string;  // Stored API key for this profile
   apiKeyId?: string;  // API key ID (for revocation on logout)

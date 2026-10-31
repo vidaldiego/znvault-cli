@@ -5,6 +5,21 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.0] - 2026-10-31
+
+### Changed
+
+- Interactive `login` offers iPhone QR, browser or password. QR automatically
+  requests the existing signed 30-day recovery consent when the Vault supports
+  it, without a separate activation flag. Explicit methods and scripts retain
+  their behavior; `CI=1` and `CI=true` do not open the picker.
+- `login --qr --no-remember-iphone` persists opt-out per profile; the existing
+  `--remember-iphone` explicitly re-enables it and requires server support.
+  Preference changes participate in the existing profile transaction/fences.
+- Recovery shows a large ASCII comparison number on wide terminal stderr,
+  keeping compact logs and JSON/raw stdout intact. Reuses the same app,
+  approvals, grant lifecycle and absolute deadline; no server/app update.
+
 ## [5.7.0] - 2026-10-31
 
 ### Changed

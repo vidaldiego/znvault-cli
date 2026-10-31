@@ -136,6 +136,53 @@ describe('auth commands', () => {
   });
 
   describe('login', () => {
+    it('offers iPhone in bare interactive login without a remember activation command', async () => {
+      const prompts = await import('../../src/lib/prompts.js'), presentation = await import('../../src/lib/qr-login-presentation.js');
+      vi.mocked(prompts.promptSelect).mockResolvedValueOnce('qr');
+      await program.parseAsync(['node', 'test', 'login']);
+      expect(prompts.promptSelect).toHaveBeenCalled();
+      expect(presentation.terminalQrLogin).toHaveBeenCalledWith(expect.anything(), {rememberIphone: 'auto', expectedPreference: null});
+      expect(prompts.promptPassword).not.toHaveBeenCalled();
+    });
+    it.each(['--web', '--json', 'ci', 'ci-one', 'nonTTY', 'ambient', 'credentials'])('does not add a method picker to %s', async kind => {
+      const prompts = await import('../../src/lib/prompts.js');
+      if (kind === 'ci') vi.stubEnv('CI', 'true');
+      if (kind === 'ci-one') vi.stubEnv('CI', '1');
+      if (kind === 'ambient') vi.stubEnv('ZNVAULT_USERNAME', 'fixture');
+      if (kind === 'nonTTY') Object.defineProperty(process.stdin, 'isTTY', {configurable: true, value: false});
+      try {
+        await program.parseAsync(['node', 'test', 'login', ...(kind.startsWith('--') ? [kind] : kind === 'credentials' ? ['-u', 'fixture'] : [])]);
+        expect(prompts.promptSelect).not.toHaveBeenCalled();
+      } finally {vi.unstubAllEnvs();}
+    });
+    it.each([['--remember-iphone', '--no-remember-iphone'], ['--no-remember-iphone', '--remember-iphone']])('rejects conflicting preference flags before retirement: %j', async (...flags) => {
+      const recovery = await import('../../src/lib/cli-recovery.js'), retire = vi.spyOn(recovery, 'retireStoredCliRecovery');
+      await expect(program.parseAsync(['node', 'test', 'login', '--qr', ...flags])).rejects.toThrow(/conflict/i);
+      expect(retire).not.toHaveBeenCalled();
+    });
+    it('cancelling the method picker leaves existing recovery unretired', async () => {
+      const prompts = await import('../../src/lib/prompts.js'), recovery = await import('../../src/lib/cli-recovery.js');
+      vi.mocked(prompts.promptSelect).mockRejectedValueOnce(new Error('cancelled'));
+      const retire = vi.spyOn(recovery, 'retireStoredCliRecovery');
+      const exit = vi.spyOn(process, 'exit').mockImplementation(() => {throw new Error('expected cancellation');});
+      try {
+        await expect(program.parseAsync(['node', 'test', 'login'])).rejects.toThrow();
+        expect(retire).not.toHaveBeenCalled();
+      } finally {retire.mockRestore();exit.mockRestore();}
+    });
+    it('does not enroll a stale auto intention if another process opts out during retirement', async () => {
+      const cfg = await import('../../src/lib/config.js'), recovery = await import('../../src/lib/cli-recovery.js');
+      const presentation = await import('../../src/lib/qr-login-presentation.js');
+      const initial = vi.mocked(cfg.getProfile).getMockImplementation()!;
+      const retire = vi.spyOn(recovery, 'retireStoredCliRecovery').mockImplementationOnce(async () => {
+        vi.mocked(cfg.getProfile).mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000,cliRecoveryPreference:'off'});
+      });
+      const exit = vi.spyOn(process, 'exit').mockImplementation(() => {throw new Error('expected stale policy');});
+      try {
+        await expect(program.parseAsync(['node', 'test', 'login', '--qr'])).rejects.toThrow();
+        expect(presentation.terminalQrLogin).not.toHaveBeenCalled();
+      } finally {vi.mocked(cfg.getProfile).mockImplementation(initial);retire.mockRestore();exit.mockRestore();}
+    });
     it('uses explicit recovery without a browser, QR or password login', async () => {
       const {terminalCliRecovery,terminalQrLogin} = await import('../../src/lib/qr-login-presentation.js');
       const {webLogin} = await import('../../src/lib/web-login.js');const {client} = await import('../../src/lib/client.js');
@@ -185,7 +232,7 @@ describe('auth commands', () => {
       const {terminalQrLogin} = await import('../../src/lib/qr-login-presentation.js');
       const {webLogin} = await import('../../src/lib/web-login.js');
       await program.parseAsync(['node', 'test', 'login', '--qr']);
-      expect(terminalQrLogin).toHaveBeenCalledWith(client);
+      expect(terminalQrLogin).toHaveBeenCalledWith(client, {rememberIphone: 'auto', expectedPreference: null});
       expect(webLogin).not.toHaveBeenCalled();
       expect(client.login).not.toHaveBeenCalled();
     });
