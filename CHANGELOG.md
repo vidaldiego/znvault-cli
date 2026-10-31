@@ -5,6 +5,24 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.0] - 2026-10-31
+
+### Changed
+
+- Ordinary commands can recover an opted-in CLI session through the paired
+  iPhone after ordinary refresh fails, including agents and noninteractive
+  terminals. Recovery still requires number matching and biometrics, keeps
+  the original 30-day deadline and leaves unseal/User-Sealed approvals separate.
+- Approval progress uses stderr, preserving raw and JSON stdout. Concurrent
+  processes share the existing recovery lock; uncertain writes are not replayed.
+- Unseal and User-Sealed instructions support biometric approval and retain
+  the comparison number as compatibility help for an older app.
+
+### Fixed
+
+- Never resend a refresh token already marked as presented. Retain generation,
+  profile and TLS fences during recovery and preserve structured failure details.
+
 ## [5.6.0] - 2026-10-30
 
 ### Added

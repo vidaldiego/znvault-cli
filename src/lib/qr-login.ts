@@ -11,8 +11,9 @@ import {openDeviceKey, type DeviceEnvelopeContext} from './device-login/device-k
 export interface QrLoginPending {locator: string; origin: string; expiresAt: number}
 export interface QrLoginOptions {signal?: AbortSignal; rememberIphone?: boolean; onPending: (view: QrLoginPending) => void | Promise<void>}
 export interface QrLoginUser {id: string; username: string; role: string; tenantId: string | null; mfaVerified: boolean}
-export type QrLoginResult = {success: true; user: QrLoginUser} | {success: false; error: string};
-export type QrLoginPeer = Pick<HttpClient, 'getBaseUrl' | 'request'> & Partial<Pick<HttpClient, 'getTlsSpkiSha256'>>;
+export interface RecoveryReceipt {profileName: string; authGeneration: string; grantId: string; expiresAtSec: number; origin: string; tlsSpkiSha256?: string | null; insecure?: boolean}
+export type QrLoginResult = {success: true; user: QrLoginUser; recoveryReceipt?: RecoveryReceipt} | {success: false; error: string; statusCode?: number; errorCode?: string; retryAfterSeconds?: number};
+export type QrLoginPeer = Pick<HttpClient, 'getBaseUrl' | 'request'> & Partial<Pick<HttpClient, 'getTlsSpkiSha256' | 'getInsecure'>>;
 interface Attempt {requestId: string; claimant: string; expiresAt: number; origin: string; installationId: string}
 export interface CliLoginResponse {accessToken: string; refreshToken: string; expiresIn: number; userSealedUnlocked: boolean; user: QrLoginUser; cliRecovery?: StoredCliRecovery}
 const base = '/auth/mfa/iphone', uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;

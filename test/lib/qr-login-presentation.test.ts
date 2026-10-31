@@ -23,14 +23,20 @@ afterEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks();
 });
 describe('terminal QR presentation', () => {
-  it('does not start recovery without a terminal', async () => {
+  it('presents recovery on stderr without a terminal or stdin', async () => {
     Object.defineProperty(process.stdin, 'isTTY', {configurable: true, value: false});
-    expect(await terminalCliRecovery({getBaseUrl: () => 'https://vault.example.test', request: vi.fn()})).toMatchObject({success: false});
-    expect(recoverCliLogin).not.toHaveBeenCalled();
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((...args) => {const callback = args.at(-1);if(typeof callback === 'function') callback();return true;});
+    vi.mocked(recoverCliLogin).mockImplementation(async (_peer, options) => {
+      await options.onPending({origin:'https://vault.example.test',comparisonNumber:'42',expiresAtSec:Math.floor(Date.now()/1000)+120});
+      return {success:false,error:'cancelled'};
+    });
+    await terminalCliRecovery({getBaseUrl: () => 'https://vault.example.test', request: vi.fn()});
+    expect(stdout).not.toHaveBeenCalled();expect(stderr.mock.calls.map(x => String(x[0])).join('')).toContain('42');
   });
   it('presents only the Vault, comparison number and short expiry and removes its interrupt handler', async () => {
     for (const stream of [process.stdin, process.stdout]) Object.defineProperty(stream, 'isTTY', {configurable: true, value: true});
-    const before = process.listenerCount('SIGINT'), write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const before = process.listenerCount('SIGINT'), write = vi.spyOn(process.stderr, 'write').mockImplementation((...args) => {const callback = args.at(-1);if(typeof callback === 'function') callback();return true;});
     vi.mocked(recoverCliLogin).mockImplementation(async (_peer, options) => {
       await options.onPending({origin:'https://vault.example.test', comparisonNumber:'42', expiresAtSec:Math.floor(Date.now()/1000)+120});
       process.emit('SIGINT');expect(options.signal?.aborted).toBe(true);

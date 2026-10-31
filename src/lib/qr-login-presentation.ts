@@ -58,17 +58,18 @@ export async function terminalQrLogin(peer: QrLoginPeer, options?: {rememberIpho
   }
 }
 
-export async function terminalCliRecovery(peer: QrLoginPeer): Promise<QrLoginResult> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return {success: false, error: 'CLI recovery requires an interactive terminal.'};
+export async function terminalCliRecovery(peer: QrLoginPeer, signal?: AbortSignal): Promise<QrLoginResult> {
   const controller = new AbortController(), cancel = (): void => {controller.abort();};
   process.on('SIGINT', cancel);
+  process.stderr.on('error', cancel);
+  process.on('SIGTERM', cancel);signal?.addEventListener('abort', cancel, {once: true});
+  if (signal?.aborted) cancel();
   try {
-    return await recoverCliLogin(peer, {signal: controller.signal, onPending: view => {
-      process.stdout.write(`Recover CLI session on ${view.origin}\nChoose ${view.comparisonNumber} on your original iPhone and confirm with biometrics.\n` +
+    return await recoverCliLogin(peer, {signal: controller.signal, onPending: async view => {
+      await new Promise<void>((resolve, reject) => {process.stderr.write(`Recover CLI session on ${view.origin}\nChoose ${view.comparisonNumber} on your original iPhone and confirm with biometrics.\n` +
         'Open ZnVault Authenticator and refresh requests if no notification arrives.\n' +
         'Unseal and User-Sealed approvals remain separate.\n' +
-        `Expires in ${Math.max(0, view.expiresAtSec-Math.floor(Date.now()/1000)).toString()} seconds. Ctrl+C cancels.\n`);
-      return Promise.resolve();
+        `Expires in ${Math.max(0, view.expiresAtSec-Math.floor(Date.now()/1000)).toString()} seconds. Ctrl+C cancels.\n`, error => {if (error) {cancel();reject(error);} else resolve();});});
     }});
-  } finally {process.removeListener('SIGINT', cancel);}
+  } finally {process.stderr.removeListener('error', cancel);process.removeListener('SIGINT', cancel);process.removeListener('SIGTERM', cancel);signal?.removeEventListener('abort', cancel);}
 }

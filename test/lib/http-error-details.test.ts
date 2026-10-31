@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 
 // Mock config module to prevent tests from writing to real config / doing
 // token refresh (we only care about the 4xx/5xx error-body passthrough path).
-vi.mock('../../src/lib/config.js', () => ({
+vi.mock('../../src/lib/config.js', async () => ({
+  ...(await vi.importActual<typeof import('../../src/lib/config.js')>('../../src/lib/config.js')),
   storeCredentials: vi.fn(),
   getCredentials: vi.fn().mockReturnValue(null),
   clearCredentials: vi.fn(),

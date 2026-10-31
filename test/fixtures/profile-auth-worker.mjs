@@ -14,15 +14,15 @@ async function barrier(phase) {
   process.send({phase});
   await new Promise(resolve => process.once('message', resolve));
 }
-async function exerciseRecovery() {
+async function exerciseRecovery(coordinated = false) {
   const {randomBytes, randomUUID} = await import('node:crypto');
-  const {recoverCliLogin} = await import('../../dist/lib/cli-recovery.js');
+  const {recoverCliLogin, coordinateCliRecovery} = await import('../../dist/lib/cli-recovery.js');
   const saved = config.getProfile(profileName).cliRecovery;
   const requestId = randomUUID(), claimant = randomBytes(32).toString('base64url'), expiresAt = Math.floor(Date.now()/1000)+120;
-  const result = await recoverCliLogin({getBaseUrl: () => saved.origin, request: async options => {
+  const peer = {getBaseUrl: () => saved.origin, request: async options => {
     options.sessionGuard?.();
     if (options.path.endsWith('/protocol')) return {protocolVersion: 3, origin: saved.origin, installationId: saved.installationId, cliRecovery: {version: 1, enabled: true}};
-    if (options.path.endsWith('/start')) return {requestId, claimant, expiresAt, comparisonNumber: '42'};
+    if (options.path.endsWith('/start')) {process.send?.({phase:'recovery-started'});return {requestId, claimant, expiresAt, comparisonNumber: '42'};}
     if (options.path.endsWith('/status')) return {state: 'approved', expiresAt};
     if (options.path.endsWith('/complete')) {
       await barrier('before-complete');
@@ -32,8 +32,10 @@ async function exerciseRecovery() {
     }
     if (options.path.endsWith('/cancel')) return {cancelled: true};
     throw new Error('Unexpected test request');
-  }}, {onPending: async () => {}});
-  return result.success;
+  }};
+  const present = (target, signal) => recoverCliLogin(target, {signal, onPending: async () => {}});
+  if (coordinated) {process.send?.({phase:'following'});await coordinateCliRecovery(peer, present);return true;}
+  return (await present(peer)).success;
 }
 
 try {
@@ -51,6 +53,7 @@ try {
     const program = new Command();program.exitOverride();registerAuthCommands(program);
     await program.parseAsync(['node','fixture','config','set','url','https://changed.example.test']);
   } else if (mode === 'recover') stored = await exerciseRecovery();
+  else if (mode === 'automatic') stored = await exerciseRecovery(true);
   else if (mode === 'refresh') {
     const {HttpClient} = await import('../../dist/lib/client/http.js');
     const peer = new HttpClient();

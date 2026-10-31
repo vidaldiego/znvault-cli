@@ -5,6 +5,8 @@
  */
 
 export interface RequestOptions {
+  /** Explicit endpoint guarantee; never inferred from method/body/headers. */
+  recoveryReplaySafe?: boolean;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   body?: unknown;

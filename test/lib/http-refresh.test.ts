@@ -126,11 +126,29 @@ it('409 -> single retry with a DIFFERENT token; second 409 -> hard re-auth, neve
   ];
   const cfg = await import('../../src/lib/config.js');
   let token = 'r1';
-  (cfg.getCredentials as any).mockImplementation(() => ({ ...creds, refreshToken: token }));
+  (cfg.getCredentials as any).mockImplementation(() => ({ ...creds, refreshToken: token, ...(token === 'r1b' ? {pendingRefresh: undefined} : {}) }));
   const { HttpClient, RefreshHardReauthError } = await import('../../src/lib/client/http.js');
   setTimeout(() => { token = 'r1b'; }, 0); // peer rotates storage between the two POSTs
   await expect(new HttpClient().refreshToken()).rejects.toBeInstanceOf(RefreshHardReauthError);
-  expect(new Set(posts.map(p => p.refreshToken)).size).toBe(posts.length); // never the same token twice
+  expect(posts.map(p => p.refreshToken)).toEqual(['r1', 'r1b']); // one different, unmarked peer token; never a third POST
+});
+
+it('never retries a different peer token already marked in flight after a 409', async () => {
+  acquireSpy.mockResolvedValue(null); // Existing best-effort refresh contention path.
+  server.removeAllListeners('request');
+  server.on('request', (req, res) => {
+    let body = '';req.on('data', chunk => {body += String(chunk);});req.on('end', () => {
+      posts.push({...JSON.parse(body),authorization:req.headers.authorization});
+      if (posts.length === 1) {
+        creds = {...creds,refreshToken:'peer-token',pendingRefresh:{presentedJti:'peer-jti',startedAt:Date.now()}};
+        res.writeHead(409,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'refresh_in_progress'}));
+      } else {res.writeHead(200);res.end(JSON.stringify({accessToken:'a2',refreshToken:'r2',expiresIn:900}));}
+    });
+  });
+  const {HttpClient, RefreshHardReauthError} = await import('../../src/lib/client/http.js');
+  await expect(new HttpClient().refreshToken()).rejects.toBeInstanceOf(RefreshHardReauthError);
+  expect(posts.map(item => item.refreshToken)).toEqual(['r1']);
+  expect(creds.refreshToken).toBe('peer-token');expect(creds.pendingRefresh.presentedJti).toBe('peer-jti');
 });
 
 it('lock acquire times out (null) -> refresh proceeds best-effort, no hang (A5)', async () => {

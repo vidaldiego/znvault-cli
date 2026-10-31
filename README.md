@@ -65,10 +65,15 @@ during a **new** QR login:
 The same iPhone must approve recovery with number matching and biometrics.
 The original recovery deadline is **30 days from the QR login**; refreshing or
 recovering never moves it. Ordinary refresh still has its seven-day inactivity
-policy. Recovery is explicit and requires a terminal: background commands never
-send a push, and `--recover` cannot be combined with other login methods,
-credentials or JSON output. Both tenant accounts and global superadmins use the
-same flow.
+policy. Ordinary commands automatically try the remembered iPhone when their
+HUMAN session cannot continue. This also works in agents, scripts, pipes and CI:
+number matching and progress go to stderr; JSON and raw stdout stay intact.
+Recovery never reads stdin or opens a browser. `login --recover` starts the same
+flow explicitly and supports JSON; initial QR enrollment still requires a terminal.
+API keys, environment credentials, local mode and authentication control commands
+do not start automatic recovery. Both tenant accounts and global superadmins use
+the same flow. A sent write is never reissued without a proven replay guarantee;
+after recovery, explicitly repeat an operation reported as not reissued.
 
 Recovery authenticates the session without restoring a User-Sealed primary key
 or granting unseal/additional approval. Use a fresh full login when a primary

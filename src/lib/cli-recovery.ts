@@ -2,10 +2,11 @@ import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {HttpClient} from './client/http.js';
 import {client} from './client.js';
-import {getRuntimeProfile} from './config/store.js';
+import {getConfigPath, getRuntimeProfile} from './config/store.js';
 import {authenticationFingerprint, beginProfileAuthentication, cancelProfileAuthentication, getActiveProfileName,
   getProfile, invalidateProfileCache, mutateProfileAuthentication, setRuntimeProfile, type Profile, type StoredCliRecovery} from './config.js';
-import {cliLoginOrigin, parseCliLoginResponse, type QrLoginPeer, type QrLoginResult} from './qr-login.js';
+import {cliLoginOrigin, parseCliLoginResponse, type QrLoginPeer, type QrLoginResult, type RecoveryReceipt} from './qr-login.js';
+import {acquireRefreshLock, isRefreshLockHeld, computeLockKey} from './client/refresh-lock.js';
 import {getVersion} from './version.js';
 
 export interface RecoverCliOptions {
@@ -67,7 +68,7 @@ export async function retireStoredCliRecovery(profileName: string): Promise<void
 /** Explicit terminal initiator; shared Mobile MFA and the server own authentication. */
 export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOptions): Promise<QrLoginResult> {
   const name = getActiveProfileName(), previous = getRuntimeProfile(), controller = new AbortController();
-  const initialPin = peer.getTlsSpkiSha256?.();
+  const initialPin = peer.getTlsSpkiSha256?.(), initialInsecure = peer.getInsecure?.();
   let snapshot: string | undefined, generation: string | undefined, stored = false, origin = '';
   let attempt: {requestId: string; claimant: string; expiresAt: number} | undefined;
   let deadline = Date.now() + 120_000;
@@ -89,7 +90,7 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
       if (controller.signal.aborted || Date.now() >= deadline || Date.now() >= saved.expiresAtSec * 1000) fail('CLI recovery expired or cancelled. Start a new explicit request.');
       invalidateProfileCache(name);
       if (getActiveProfileName() !== name || ['ZNVAULT_API_KEY', 'ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined) ||
-          authenticationFingerprint(current ?? getProfile(name)) !== snapshot || cliLoginOrigin(peer.getBaseUrl()) !== origin || peer.getTlsSpkiSha256?.() !== initialPin) {
+          authenticationFingerprint(current ?? getProfile(name)) !== snapshot || cliLoginOrigin(peer.getBaseUrl()) !== origin || peer.getTlsSpkiSha256?.() !== initialPin || peer.getInsecure?.() !== initialInsecure) {
         fail('CLI recovery profile or session changed. Start again.');
       }
     };
@@ -135,25 +136,30 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
             expiresAt: Math.min(Date.now()+tokens.expiresIn*1000, saved.expiresAtSec*1000), userId: tokens.user.id,
             username: tokens.user.username, role: tokens.user.role, tenantId: tokens.user.tenantId}};
         });
-        stored = true;return {success: true, user: tokens.user};
+        stored = true;return {success: true, user: tokens.user, recoveryReceipt: {profileName: name, authGeneration: generation ?? fail('CLI recovery generation missing.'), grantId: saved.grantId, expiresAtSec: saved.expiresAtSec, origin, tlsSpkiSha256: initialPin, insecure: initialInsecure}};
       }
       if (!['pending', 'claimed'].includes(String(state.state))) fail('CLI recovery ended without approval. Start a new explicit request.');
       await delay(Math.min(2000, Math.max(0, deadline-Date.now())), undefined, {signal: controller.signal});
     }
   } catch (error) {
-    const status = error !== null && typeof error === 'object' ? error as {statusCode?: number; retryAfterSeconds?: number} : {};
+    const status = error !== null && typeof error === 'object' ? error as {statusCode?: number; errorCode?: string; retryAfterSeconds?: number} : {};
+    const metadata = {
+      ...(typeof status.statusCode === 'number' ? {statusCode: status.statusCode} : {}),
+      ...(typeof status.errorCode === 'string' ? {errorCode: status.errorCode} : {}),
+      ...(typeof status.retryAfterSeconds === 'number' ? {retryAfterSeconds: status.retryAfterSeconds} : {}),
+    };
     if (status.statusCode !== undefined && [401, 403, 404, 410].includes(status.statusCode)) {
-      return {success: false, error: 'iPhone recovery is unavailable, expired or revoked. Complete a normal login.'};
+      return {success: false, ...metadata, error: 'iPhone recovery is unavailable, expired or revoked. Complete a normal login.'};
     }
     const retry = status.statusCode === 429 ? ` Too many requests. Retry after ${Math.max(1, Math.ceil(status.retryAfterSeconds ?? 30)).toString()} seconds.` : '';
-    return {success: false, error: retry ? 'CLI recovery was rate limited.' + retry : controller.signal.aborted ? 'CLI recovery expired or cancelled.' :
+    return {success: false, ...metadata, error: retry ? 'CLI recovery was rate limited.' + retry : controller.signal.aborted ? 'CLI recovery expired or cancelled.' :
       error instanceof RecoveryError ? error.message : 'CLI recovery did not finish. Run login --recover explicitly to try again; no session was stored.'};
   } finally {
     if (timer) clearTimeout(timer);
     options.signal?.removeEventListener('abort', cancel);
     if (attempt && !stored) {
       try {
-        if (authenticationFingerprint(getProfile(name)) === snapshot && cliLoginOrigin(peer.getBaseUrl()) === origin && peer.getTlsSpkiSha256?.() === initialPin) {
+        if (authenticationFingerprint(getProfile(name)) === snapshot && cliLoginOrigin(peer.getBaseUrl()) === origin && peer.getTlsSpkiSha256?.() === initialPin && peer.getInsecure?.() === initialInsecure) {
           await peer.request({method: 'POST', path: '/auth/cli/recovery/cancel', body: {requestId: attempt.requestId, claimant: attempt.claimant},
             skipAuth: true, skipAuthRefresh: true, signal: AbortSignal.timeout(1000)});
         }
@@ -161,5 +167,85 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
     }
     try {if (!stored && generation !== undefined) cancelProfileAuthentication(name, generation);} catch { /* No tokens were installed. */ }
     setRuntimeProfile(previous);invalidateProfileCache(name);
+  }
+}
+
+
+const recoveries = new Map<string, Promise<RecoveryReceipt>>();
+/** One local flight and one initial lock owner. Followers never promote. */
+export async function coordinateCliRecovery(peer: QrLoginPeer,
+  present: (peer: QrLoginPeer, signal: AbortSignal) => Promise<QrLoginResult>, signal?: AbortSignal): Promise<RecoveryReceipt> {
+  const name = getActiveProfileName(), initial = getProfile(name), grant = initial?.cliRecovery;
+  if (!initial || grant?.state !== 'active') fail('No remembered iPhone recovery is available. Complete a normal login.');
+  const initialPin = peer.getTlsSpkiSha256?.(), initialInsecure = peer.getInsecure?.();
+  const key = 'cli-recovery-' + createHash('sha256').update(JSON.stringify([getConfigPath(), name, grant.origin, grant.grantId])).digest('hex');
+  const controller = new AbortController(), cancel = (): void => {controller.abort();};
+  const deadline = Math.min(Date.now() + 120_000, grant.expiresAtSec * 1000);
+  let rejectWait: (() => void) | undefined;
+  const timer = setTimeout(cancel, Math.max(0, deadline - Date.now()));
+  signal?.addEventListener('abort', cancel, {once: true});
+  process.on('SIGINT', cancel);process.on('SIGTERM', cancel);
+  if (signal?.aborted) cancel();
+  const check = (): Profile => {
+    if (controller.signal.aborted || Date.now() >= deadline) fail('CLI recovery expired or cancelled.');
+    invalidateProfileCache(name);
+    const current = getProfile(name);
+    if (getActiveProfileName() !== name || current?.url !== initial.url || current.insecure !== initial.insecure ||
+        JSON.stringify(current.cliRecovery) !== JSON.stringify(grant) || cliLoginOrigin(peer.getBaseUrl()) !== grant.origin || peer.getTlsSpkiSha256?.() !== initialPin || peer.getInsecure?.() !== initialInsecure) fail('CLI recovery profile changed. Explicitly retry.');
+    return current;
+  };
+  const run = async (): Promise<RecoveryReceipt> => {
+    check();
+    const lock = await acquireRefreshLock(key, {timeoutMs: 0});
+    if (!lock) {
+      for (;;) {
+        const current = check(), tokens = current.credentials;
+        if ((current.authGeneration !== initial.authGeneration || !initial.credentials?.accessToken) && tokens?.accessToken && tokens.refreshToken && tokens.expiresAt > Date.now() &&
+            (!initial.credentials?.userId || (tokens.userId === initial.credentials.userId && tokens.tenantId === initial.credentials.tenantId))) {
+          return {profileName: name, authGeneration: current.authGeneration ?? fail('CLI recovery generation missing.'), grantId: grant.grantId, expiresAtSec: grant.expiresAtSec, origin: grant.origin, tlsSpkiSha256: initialPin, insecure: initialInsecure};
+        }
+        if (!await isRefreshLockHeld(key)) fail('The other CLI recovery ended without installing a session. Explicitly retry.');
+        await delay(100, undefined, {signal: controller.signal});
+      }
+    }
+    try {
+      const current = check();
+      if (authenticationFingerprint(current) !== authenticationFingerprint(initial)) fail('CLI recovery session changed. Explicitly retry.');
+      // A marked refresh belongs to a live owner until the same refresh lock proves otherwise.
+      if (current.credentials?.pendingRefresh) {
+        const refreshLock = await acquireRefreshLock(computeLockKey(current.credentials.refreshToken, name), {timeoutMs: 0});
+        if (!refreshLock) fail('Session refresh is still owned by another process. Retry later.');
+        await refreshLock.release();
+      }
+      const result = await present(peer, controller.signal);
+      if (!result.success) throw Object.assign(new RecoveryError(result.error),
+        typeof result.statusCode === 'number' ? {statusCode: result.statusCode} : {},
+        typeof result.errorCode === 'string' ? {errorCode: result.errorCode} : {},
+        typeof result.retryAfterSeconds === 'number' ? {retryAfterSeconds: result.retryAfterSeconds} : {});
+      if (!result.recoveryReceipt) fail('CLI recovery did not install a verifiable session.');
+      return result.recoveryReceipt;
+    } finally {await lock.release();}
+  };
+  try {
+    check();
+    let shared = recoveries.get(key);
+    if (!shared) {
+      shared = run();recoveries.set(key, shared);
+      void shared.finally(() => {if (recoveries.get(key) === shared) recoveries.delete(key);}).catch(() => { /* Waiters observe the shared failure. */ });
+    }
+    const receipt = await Promise.race([shared, new Promise<never>((_, reject) => {
+      if (controller.signal.aborted) reject(new Error('CLI recovery cancelled.'));
+      else {rejectWait = () => {reject(new Error('CLI recovery expired or cancelled.'));};controller.signal.addEventListener('abort', rejectWait, {once: true});}
+    })]);
+    const current = check();
+    if (current.authGeneration !== receipt.authGeneration || receipt.profileName !== name || receipt.grantId !== grant.grantId ||
+        receipt.expiresAtSec !== grant.expiresAtSec || receipt.origin !== grant.origin || receipt.tlsSpkiSha256 !== initialPin ||
+        receipt.insecure !== initialInsecure || !current.credentials?.accessToken || !current.credentials.refreshToken ||
+        (initial.credentials?.userId !== undefined && (initial.credentials.userId !== current.credentials.userId || initial.credentials.tenantId !== current.credentials.tenantId))) fail('CLI recovery session changed. Explicitly retry.');
+    return receipt;
+  } finally {
+    clearTimeout(timer);signal?.removeEventListener('abort', cancel);
+    if (rejectWait) controller.signal.removeEventListener('abort', rejectWait);
+    process.removeListener('SIGINT', cancel);process.removeListener('SIGTERM', cancel);
   }
 }
