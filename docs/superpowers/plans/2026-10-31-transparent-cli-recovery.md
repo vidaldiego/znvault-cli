@@ -14,7 +14,16 @@ recovery protocol plus shared coordinator/presentation and async lock helper.
 **Local status:** Code `a1710390` and 5.7.0 metadata have [Astra GO](../reviews/2026-10-31-transparent-cli-recovery-astra-review.md).
 1805 tests pass with 5 pre-existing skips; focused Node 20/22 suites each pass
 87/87. Typecheck, lint, build and exact installable package pass. Delivery is
-pending; this record does not claim a registry publication or production grant.
+recorded below; no physical recovery or production grant is inferred from it.
+
+**Delivery, 31October:** PR27 merged as66e169780fa618ee486ed6e88fec0e1a51e7657f;
+exact main CI and normal tag/OIDC publication41211712294 pass. CLI5.7.0 is
+published and installed, registry bytes/signatures/provenance and configuration
+preservation verified; [Astra operative GO](../reviews/2026-10-31-transparent-cli-recovery-delivery-astra-review.md).
+Recovery ON/epoch1 on principal/offsite after fleet/TLS/epoch preflight; offsite
+subsequently received server1.82.2, principal remains1.82.1. Remembered QR
+enrollment and physical automatic-recovery acceptance remain pending. App6 is
+owner-confirmed working; no repeat confirmation of that installed build is due.
 
 ## Global Constraints
 
@@ -73,7 +82,7 @@ signal, SIGINT/SIGTERM and a single 120s deadline.
 
 ### Task 2: Delivery
 
-- [ ] One PR, exact PR/main CI, normal release publication and verified install.
-- [ ] Production protocol activation after current fleet/TLS/epoch preflight.
+- [x] One PR, exact PR/main CI, normal release publication and verified install.
+- [x] Production protocol activation after current fleet/TLS/epoch preflight.
 - [ ] Owner acceptance of enrollment, automatic recovery, deadline and retirement;
   final operational Astra. No workstation arm.
