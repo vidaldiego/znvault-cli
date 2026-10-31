@@ -11,6 +11,11 @@ recovery protocol plus shared coordinator/presentation and async lock helper.
 **Tech Stack:** Current TypeScript/Commander/Vitest/Node-supported matrix.
 **Spec:** [Design](../specs/2026-10-31-transparent-cli-recovery-design.md).
 
+**Local status:** Code `a1710390` and 5.7.0 metadata have [Astra GO](../reviews/2026-10-31-transparent-cli-recovery-astra-review.md).
+1805 tests pass with 5 pre-existing skips; focused Node 20/22 suites each pass
+87/87. Typecheck, lint, build and exact installable package pass. Delivery is
+pending; this record does not claim a registry publication or production grant.
+
 ## Global Constraints
 
 One recovery per operation; 120s total; original 30 days; stderr-only instructions;
@@ -47,21 +52,28 @@ shares one result and uses acquireRefreshLock(key,{timeoutMs:0}); a follower
 never starts. Extend the existing presentation to stderr/nonTTY with caller
 signal, SIGINT/SIGTERM and a single 120s deadline.
 
-- [ ] Baseline targeted HTTP/recovery tests on clean 460, recording results.
-- [ ] RED real behavioral tests: valid refresh 0 push; missing/expired auth→one
+- [x] Baseline targeted HTTP/recovery tests on clean 460, recording results.
+- [x] RED real behavioral tests: valid refresh 0 push; missing/expired auth→one
   recovery→one request; stderr-only nonTTY/JSON; excluded errors/auth-control
   never push; approval requests never recurse; cancellation no late tokens.
-- [ ] RED concurrency/fences/replay tests: two domain clients/two processes one
+- [x] RED concurrency/fences/replay tests: two domain clients/two processes one
   push; owner cancellation/death no follower promotion; same-grant generation
   success continues, logout/origin/TLS replacement fails; unsent write 1 send,
   uncertain write 0 replay, authenticated write rejection conservative.
-- [ ] Implement minimum shared fallback/coordinator/presentation. Preserve
+- [x] Implement minimum shared fallback/coordinator/presentation. Preserve
   structured error status/code/Retry-After/failure phase; no text classifiers.
-- [ ] GREEN focused suites; run npm run typecheck, npm run lint,
+- [x] GREEN focused suites; run npm run typecheck, npm run lint,
   npm run test:unit and npm run build; verify installable package using existing
   scripts. Smoke CLI with disposable config/CI=1/ZNVAULT_NO_PLUGINS=1/
   ZNVAULT_NO_UPDATE_CHECK=1, never real profiles.
-- [ ] Self-review and commit exact CLI files/docs only; report RED/GREEN/logs,
+- [x] Self-review and commit exact CLI files/docs only; report RED/GREEN/logs,
   assumptions/deferred issues to parent. No push/merge/version/tag/install.
-- [ ] Independent Astra whole-branch review. Parent handles any findings,
-  one PR, exact CI, normal release publication and install under existing goal.
+- [x] Independent Astra whole-branch review. Parent handles any findings,
+  remaining delivery under the existing goal.
+
+### Task 2: Delivery
+
+- [ ] One PR, exact PR/main CI, normal release publication and verified install.
+- [ ] Production protocol activation after current fleet/TLS/epoch preflight.
+- [ ] Owner acceptance of enrollment, automatic recovery, deadline and retirement;
+  final operational Astra. No workstation arm.
