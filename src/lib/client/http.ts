@@ -29,10 +29,15 @@ import {
   cancelProfileAuthentication,
   type Profile,
 } from '../config.js';
+import type {QrLoginPeer, QrLoginResult} from '../qr-login.js';
 import { acquireRefreshLock, computeLockKey } from './refresh-lock.js';
 import * as output from '../output.js';
 import type { RequestOptions, ClientConfig } from './types.js';
 import type { LoginResponse, StoredCredentials, FullConfig } from '../../types/index.js';
+
+/** Invocation-wide policy shared by facade and domain clients; no HTTP/singleton cycle. */
+let automaticRecovery: {present: (peer: QrLoginPeer, signal: AbortSignal) => Promise<QrLoginResult>} | null = null;
+export function configureAutomaticRecovery(policy: typeof automaticRecovery): void {automaticRecovery = policy;}
 
 /** Track if insecure warning has been shown (show only once per session) */
 let insecureWarningShown = false;
@@ -67,23 +72,18 @@ export function verifyPinnedServerSpki(
  * `znvault login`; no token is re-presented (design §A.1, finding C1).
  */
 export class RefreshHardReauthError extends Error {
-  constructor() {
+  readonly statusCode: number;
+  constructor(readonly orphanedMarker = false) {
     super(getConfig().cliRecovery?.state === 'active'
-      ? 'Session refresh cannot continue. In an interactive terminal run: znvault login --recover; or complete a normal login.'
+      ? 'Session refresh cannot continue. Run znvault login --recover; or complete a normal login.'
       : 'Refresh in progress on another process or recovery needed; please run: znvault login');
-    this.name = 'RefreshHardReauthError';
+    this.name = 'RefreshHardReauthError';this.statusCode = orphanedMarker ? 401 : 409;
   }
 }
 
-/**
- * C1: the server returns 409 `refresh_in_progress` on a within-window same-family
- * race, but `request()` attaches `.statusCode` to the thrown Error and DISCARDS
- * the body — so detect via `statusCode === 409` (with a message-text fallback).
- * NB: there is no `.body` on the thrown error; a `.body.error` check would be DEAD.
- */
+/** Only structured HTTP status classifies refresh contention. */
 function isConflict(err: unknown): boolean {
-  const e = err as { statusCode?: number; message?: string } | undefined;
-  return e?.statusCode === 409 || (typeof e?.message === 'string' && e.message.includes('refresh_in_progress'));
+  return (err as {statusCode?: number} | null)?.statusCode === 409;
 }
 
 /**
@@ -221,6 +221,8 @@ export class HttpClient {
     return this.resolveBaseUrl();
   }
 
+  getInsecure(): boolean {return this.resolveInsecure();}
+
   /** Return the invocation-scoped TLS public-key pin, when one is active. */
   getTlsSpkiSha256(): string | null {
     return this.tlsSpkiSha256Override ?? null;
@@ -257,13 +259,13 @@ export class HttpClient {
     // Check token validity - if not expired, we're done
     if (!isTokenExpired()) return;
 
-    // §A.1 gate: never start a proactive refresh on a past-TTL marked token.
+    // §A.1 gate: never start a proactive refresh on an already-marked token.
     // The marked token must NEVER be presented; trigger a non-revoking hard
     // re-auth instead and emit the recovery observability event (A3).
     const decision = decidePendingRefresh();
-    if (decision.action === 'clean-relogin') {
-      logPendingRefreshRecovery(decision.reason);
-      throw new RefreshHardReauthError();
+    if (decision.action !== 'none') {
+      logPendingRefreshRecovery(decision.action === 'clean-relogin' ? decision.reason : 'marker_in_flight');
+      throw new RefreshHardReauthError(true);
     }
 
     // Double-check pattern: after confirming expiry, a CONCURRENT caller may have
@@ -311,11 +313,11 @@ export class HttpClient {
     if (!credentials?.refreshToken) {
       throw new Error('No refresh token available');
     }
-    // Gate: a marked token past TTL must NEVER be presented (design §A.1).
+    // Gate: a marked token must NEVER be presented (design §A.1).
     const decision = decidePendingRefresh();
-    if (decision.action === 'clean-relogin') {
-      logPendingRefreshRecovery(decision.reason);     // A3 observability
-      throw new RefreshHardReauthError();
+    if (decision.action !== 'none') {
+      logPendingRefreshRecovery(decision.action === 'clean-relogin' ? decision.reason : 'marker_in_flight');     // A3 observability
+      throw new RefreshHardReauthError(true);
     }
 
     // Entry-level fast path: if the token is already live (e.g. a peer rotated
@@ -360,13 +362,13 @@ export class HttpClient {
         }
       }
 
+      if (fresh?.pendingRefresh) throw new RefreshHardReauthError(true);
       await this.postRefreshWithRetry(fresh ?? credentials, 0, guard);
     } catch (error) {
       guard();
       if (getConfig().cliRecovery?.state === 'active' && !(error instanceof RefreshHardReauthError)) {
-        const status = error !== null && typeof error === 'object' && 'statusCode' in error ? error.statusCode : undefined;
-        throw Object.assign(new Error('Session refresh failed. Retry or explicitly run znvault login --recover in an interactive terminal.'),
-          typeof status === 'number' ? {statusCode: status} : {});
+        throw Object.assign(new Error('Session refresh failed. Run znvault login --recover or complete a normal login.', {cause: error}),
+          error !== null && typeof error === 'object' ? error : {});
       }
       throw error;
     } finally {
@@ -395,11 +397,11 @@ export class HttpClient {
       if (isConflict(err)) {
         guard?.();
         // 409 refresh_in_progress: at most ONE retry, only with a DIFFERENT token.
-        if (attempt >= 1) throw new RefreshHardReauthError();
+        if (attempt >= 1) throw Object.assign(new RefreshHardReauthError(), err);
         const reread = getCredentials();
-        if (!reread?.refreshToken || reread.refreshToken === credentials.refreshToken) {
+        if (!reread?.refreshToken || reread.refreshToken === credentials.refreshToken || reread.pendingRefresh) {
           // No different token available -> terminal, never re-present the same JTI.
-          throw new RefreshHardReauthError();
+          throw Object.assign(new RefreshHardReauthError(), err);
         }
         await this.postRefreshWithRetry(reread, attempt + 1, guard);
         return;
@@ -456,6 +458,71 @@ export class HttpClient {
    * Make an HTTP request
    */
   async request<T>(options: RequestOptions): Promise<T> {
+    options.signal?.throwIfAborted();options.sessionGuard?.();
+    const recovery = {attempted: false};
+    let replayed = false;
+    const eligible = (): boolean => automaticRecovery !== null && !recovery.attempted && !options.skipAuth && !options.skipAuthRefresh &&
+      !options.sessionGuard && !hasApiKey() &&
+      !['ZNVAULT_API_KEY', 'ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined) &&
+      process.env.ZNVAULT_LOCAL !== '1' && getConfig().cliRecovery?.state === 'active' &&
+      !/^\/(?:v1\/)?(?:auth(?:\/|$)|user-sealed\/approval(?:\/|$)|devices(?:\/|$))/.test(options.path);
+    let guard = eligible() ? this.authenticationGuard(options.sessionGuard) : options.sessionGuard;
+    const recover = async (): Promise<void> => {
+      guard?.();options.signal?.throwIfAborted();
+      recovery.attempted = true;
+      const origin = this.getBaseUrl(), pin = this.getTlsSpkiSha256(), insecure = this.resolveInsecure();
+      const policy = automaticRecovery;
+      if (policy === null) throw new Error('Automatic CLI recovery is disabled.');
+      const {coordinateCliRecovery} = await import('../cli-recovery.js');
+      guard?.();options.signal?.throwIfAborted();
+      const receipt = await coordinateCliRecovery(this, policy.present, options.signal);
+      options.signal?.throwIfAborted();
+      if (getConfig().authGeneration !== receipt.authGeneration || getConfig().cliRecovery?.grantId !== receipt.grantId ||
+          this.getBaseUrl() !== origin || this.getTlsSpkiSha256() !== pin || this.resolveInsecure() !== insecure) {
+        throw new Error('CLI recovery transport changed. Explicitly retry.');
+      }
+      guard = this.authenticationGuard(options.sessionGuard);guard();
+    };
+    const status = (error: unknown): number | undefined => (error as {statusCode?: number} | null)?.statusCode;
+    const safe = options.method === 'GET' || options.recoveryReplaySafe === true;
+    const send = (): Promise<T> => this.prepareRequest<T>({...options, sessionGuard: guard});
+    if (!getCredentials() && eligible()) await recover();
+    // Refresh completes (and releases its lock) before recovery can ask the phone.
+    if (!options.skipAuth && !recovery.attempted && getCredentials()?.refreshToken && isTokenExpired()) {
+      try {await this.ensureValidToken(guard);}
+      catch (error) {if (status(error) === 401 && eligible()) await recover();else throw error;}
+    }
+    try {return await send();}
+    catch (error) {
+      if (status(error) !== 401 || options.skipAuth || options.skipAuthRefresh || options.sessionGuard ||
+          /^\/(?:v1\/)?(?:auth(?:\/|$)|user-sealed\/approval(?:\/|$))/.test(options.path)) throw error;
+      if (recovery.attempted) throw error;
+      let terminal: unknown = error;
+      let refreshed = false;
+      if (getCredentials()?.refreshToken) {
+        try {
+          await this.refreshToken({skipIfLive: false, sessionGuard: guard});
+          refreshed = true;
+          if (safe) {
+            replayed = true;
+            try {return await send();} catch (retryError) {if (status(retryError) !== 401) throw retryError;terminal = retryError;}
+          } else {
+            throw Object.assign(new Error('Session refreshed; operation was not reissued. Explicitly repeat the operation.'), {statusCode: 401});
+          }
+        } catch (refreshError) {
+          if (status(refreshError) !== 401) throw refreshError;
+          terminal = refreshError;
+        }
+      }
+      if (refreshed && !safe) throw terminal;
+      if (!eligible()) throw terminal;
+      await recover();
+      if (!safe || replayed) throw Object.assign(new Error('Session recovered; operation was not reissued. Explicitly repeat the operation.'), {statusCode: 401});
+      return await send();
+    }
+  }
+
+  private async prepareRequest<T>(options: RequestOptions): Promise<T> {
     options.sessionGuard?.();
     const url = new URL(this.baseUrl);
     url.pathname = options.path;
@@ -484,10 +551,6 @@ export class HttpClient {
       } else {
         const credentials = getCredentials();
         if (credentials) {
-          if (isTokenExpired() && credentials.refreshToken) {
-            await this.ensureValidToken(options.sessionGuard);
-            options.sessionGuard?.();
-          }
           const updatedCredentials = getCredentials();
           if (updatedCredentials) {
             headers.Authorization = `Bearer ${updatedCredentials.accessToken}`;
@@ -602,48 +665,6 @@ export class HttpClient {
             const parsed: unknown = data ? JSON.parse(data) : (statusCode === 204 ? undefined : {});
 
             if (statusCode >= 400) {
-              // v3.3.0: on a 401, transparently try a token refresh
-              // once and replay the request. The server returns 401
-              // not just for "no token" but also for "token's JTI
-              // isn't in the session store" — which happens after a
-              // server restart even if the token's clock-based exp
-              // is still in the future. Without this retry the user
-              // sees "session expired" and has to log in again on
-              // every deploy. The _retriedAfter401Refresh flag stops
-              // infinite recursion if the refresh itself doesn't
-              // help (refresh token is invalid, etc.).
-              if (
-                statusCode === 401 &&
-                !options.skipAuth &&
-                !options.skipAuthRefresh &&
-                !(options.method === 'POST' && /^\/v1\/(?:auth\/unseal(?:\/|$)|user-sealed\/approval(?:\/|$))/.test(options.path)) &&
-                !options._retriedAfter401Refresh
-              ) {
-                const credentials = getCredentials();
-                // §A.1 gate: the 401-replay path is the SECOND refresh entry
-                // point (it bypasses the in-process refreshPromise mutex). It
-                // must also refuse to present a past-TTL marked token.
-                const replayDecision = decidePendingRefresh();
-                if (credentials?.refreshToken && replayDecision.action !== 'clean-relogin') {
-                  // skipIfLive=false: the token is clock-valid but server-rejected
-                  // here (v3.3.0 fix), so force a real refresh — never short-circuit.
-                  this.refreshToken({ skipIfLive: false, ...(options.sessionGuard ? {sessionGuard: options.sessionGuard} : {}) })
-                    .then(() => {
-                      // Recurse with the retry flag set, using the
-                      // freshly-stored credentials.
-                      return this.request<T>({
-                        ...options,
-                        _retriedAfter401Refresh: true,
-                      });
-                    })
-                    .then(resolve)
-                    .catch(reject);
-                  return;
-                }
-                if (replayDecision.action === 'clean-relogin') {
-                  logPendingRefreshRecovery(replayDecision.reason); // A3 observability
-                }
-              }
               if (isApiErrorLike(parsed)) {
                 const errorMessage = parsed.message ?? parsed.error ?? `Request failed with status ${statusCode}`;
                 const symbolicCode = typeof parsed.code === 'string' && parsed.code.length > 0

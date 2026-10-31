@@ -163,7 +163,12 @@ describe('User-Sealed linked-passkey CLI session compatibility', () => {
       denyNextDecrypt = true;
     }
     const presentedAccess = currentAccess;
-    const result = await new HttpClient().post('/v1/secrets/synthetic/decrypt', {});
+    const peer = new HttpClient();
+    if (mode === 'server-401') {
+      await expect(peer.post('/v1/secrets/synthetic/decrypt', {})).rejects.toThrow(/not reissued/);
+      expect(receipts.filter(receipt => receipt.path.endsWith('/decrypt'))).toHaveLength(1);
+    }
+    const result = await peer.post('/v1/secrets/synthetic/decrypt', {});
 
     expect(result).toEqual({data: {value: 'synthetic-plaintext'}});
     expect(receipts.filter(receipt => receipt.path === '/auth/refresh')).toEqual([{

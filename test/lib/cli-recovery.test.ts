@@ -165,6 +165,15 @@ describe('explicit same-iPhone recovery', () => {
     expect(await recoverCliLogin(f.peer, {onPending: vi.fn(async () => {})})).toMatchObject({success: false});
     expect(getProfile('remembered')?.credentials?.accessToken).not.toBe(f.tokens.accessToken);
   });
+  it('does not store recovery tokens after an invocation TLS verification change', async () => {
+    const f = recoveryPeer(), original = f.peer.request.getMockImplementation()!;
+    let insecure = false;
+    const peer = {...f.peer, getInsecure: () => insecure};
+    f.peer.request.mockImplementation(async options => {const result = await original(options);if (options.path.endsWith('/complete')) insecure = true;return result;});
+    const {recoverCliLogin} = await import('../../src/lib/cli-recovery.js');
+    expect(await recoverCliLogin(peer, {onPending: vi.fn(async () => {})})).toMatchObject({success: false});
+    expect(getProfile('remembered')?.credentials).toBeUndefined();
+  });
   it('does not retry an uncertain complete and permits only a new explicit attempt', async () => {
     const f = recoveryPeer(), original = f.peer.request.getMockImplementation()!;
     f.peer.request.mockImplementation(async options => {

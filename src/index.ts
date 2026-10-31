@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import {configureAutomaticRecovery} from './lib/client/http.js';
+import {terminalCliRecovery} from './lib/qr-login-presentation.js';
 
 import { Command } from 'commander';
 import { applyTenantContextPatch } from './lib/command-context.js';
@@ -172,6 +174,10 @@ program
     ) {
       client.configure(opts.url, opts.insecure, opts.tlsSpkiSha256);
     }
+
+    configureAutomaticRecovery(opts.local || process.env.ZNVAULT_LOCAL === '1' ||
+      ['login', 'logout', 'profile', 'config', 'auth', 'device'].includes(topLevelCommandName(actionCommand) ?? '')
+      ? null : {present: terminalCliRecovery});
 
     // Skip the profile indicator when stdout is a machine channel (`--json`,
     // shell completion, `ssh forward --print-port`, `secret decrypt --raw/--field`).

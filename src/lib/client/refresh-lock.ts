@@ -115,3 +115,9 @@ export async function acquireRefreshLock(
     return null;
   }
 }
+
+/** Observe contention without acquiring or promoting a recovery follower. */
+export async function isRefreshLockHeld(lockKey: string): Promise<boolean> {
+  try {return await lockfile.check(lockFilePathFor(lockKey), {stale: 10_000});}
+  catch {return false;}
+}

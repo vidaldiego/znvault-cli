@@ -73,13 +73,12 @@ it('crash recovery: a past-TTL marked (consumed) token is NEVER presented -> no 
   expect(recoveryLog).toHaveBeenCalledWith('marker_past_ttl'); // A3
 });
 
-it('marker within TTL + live token -> refresh succeeds and clears marker', async () => {
+it('a within-TTL marker is never presented again, even without a live owner', async () => {
   creds = { accessToken: 'a', refreshToken: 'r-live', expiresAt: Date.now() - 1, userId: 'u', username: 'al', role: 'user', tenantId: null, pendingRefresh: { presentedJti: 'x', startedAt: Date.now() } };
-  const { HttpClient } = await import('../../src/lib/client/http.js');
-  await new HttpClient().refreshToken();
-  expect(presented).toEqual(['r-live']);
-  expect(creds.refreshToken).toBe('r2');
-  expect(creds.pendingRefresh).toBeUndefined();
+  const { HttpClient, RefreshHardReauthError } = await import('../../src/lib/client/http.js');
+  await expect(new HttpClient().refreshToken()).rejects.toBeInstanceOf(RefreshHardReauthError);
+  expect(presented).toEqual([]);expect(reuseHits).toBe(0);
+  expect(creds.refreshToken).toBe('r-live');expect(creds.pendingRefresh).toBeDefined();
 });
 
 it('both entry points gated: 401-replay also refuses a past-TTL marked token', async () => {

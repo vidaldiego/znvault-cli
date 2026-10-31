@@ -57,3 +57,13 @@ it('accepts only one bounded six-digit code from explicitly selected stdin',asyn
   await expect(readApprovalCode(true,Readable.from(['123456\n987654\n']))).rejects.toThrow('SESSION_APPROVAL_INVALID_TOTP');
   await expect(readApprovalCode(true,Readable.from(['1'.repeat(65)]))).rejects.toThrow('SESSION_APPROVAL_INVALID_TOTP');
 });
+
+it('guides both biometric-only and legacy-number iPhone approvals on stderr',async()=>{
+  vi.mocked(approvals.approveWithIPhone).mockImplementationOnce(async(_s,_kind,options)=>{
+    options.onPending?.({account:'fixture',origin:'https://vault.example.test',comparisonNumber:'42',expiresAt:Math.floor(Date.now()/1000)+120});
+    return {approval:{approved:true}};
+  });
+  await program.parseAsync(['node','test','user-sealed','approve','--iphone','--json']);
+  expect(vi.mocked(console.error).mock.calls.map(x=>x.join(' ')).join(' ')).toMatch(/Approve on your iPhone.*older app.*42/);
+  expect(console.log).toHaveBeenCalledTimes(1);
+});

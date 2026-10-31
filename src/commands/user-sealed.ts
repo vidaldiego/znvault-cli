@@ -62,7 +62,7 @@ export async function runIPhoneApproval(kind: ApprovalKind, options: ApprovalOpt
       deviceId: options.iphoneDevice, scope: options.scope, signal: controller.signal,
       onPending: value => {
         console.error(`Approve ${kind === 'unseal' ? `${options.scope ?? 'crypto'} unseal` : 'User-Sealed access'} for ${JSON.stringify(value.account)} at ${value.origin}.`);
-        console.error(`Enter ${value.comparisonNumber} on your iPhone. Expires ${new Date(value.expiresAt * 1000).toISOString()}.`);
+        console.error(`Approve on your iPhone; if an older app requests a number, use ${value.comparisonNumber}. Expires ${new Date(value.expiresAt * 1000).toISOString()}.`);
       },
     }));
     displayResult(result, options.json);

@@ -27,7 +27,7 @@ import { promptUsername, promptPassword, promptTotp, promptSelect } from '../lib
 import * as output from '../lib/output.js';
 import { webLogin, isWebLoginSupported } from '../lib/web-login.js';
 import { terminalQrLogin, terminalCliRecovery } from '../lib/qr-login-presentation.js';
-import {retireStoredCliRecovery} from '../lib/cli-recovery.js';
+import {coordinateCliRecovery, retireStoredCliRecovery} from '../lib/cli-recovery.js';
 import { registerProfileApiKeyCommands } from './profile-api-key.js';
 
 /**
@@ -141,14 +141,14 @@ export function registerAuthCommands(program: Command): void {
     .addOption(new Option('--remember-iphone', 'Allow this same iPhone to recover the CLI for 30 days (requires --qr)')
       .conflicts(['web', 'recover', 'username', 'password', 'passwordFile', 'totp', 'json']))
     .addOption(new Option('--recover', 'Recover a remembered CLI session with the original iPhone')
-      .conflicts(['web', 'qr', 'rememberIphone', 'username', 'password', 'passwordFile', 'totp', 'json']))
+      .conflicts(['web', 'qr', 'rememberIphone', 'username', 'password', 'passwordFile', 'totp']))
     .option('--json', 'Output as JSON')
     .hook('preAction', command => {
       const options = command.opts<LoginOptions>();
       if (options.rememberIphone && !options.qr) command.error('--remember-iphone requires --qr.');
       if (options.qr || options.recover) {
-        if (command.optsWithGlobals().json === true) command.error('Device login requires terminal output; --json is incompatible.');
-        if (!process.stdin.isTTY || !process.stdout.isTTY) command.error('Device login requires an interactive terminal.');
+        if (options.qr && command.optsWithGlobals().json === true) command.error('Device login requires terminal output; --json is incompatible.');
+        if (options.qr && (!process.stdin.isTTY || !process.stdout.isTTY)) command.error('Device login requires an interactive terminal.');
         if (getProfile(getActiveProfileName())?.apiKey || process.env.ZNVAULT_API_KEY !== undefined) command.error('Device login requires a human profile without an API key.');
       }
       if ((options.rememberIphone || options.recover) && ['ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => process.env[key] !== undefined)) {
@@ -168,7 +168,11 @@ export function registerAuthCommands(program: Command): void {
           }
 
           if (!options.recover) await retireStoredCliRecovery(profileName);
-          const result = options.recover ? await terminalCliRecovery(client) : options.qr ?
+          const result = options.recover ? await (async () => {
+            try {const receipt = await coordinateCliRecovery(client, terminalCliRecovery);
+              const credentials = getCredentials();if (!credentials || getProfile(profileName)?.authGeneration !== receipt.authGeneration) throw new Error('CLI recovery session changed.');return {success: true as const, user: {id: credentials.userId, username: credentials.username, role: credentials.role, tenantId: credentials.tenantId, mfaVerified: true}};
+            } catch (error) {return {success: false as const, error: error instanceof Error ? error.message : 'CLI recovery failed.'};}
+          })() : options.qr ?
             await (options.rememberIphone ? terminalQrLogin(client, {rememberIphone: true}) : terminalQrLogin(client)) : await webLogin(client.getBaseUrl());
 
           if (!result.success) {

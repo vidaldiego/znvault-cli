@@ -76,7 +76,7 @@ vi.mock('../../src/lib/config.js', async () => ({
   deleteProfile: vi.fn(),
   switchProfile: vi.fn(),
   renameProfile: vi.fn(),
-  getProfile: vi.fn().mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000}),
+  getProfile: vi.fn().mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000,authGeneration:'fixture-generation'}),
   DEFAULT_PROFILE: 'default',
   getConfig: vi.fn().mockReturnValue({ url: 'https://localhost:8443', insecure: false, timeout: 30000 }),
 }));
@@ -103,6 +103,11 @@ vi.mock('../../src/lib/qr-login-presentation.js', () => ({
   terminalQrLogin: vi.fn().mockResolvedValue({
     success: true, user: {id: '123', username: 'admin', role: 'superadmin', tenantId: null, mfaVerified: true},
   }),
+}));
+
+vi.mock('../../src/lib/cli-recovery.js', async () => ({
+  ...(await vi.importActual<typeof import('../../src/lib/cli-recovery.js')>('../../src/lib/cli-recovery.js')),
+  coordinateCliRecovery: vi.fn(async (peer, present) => {await present(peer);return {profileName:'default',authGeneration:'fixture-generation',grantId:'fixture-grant',expiresAtSec:2000000000};}),
 }));
 
 describe('auth commands', () => {
@@ -138,6 +143,26 @@ describe('auth commands', () => {
       expect(terminalCliRecovery).toHaveBeenCalledExactlyOnceWith(client);
       expect(terminalQrLogin).not.toHaveBeenCalled();expect(webLogin).not.toHaveBeenCalled();expect(client.login).not.toHaveBeenCalled();
     });
+    it('allows explicit recovery with JSON in a nonTTY agent invocation', async () => {
+      for (const stream of [process.stdin,process.stdout]) Object.defineProperty(stream,'isTTY',{configurable:true,value:false});
+      const output = await import('../../src/lib/output.js');
+      await program.parseAsync(['node','test','login','--recover','--json']);
+      expect(output.json).toHaveBeenCalledWith(expect.objectContaining({success:true,user:expect.objectContaining({id:'123'})}));
+    });
+    it('does not report a replacement login as the completed recovery', async () => {
+      const config = await import('../../src/lib/config.js'), recovery = await import('../../src/lib/cli-recovery.js');
+      const initial = vi.mocked(config.getProfile).getMockImplementation()!;
+      vi.mocked(recovery.coordinateCliRecovery).mockImplementationOnce(async () => {
+        vi.mocked(config.getProfile).mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000,authGeneration:'unrelated-generation'});
+        return {profileName:'default',authGeneration:'fixture-generation',grantId:'fixture-grant',expiresAtSec:2000000000,origin:'https://localhost:8443'};
+      });
+      const exit = vi.spyOn(process,'exit').mockImplementation(() => {throw new Error('Expected failure');});
+      try {
+        await expect(program.parseAsync(['node','test','login','--recover','--json'])).rejects.toThrow('Expected failure');
+        const output = await import('../../src/lib/output.js');
+        expect(output.json).toHaveBeenCalledWith(expect.objectContaining({success:false,error:expect.stringMatching(/session changed/)}));
+      } finally {exit.mockRestore();vi.mocked(config.getProfile).mockImplementation(initial);}
+    });
     it('offers terminal QR login alongside existing methods', () => {
       const login = program.commands.find(command => command.name() === 'login');
       expect(login?.options.some(option => option.long === '--qr')).toBe(true);
@@ -150,7 +175,7 @@ describe('auth commands', () => {
       const {client} = await import('../../src/lib/client.js');
       expect(client.login).not.toHaveBeenCalled();
     });
-    it.each(['--web', '--qr', '--json', '--username', '--password', '--password-file', '--totp', '--remember-iphone'])('rejects recovery combined with %s', async option => {
+    it.each(['--web', '--qr', '--username', '--password', '--password-file', '--totp', '--remember-iphone'])('rejects recovery combined with %s', async option => {
       const args = ['node', 'test', 'login', '--recover', option];
       if (['--username', '--password', '--password-file', '--totp'].includes(option)) args.push('fixture');
       await expect(program.parseAsync(args)).rejects.toMatchObject({code: 'commander.conflictingOption'});

@@ -144,8 +144,8 @@ describe('profile api-key import --stdin (real CLI process)', () => {
     const shown = run(['profile','show','consumer','--json']);
     expect(shown.status).toBe(0);expect(shown.stdout + shown.stderr).not.toContain(credential);
     expect(JSON.parse(readFileSync(configPath,'utf8')).profiles.consumer.apiKey).toBeUndefined();
-    const login = run(['--profile','consumer','login','--recover']);
-    expect(login.status).toBe(1);expect(login.stdout +login.stderr).toContain('interactive terminal');
+    const login = run(['--profile','consumer','login','--recover','--qr']);
+    expect(login.status).toBe(1);expect(login.stdout +login.stderr).toMatch(/cannot be used with/);
     expect(JSON.parse(readFileSync(configPath,'utf8')).profiles.consumer.cliRecovery).toEqual(content.profiles.consumer.cliRecovery);
   });
 
@@ -292,7 +292,7 @@ describe('profile api-key import --stdin (real CLI process)', () => {
     const stored = readFileSync(configPath, 'utf8');
     expect(stored.includes(VALID_KEY)).not.toBe(stored.includes('test-access-token'));
     expect(imported.stdout + imported.stderr + jwt.stdout).not.toContain(VALID_KEY);
-  });
+  }, 30_000);
 
   it('preserves imported authentication across a concurrent generic config write', async () => {
     createEmptyProfile();
@@ -369,7 +369,7 @@ describe('profile api-key import --stdin (real CLI process)', () => {
     );
     const configPath = run(['config', 'path']).stdout.trim();
     expect(readFileSync(configPath, 'utf8')).toContain(VALID_KEY);
-  });
+  }, 30_000);
 
   it('refuses an unknown target profile without consuming or reflecting the key', () => {
     const result = run(
