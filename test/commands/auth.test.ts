@@ -116,6 +116,7 @@ describe('auth commands', () => {
   const tty = [process.stdin, process.stdout].map(s => Object.getOwnPropertyDescriptor(s, 'isTTY'));
 
   beforeEach(async () => {
+    vi.stubEnv('CI', undefined);
     program = new Command();
     program.exitOverride();
     for (const stream of [process.stdin, process.stdout]) Object.defineProperty(stream, 'isTTY', {configurable: true, value: true});
@@ -129,6 +130,7 @@ describe('auth commands', () => {
   afterEach(() => {
     consoleSpy.mockRestore();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     process.exitCode = undefined;
     [process.stdin, process.stdout].forEach((stream, index) => {
       if (tty[index]) Object.defineProperty(stream, 'isTTY', tty[index]!);else Reflect.deleteProperty(stream, 'isTTY');
