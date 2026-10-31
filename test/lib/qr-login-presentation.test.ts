@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {stripVTControlCharacters} from 'node:util';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {renderTerminalQr, terminalQrLogin, terminalCliRecovery} from '../../src/lib/qr-login-presentation.js';
+import {renderTerminalQr, terminalQrLogin, terminalCliRecovery, renderComparisonNumber} from '../../src/lib/qr-login-presentation.js';
 import {qrLogin} from '../../src/lib/qr-login.js';
 import {recoverCliLogin} from '../../src/lib/cli-recovery.js';
 vi.mock('../../src/lib/qr-login.js', () => ({qrLogin: vi.fn()}));
@@ -21,6 +21,40 @@ afterEach(() => {
     else Reflect.deleteProperty(process.stdout, key);
   });
   vi.restoreAllMocks(); vi.clearAllMocks();
+});
+describe('comparison number presentation', () => {
+  it('keeps leading zero and the five-row shape legible without color or Unicode', () => {
+    expect(renderComparisonNumber('07', true, 80)).toBe([
+      '#####   #####', '#   #       #', '#   #      # ', '#   #     #  ', '#####     #  ', '',
+    ].join('\n'));
+  });
+  it.each([[false, 80], [true, 12], [true, undefined]])('keeps compact output for tty=%s columns=%s', (tty, columns) => {
+    expect(renderComparisonNumber('42', tty, columns)).toBe('');
+  });
+  it.each(['4', '123', '\x1b[2J', '４２', '-1'])('rejects unsafe or inexact comparison value %j', value => {
+    expect(() => renderComparisonNumber(value, true, 80)).toThrow();
+  });
+  it('uses stderr size even with redirected stdin/stdout and never writes to stdout', async () => {
+    const tty = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+    const columns = Object.getOwnPropertyDescriptor(process.stderr, 'columns');
+    Object.defineProperty(process.stderr, 'isTTY', {configurable: true, value: true});
+    Object.defineProperty(process.stderr, 'columns', {configurable: true, value: 80});
+    Object.defineProperty(process.stdin, 'isTTY', {configurable: true, value: false});
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((...args) => {const done = args.at(-1);if(typeof done === 'function') done();return true;});
+    vi.mocked(recoverCliLogin).mockImplementation(async (_peer, options) => {
+      await options.onPending({origin:'https://vault.example.test',comparisonNumber:'42',expiresAtSec:Math.floor(Date.now()/1000)+120});
+      return {success:false,error:'cancelled'};
+    });
+    try {
+      await terminalCliRecovery({getBaseUrl: () => 'https://vault.example.test', request: vi.fn()});
+      const rendered = stderr.mock.calls.map(call => String(call[0])).join('');
+      expect(rendered).toContain('Choose 42');expect(rendered).toContain('#   #   #####');expect(stdout).not.toHaveBeenCalled();
+    } finally {
+      if (tty) Object.defineProperty(process.stderr, 'isTTY', tty);else Reflect.deleteProperty(process.stderr, 'isTTY');
+      if (columns) Object.defineProperty(process.stderr, 'columns', columns);else Reflect.deleteProperty(process.stderr, 'columns');
+    }
+  });
 });
 describe('terminal QR presentation', () => {
   it('presents recovery on stderr without a terminal or stdin', async () => {
@@ -90,7 +124,7 @@ describe('terminal QR presentation', () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     vi.mocked(qrLogin).mockImplementation(async (_peer, options) => {
       expect(options.rememberIphone).toBe(true);
-      await options.onPending({locator, origin: 'https://vault.example.test', expiresAt: Date.now()/1000 +120});
+      await options.onPending({locator, origin: 'https://vault.example.test', expiresAt: Date.now()/1000 +120, rememberIphone: true});
       return {success: true, user: {id: 'fixture', username: 'fixture', role: 'user', tenantId: 'fixture', mfaVerified: true}};
     });
     expect(await terminalQrLogin({getBaseUrl: () => 'https://vault.example.test', request: vi.fn()}, {rememberIphone: true})).toMatchObject({success: true});

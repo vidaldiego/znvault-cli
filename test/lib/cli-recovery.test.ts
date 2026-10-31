@@ -1,7 +1,7 @@
 import {randomBytes, randomUUID} from 'node:crypto';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {store, setRuntimeProfile, getProfile, saveProfile, createProfile, deleteProfile, clearCredentials,
-  invalidateAllProfileCaches, storeCredentials} from '../../src/lib/config.js';
+  invalidateAllProfileCaches, storeCredentials, mutateProfileAuthentication, authenticationFingerprint} from '../../src/lib/config.js';
 
 function grant() {
   return {state: 'active' as const, grantId: randomUUID(), credential: randomBytes(32).toString('base64url'),
@@ -21,6 +21,17 @@ beforeEach(() => {
 afterEach(() => {vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllEnvs();setRuntimeProfile(null);invalidateAllProfileCaches();});
 
 describe('durable CLI recovery profile authority', () => {
+  it('preserves opt-out through stale metadata writes, logout and profile copy without copying authority', () => {
+    const stale = getProfile('remembered')!, before = authenticationFingerprint(stale);
+    mutateProfileAuthentication('remembered', p => ({...p, cliRecoveryPreference: 'off'}));
+    expect(authenticationFingerprint(getProfile('remembered'))).not.toBe(before);
+    saveProfile('remembered', {...stale, timeout: 2000});
+    clearCredentials();
+    expect(getProfile('remembered')?.cliRecoveryPreference).toBe('off');
+    createProfile('copy', {copyFrom: 'remembered'});
+    expect(getProfile('copy')).toMatchObject({cliRecoveryPreference: 'off'});
+    expect(getProfile('copy')?.credentials).toBeUndefined();expect(getProfile('copy')?.cliRecovery).toBeUndefined();
+  });
   it('preserves the grant and generation across metadata writes and ordinary refresh', () => {
     const old = getProfile('remembered')!;
     saveProfile('remembered', {url: old.url, insecure: old.insecure, timeout: 2000});

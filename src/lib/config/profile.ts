@@ -15,7 +15,7 @@ const retirementRequired = (): never => {throw new Error('Retire CLI recovery wi
 /** In-memory guard only; never log or serialize this fingerprint as evidence. */
 export function authenticationFingerprint(profile: Profile | undefined, includeCredentials = true): string {
   return JSON.stringify(profile ? [profile.url, profile.insecure, profile.timeout, profile.defaultTenant,
-    profile.authGeneration, profile.cliRecovery, profile.apiKey, profile.apiKeyId,
+    profile.authGeneration, profile.cliRecovery, profile.cliRecoveryPreference, profile.apiKey, profile.apiKeyId,
     ...(includeCredentials ? [profile.credentials] : [])] : null);
 }
 
@@ -53,6 +53,8 @@ function preserveAuthentication(current: Profile | undefined, proposed: Profile)
   else delete next.apiKeyName;
   if (current?.cliRecovery !== undefined) next.cliRecovery = current.cliRecovery;
   else delete next.cliRecovery;
+  if (current?.cliRecoveryPreference !== undefined) next.cliRecoveryPreference = current.cliRecoveryPreference;
+  else delete next.cliRecoveryPreference;
   if (current?.authGeneration !== undefined) next.authGeneration = current.authGeneration;
   else delete next.authGeneration;
   return next;
