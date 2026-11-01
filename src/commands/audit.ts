@@ -1,3 +1,4 @@
+import { normalizeAuditVerification } from '../audit-verification.js';
 import { type Command } from 'commander';
 
 import fs from 'node:fs';
@@ -123,27 +124,36 @@ function registerAuditCommandsInner(parent: Command, ctx: CommandContext): void 
       const spinner = output.spinner('Verifying audit chain...').start();
 
       try {
-        const result = await mode.verifyAuditChain({ asSuperadmin });
+        const result = normalizeAuditVerification(await mode.verifyAuditChain({ asSuperadmin }));
         spinner.stop();
 
         if (options.json) {
           output.json(result);
+          if (!result.valid) process.exitCode = 1;
           return;
         }
 
         if (result.valid) {
-          output.success('Audit chain is valid');
+          output.success('Retained audit snapshot verified; historical completeness not proven');
           output.keyValue({
-            'Total Entries': result.totalEntries,
-            'Verified Entries': result.verifiedEntries,
+            'Read Entries': result.readEntries,
+            'Authenticated Entries': result.authenticatedEntries,
+            'Unverified Entries': result.unverifiedEntries,
+            'Scope': result.scope,
+            'Interval': JSON.stringify(result.interval),
+            'Finished': result.finishedAt,
           });
         } else {
-          output.error('Audit chain integrity check FAILED');
+          output.error(`Audit verification: ${result.status ?? 'unknown'} (no complete assurance)`);
           output.keyValue({
-            'Total Entries': result.totalEntries,
-            'Verified Entries': result.verifiedEntries,
+            'Read Entries': result.readEntries,
+            'Authenticated Entries': result.authenticatedEntries,
+            'Unverified Entries': result.unverifiedEntries,
+            'Scope': result.scope,
+            'Interval': JSON.stringify(result.interval),
+            'Finished': result.finishedAt,
             'First Broken Entry': result.firstBrokenEntry ?? '-',
-            'Message': result.message,
+            'Reasons': result.reasons?.join(', ') ?? result.message,
           });
           process.exit(1);
         }

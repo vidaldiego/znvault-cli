@@ -1,3 +1,4 @@
+import { normalizeAuditVerification } from '../../audit-verification.js';
 // Path: src/lib/client/audit.ts
 
 /**
@@ -73,19 +74,11 @@ export class AuditClient extends HttpClient {
     return response.items;
   }
 
-  /**
-   * Verify the HMAC chain integrity of audit logs.
-   *
-   * Only the tenant-scoped surface exposes `/v1/audit/verify`. When called
-   * with `asSuperadmin: true`, the request still targets `/v1/audit/verify`
-   * which will reject a pure superadmin principal — surface that error to
-   * the caller rather than silently no-op.
-   */
+  /** Global verification requires a superadmin. Tenant credentials are rejected by the server. */
   async verifyChain(_opts?: AuditScopeOptions): Promise<AuditVerifyResult> {
-    return this.request<AuditVerifyResult>({
-      method: 'GET',
-      path: `${TENANT_BASE}/verify`,
-    });
+    return normalizeAuditVerification(await this.request<AuditVerifyResult>({
+      method: 'GET', path: `${ADMIN_BASE}/verify`,
+    }));
   }
 
   /**

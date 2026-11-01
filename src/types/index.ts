@@ -1,3 +1,4 @@
+import type { AuditVerificationEvidence } from '../audit-verification.js';
 // Configuration types
 export interface CLIConfig {
   url: string;
@@ -242,12 +243,12 @@ export interface AuditEntry {
   responseBody?: string;
 }
 
-export interface AuditVerifyResult {
+export interface AuditVerifyResult extends AuditVerificationEvidence {
   valid: boolean;
-  totalEntries: number;
-  verifiedEntries: number;
+  totalEntries?: number;
+  verifiedEntries?: number;
   firstBrokenEntry?: number;
-  message: string;
+  message?: string;
 }
 
 export interface LoginResponse {
