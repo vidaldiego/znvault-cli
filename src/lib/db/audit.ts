@@ -58,28 +58,10 @@ export class AuditOperations extends BaseDBClient {
     }));
   }
 
-  async verifyAuditChain(): Promise<AuditVerifyResult> {
-    const countResult = await this.queryOne<{ count: string }>(
-      'SELECT COUNT(*) as count FROM audit_log'
-    );
-    const total = parseInt(countResult?.count ?? '0', 10);
-
-    if (total === 0) {
-      return {
-        valid: true,
-        totalEntries: 0,
-        verifiedEntries: 0,
-        message: 'No audit entries to verify',
-      };
-    }
-
-    // For now, return a basic verification
-    // Full HMAC chain verification would require the secret key
-    return {
-      valid: true,
-      totalEntries: total,
-      verifiedEntries: total,
-      message: `Verified ${total} audit entries (chain integrity check requires API access)`,
-    };
+  verifyAuditChain(): Promise<AuditVerifyResult> {
+    return Promise.resolve({ valid: false, status: 'unverifiable', completed: false,
+      readEntries: 0, authenticatedEntries: 0, unverifiedEntries: 0, checkedEntries: 0,
+      reasons: ['local_verification_unavailable'],
+      message: 'Local database mode cannot authenticate audit HMACs. Use the superadmin API snapshot check.' });
   }
 }

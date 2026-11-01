@@ -16,7 +16,7 @@ const mockAuditEntries = [
   { id: 'audit-2', action: 'SECRET_CREATE', ts: new Date().toISOString(), clientCn: 'bob', resource: 'secret-2', statusCode: 201, ip: '192.168.1.2' },
 ];
 
-const mockVerifyResult = { valid: true, totalEntries: 100, verifiedEntries: 100 };
+const mockVerifyResult = {"status": "verified", "valid": true, "reasons": [], "errors": [], "checkedEntries": 3, "readEntries": 3, "authenticatedEntries": 3, "unverifiedEntries": 0, "unsignedDetailsEntries": 0, "scope": "retained", "interval": {"firstId": 5, "lastId": 7}, "completed": true, "startedAt": "2026-11-01T00:00:00Z", "finishedAt": "2026-11-01T00:00:01Z", "consistency": "repeatable_read", "historicalCompleteness": "not_proven"};
 
 // Mock mode.js - this is what the commands actually use
 vi.mock('../../src/lib/mode.js', () => ({
@@ -138,6 +138,15 @@ describe('audit commands', () => {
   });
 
   describe('audit verify', () => {
+    it('JSON reports a nonzero exit status for unknown or unverified evidence', async () => {
+      const mode = await import('../../src/lib/mode.js');
+      vi.mocked(mode.verifyAuditChain).mockResolvedValueOnce({ valid: true });
+      try {
+        await program.parseAsync(['node', 'test', 'audit', 'verify', '--json']);
+        expect(process.exitCode).toBe(1);
+      } finally { process.exitCode = 0; }
+    });
+
     it('should verify audit chain', async () => {
       const mode = await import('../../src/lib/mode.js');
       const { success, keyValue } = await import('../../src/lib/output.js');
