@@ -98,3 +98,11 @@ it('verify cannot report success when private plaintext cleanup is obstructed',a
  const spy=vi.spyOn(Workspace.prototype,'cleanup').mockImplementation(async function(this:InstanceType<typeof Workspace>,preserveRoot){writeFileSync(join(this.root,'operator-added'),'do-not-delete');return original.call(this,preserveRoot);});
  try{await expect(f.recoverSet(f.set,f.inputs,f.provider,{mode:'verify',temporaryParent:f.d})).rejects.toThrow();const residue=readdirSync(f.d).find(n=>n.startsWith('znvault-recovery-'))!;expect(readFileSync(join(f.d,residue,'operator-added'),'utf8')).toBe('do-not-delete');}finally{spy.mockRestore();}
 });
+it('recovers frozen ARCN bytes produced by the original pre-extraction Archon writer',async()=>{
+ const f=await setup();const {fixtures,sha}=await import('../helpers/recovery-fixture.js');const {verifyRecoverySet}=await import('../../src/vendor/archon-recovery-core/index.js');
+ const original=readFileSync(join(fixtures,'writer.arcn'));writeFileSync(f.paths.dump,original);
+ const metadata=JSON.parse(f.manifest.toString());metadata.artifactSize=original.length;metadata.encryptedChecksum=sha(original);
+ const manifest=Buffer.from(JSON.stringify(metadata)),expected=structuredClone(f.expected);expected.metadata={kind:'manifest',sha256:sha(manifest),bytes:manifest.length};
+ await expect(f.recoverSet(verifyRecoverySet(expected,manifest),f.inputs,f.provider,{mode:'extract',output:f.output})).resolves.toMatchObject({authenticated:true});
+ const restored=readFileSync(join(f.output,'content/database.sql'));expect(restored.length).toBe(196627);expect(restored.every((byte,i)=>byte===i%251)).toBe(true);
+});

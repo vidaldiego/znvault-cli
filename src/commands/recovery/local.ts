@@ -61,10 +61,7 @@ export async function runRecoveryOperation(mode: 'verify' | 'extract', options: 
       const bytes = await readProtectedFile(options.s3Config, 65536);
       try {
         const config: unknown = parseRecoveryJson(bytes, 65536);
-        const required = ['endpoint','region','bucket','accessKeyId','secretAccessKey'];
-        const allowed = [...required,'sessionToken','tlsCaPem','deadlineMs'];
-        if (config === null || typeof config !== 'object' || Array.isArray(config) || required.some(k => !Object.hasOwn(config,k)) || Object.keys(config).some(k => !allowed.includes(k))) throw Error('recovery_s3_config_invalid');
-        remote = s3Inputs(config as import('../../lib/recovery/storage.js').S3RecoveryConfig);
+        remote = s3Inputs(config);
         const secret = config as Record<string, unknown>; secret.accessKeyId = ''; secret.secretAccessKey = ''; secret.sessionToken = '';
       } finally { bytes.fill(0); }
     }

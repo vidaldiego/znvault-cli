@@ -1,4 +1,5 @@
 import { constants } from 'node:fs';
+import { X509Certificate } from 'node:crypto';
 import { open, lstat } from 'node:fs/promises';
 import type { RecoveryComponent } from '../../vendor/archon-recovery-core/index.js';
 import { stable } from './protected-files.js';
@@ -33,15 +34,46 @@ export interface S3RecoveryConfig {
   deadlineMs?: number;
 }
 export interface RemoteRecoveryInputs extends RecoveryInputs { dispose(): void }
-export function s3Inputs(config: S3RecoveryConfig): RemoteRecoveryInputs {
-  const endpoint = new URL(config.endpoint);
-  const validText = (s: unknown, max: number): s is string => typeof s === 'string' && s.length > 0 && s.length <= max && !Array.from(s).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
-  const deadlineMs = config.deadlineMs ?? 30000;
+/** This is an untrusted-input boundary, including direct library callers.
+ * Presence is not a type check: SDK null/default coercions must never select
+ * ambient region, credentials, trust or timeout settings. */
+function validateS3Config(value: unknown): S3RecoveryConfig {
+  const invalid = (): never => { throw Error('recovery_s3_config_invalid'); };
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid();
+  const record = value as Record<string, unknown>;
+  const required = ['endpoint','region','bucket','accessKeyId','secretAccessKey'];
+  const allowed = [...required,'sessionToken','tlsCaPem','deadlineMs'];
+  if (required.some(field => !Object.hasOwn(record,field)) || Object.keys(record).some(field => !allowed.includes(field))) invalid();
+  const text = (field: string, max: number): string => {
+    const item = record[field];
+    if (typeof item !== 'string' || item.length < 1 || item.length > max || item.trim().length === 0) invalid();
+    const result = item as string;
+    for (let i=0;i<result.length;i++) if (result.charCodeAt(i)<32 || result.charCodeAt(i)===127) invalid();
+    return result;
+  };
+  const endpointText=text('endpoint',2048), region=text('region',80), bucket=text('bucket',63);
+  let endpoint: URL;
+  try { endpoint=new URL(endpointText); } catch { return invalid(); }
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== '/' ||
-      !/^[A-Za-z0-9-]{1,80}$/.test(config.region) || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(config.bucket) ||
-      !validText(config.accessKeyId, 256) || !validText(config.secretAccessKey, 4096) || (config.sessionToken !== undefined && !validText(config.sessionToken, 16384)) ||
-      (config.tlsCaPem !== undefined && (typeof config.tlsCaPem !== 'string' || config.tlsCaPem.length > 16384)) ||
-      !Number.isSafeInteger(deadlineMs) || deadlineMs < 100 || deadlineMs > 120000) throw Error('recovery_s3_config_invalid');
+      !/^[A-Za-z0-9-]{1,80}$/.test(region) || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket)) invalid();
+  const accessKeyId=text('accessKeyId',256), secretAccessKey=text('secretAccessKey',4096);
+  const sessionToken=record.sessionToken === undefined ? undefined : text('sessionToken',16384);
+  const deadline=record.deadlineMs === undefined ? 30000 : record.deadlineMs;
+  if (typeof deadline !== 'number' || !Number.isSafeInteger(deadline) || deadline<100 || deadline>120000) invalid();
+  const tlsCaPem=record.tlsCaPem;
+  if (tlsCaPem !== undefined) {
+    if (typeof tlsCaPem !== 'string' || tlsCaPem.length>16384 || tlsCaPem.trim().length===0) invalid();
+    const pem=tlsCaPem as string, pattern=/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g;
+    const certificates=pem.match(pattern);
+    if (certificates === null || pem.replace(pattern,'').trim().length !== 0) invalid();
+    try { for (const certificate of certificates as string[]) new X509Certificate(certificate); } catch { return invalid(); }
+  }
+  return { endpoint:endpoint.origin,region,bucket,accessKeyId,secretAccessKey,
+    deadlineMs:deadline as number, ...(sessionToken !== undefined ? {sessionToken} : {}),
+    ...(tlsCaPem !== undefined ? {tlsCaPem:tlsCaPem as string} : {}) };
+}
+export function s3Inputs(value: unknown): RemoteRecoveryInputs {
+  const config=validateS3Config(value), endpoint=new URL(config.endpoint), deadlineMs=config.deadlineMs ?? 30000;
   const region=config.region, bucket=config.bucket, tlsCaPem=config.tlsCaPem;
   let disposed = false;
   let cleanup: (() => void) | undefined;
@@ -54,7 +86,10 @@ export function s3Inputs(config: S3RecoveryConfig): RemoteRecoveryInputs {
       const [{ S3Client, HeadObjectCommand, GetObjectCommand }, { Agent }] = await Promise.all([import('@aws-sdk/client-s3'), import('node:https')]);
       const agent = new Agent({ rejectUnauthorized:true, ...(tlsCaPem ? { ca:tlsCaPem } : {}) });
       const client = new S3Client({ region, endpoint:endpoint.origin, forcePathStyle:true, credentials,
-        maxAttempts:2, followRegionRedirects:false, requestHandler:{ httpsAgent:agent, connectionTimeout:Math.min(deadlineMs,5000), requestTimeout:deadlineMs, throwOnRequestTimeout:true } });
+        maxAttempts:2, retryMode:'standard', defaultsMode:'standard', followRegionRedirects:false,
+        useFipsEndpoint:false, useDualstackEndpoint:false, useArnRegion:false, disableS3ExpressSessionAuth:true,
+        authSchemePreference:['aws.auth#sigv4'], requestChecksumCalculation:'WHEN_REQUIRED', responseChecksumValidation:'WHEN_REQUIRED',
+        credentialDefaultProvider:() => () => Promise.reject(Error('recovery_s3_credentials_required')), requestHandler:{ httpsAgent:agent, connectionTimeout:Math.min(deadlineMs,5000), requestTimeout:deadlineMs, throwOnRequestTimeout:true } });
       cleanup = () => { client.destroy(); agent.destroy(); };
       const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)]);
       // Reject any endpoint/region redirect before signing/sending credentials.

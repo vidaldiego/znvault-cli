@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fixture } from '../helpers/recovery-fixture.js';
+import { fixture, invalidS3Configs } from '../helpers/recovery-fixture.js';
 const root = resolve(import.meta.dirname, '../..');
 const directory = mkdtempSync(join(tmpdir(), 'recovery-bootstrap-'));
 const imports = join(directory, 'imports.jsonl');
@@ -29,7 +29,7 @@ import { appendFileSync } from 'node:fs';
 import http from 'node:http'; import https from 'node:https'; import net from 'node:net'; import tls from 'node:tls';
 const deny = () => { appendFileSync(${JSON.stringify(network)}, 'request\\n'); throw Error('OUTBOUND_FORBIDDEN'); };
 http.request = deny; http.get = deny; https.request = deny; https.get = deny; net.connect = deny; net.createConnection = deny; tls.connect = deny; globalThis.fetch = deny; syncBuiltinESMExports();
-registerHooks({load(url, context, next) { if (/\\/dist\\/(?:main\\.js|lib\\/(?:config|client|cli-update|qr-login-presentation)|plugins\\/|services\\/update)/.test(url)) { appendFileSync(${JSON.stringify(imports)}, JSON.stringify(url)+'\\n'); throw Error('FORBIDDEN_IMPORT:'+url); } return next(url, context); }});`);
+registerHooks({load(url, context, next) { if (url.includes('/@aws-sdk/client-s3/') || /\\/dist\\/(?:main\\.js|lib\\/(?:config|client|cli-update|qr-login-presentation)|plugins\\/|services\\/update)/.test(url)) { appendFileSync(${JSON.stringify(imports)}, JSON.stringify(url)+'\\n'); throw Error('FORBIDDEN_IMPORT:'+url); } return next(url, context); }});`);
   // Header-only inspection still validates the ARCN1 structural header.
   const header = Buffer.alloc(40); header.write('ARCN1'); header.writeUInt16BE(1, 8); header[10] = 1; writeFileSync(input, header);
   writeFileSync(manifest, JSON.stringify({ manifestVersion: 2, backupId: 42, serviceName: 'synthetic' }));
@@ -97,6 +97,12 @@ describe('early offline bootstrap', () => {
       const result=run(['recovery','verify','--input',verifiedFixture.paths.dump,'--companion-input',verifiedFixture.paths.companion,'--manifest',join(directory,'verify/manifest.json'),'--expect',join(directory,'verify/selection.json'),'--key-file',key,'--json','--debug',...more]);
       expect(result.status).not.toBe(0);expect(result.stdout+result.stderr).not.toMatch(/KEY_SECRET_MARKER|ARG_SECRET_MARKER|SYNTHETIC_SQL_MARKER/);expect(result.stdout).toBe('');
     }
+  });
+  it.each(invalidS3Configs)('rejects malformed protected S3 config %s before any SDK import or outbound request', (name,value) => {
+    const config=join(directory,'invalid-s3.json');
+      writeFileSync(config,JSON.stringify(value),{mode:0o600});
+      const result=run(['recovery','verify','--s3-config',config,'--manifest',join(directory,'verify/manifest.json'),'--expect',join(directory,'verify/selection.json'),...verifiedFixture.keyFiles.flatMap(path=>['--key-file',path]),'--json','--debug']);
+      expect(result.status,name).not.toBe(0);expect(result.stdout,name).toBe('');expect(result.stderr,name).not.toContain('S3_SECRET_MARKER');expect(readFileSync(imports,'utf8'),name).toBe('');expect(readFileSync(network,'utf8'),name).toBe('');
   });
   it('does not let delimiters or option values masquerade as command or key selector', async () => {
     const { selectRecoveryBootstrap } = await import('../../src/commands/recovery/bootstrap.js');
