@@ -44,7 +44,18 @@ export function unwrapDek(wrapped: Buffer, masterKey: Buffer): Buffer {
   const tag = wrapped.subarray(44, 60);
   const decipher = createDecipheriv('aes-256-gcm', masterKey, iv);
   decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  let plaintext: Buffer | undefined;
+  let final: Buffer | undefined;
+  try {
+    plaintext = decipher.update(ciphertext);
+    final = decipher.final();
+    // Transfer only the separate returned DEK; both helper-owned plaintext
+    // temporaries must be cleared even if authentication or concatenation fails.
+    return Buffer.concat([plaintext, final]);
+  } finally {
+    plaintext?.fill(0);
+    final?.fill(0);
+  }
 }
 
 /**

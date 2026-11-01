@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Refresh the pinned recovery core to clear helper-owned unwrap DEK temporaries
+  on success/failure and reject non-string historical reference buckets.
+  Valid envelopes, legacy references and caller buffer ownership are unchanged.
+
 ### Added
 
 - Isolated offline `recovery inspect` for public JSON metadata and structural

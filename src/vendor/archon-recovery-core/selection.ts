@@ -56,7 +56,7 @@ export function verifyRecoverySet(expected: ExpectedSelection, metadataBytes: Bu
     const matching: any[] = [];
     for (const ref of r.references) {
       if (!shape(ref, ['destinationId', 'serviceName', 'bucket', 'endpoint', 'region', 'key', 'versionId', 'sha256']) ||
-          !positive(ref.destinationId) || !text(ref.serviceName, 256) || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(ref.bucket) ||
+          !positive(ref.destinationId) || !text(ref.serviceName, 256) || !text(ref.bucket, 63) || !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(ref.bucket) ||
           ref.key !== `manifests/${ref.serviceName}/backup-${s.backupId}.json` || ref.versionId === null || !objectVersion(ref.versionId) || !hex(ref.sha256, 64) ||
           !(ref.region === null || (text(ref.region, 80) && /^[A-Za-z0-9-]+$/.test(ref.region)))) fail();
       if (ref.endpoint !== null) {

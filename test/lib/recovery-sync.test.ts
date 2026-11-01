@@ -17,7 +17,7 @@ describe('pinned generated recovery snapshot', () => {
     expect(run().status).not.toBe(0);
   });
   it('refuses wrong source provenance before creating or overwriting a snapshot', () => {
-    const source = temp(); writeFileSync(join(source, 'PROVENANCE.json'), JSON.stringify({ sourceSha: 'f70d4df95d002ef022fa514b498cc121527e4242', files: [] }));
+    const source = temp(); writeFileSync(join(source, 'PROVENANCE.json'), JSON.stringify({ sourceSha: '828d1085c530d62d28d9e2c19ba57ea510258794', files: [] }));
     const result = spawnSync(process.execPath, [join(root, 'scripts/sync-archon-recovery.mjs'), '--source', source, '--root', temp()], { encoding: 'utf8' });
     expect(result.status).not.toBe(0); expect(result.stderr).toMatch(/provenance/);
   });

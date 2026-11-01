@@ -51,3 +51,19 @@ describe('explicit custodied selection snapshot', () => {
     await expect(readMetadataSnapshot(dirs[0], 1048576)).rejects.toThrow();
   });
 });
+
+it.each([
+  ['number', 123], ['array', ['abc']], ['null', null], ['object', {}],
+  ['missing', undefined], ['boolean', true], ['oversized string', 'a'.repeat(64)],
+])('rejects freshly pinned historical bucket %s in the generated consumer', async (_name, bucket) => {
+  const { loadTrustedSelection } = await import('../../src/commands/recovery/local.js');
+  const { verifyRecoverySet } = await import('../../src/vendor/archon-recovery-core/index.js');
+  const reference = Buffer.from(JSON.stringify({ format: 'archon-dr-references-v1', backupId: 42, serviceId: 7,
+    references: [{ destinationId: 1, serviceName: 'synthetic', bucket, endpoint: null, region: null,
+      key: 'manifests/synthetic/backup-42.json', versionId: 'version-1', sha256: digest(manifest) }] }));
+  const expected = await loadTrustedSelection(await file(JSON.stringify({ ...selection(), metadata: {
+    kind: 'reference', sha256: digest(reference), bytes: reference.length,
+  } })));
+  expect(expected.metadata.sha256).toBe(digest(reference));
+  expect(() => verifyRecoverySet(expected, manifest, reference)).toThrow('recovery_selection_invalid');
+});
