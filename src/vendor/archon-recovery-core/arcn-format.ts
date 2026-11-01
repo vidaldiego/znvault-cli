@@ -44,7 +44,7 @@ export function decodeHeader(buf: Buffer): ArcnHeader {
   if (version !== 1) {
     throw new Error(`unsupported format version: ${version}`);
   }
-  const algorithm = buf[10];
+  const algorithm = buf[10]!;
   if (algorithm !== AlgorithmId.AES_256_GCM_64KB) {
     throw new Error(`unknown algorithm id: 0x${algorithm.toString(16)}`);
   }

@@ -114,7 +114,7 @@ export function validateRecoveryMaterial(bytes: Buffer, installationUuid: string
       const releaseMatch = /^\/opt\/znvault\/releases\/((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)\/MANIFEST\.json$/.exec(file.path);
       const releaseResolved = selector.name === 'release/MANIFEST.json' && selector.private === false &&
         selector.path === '/opt/znvault/current/MANIFEST.json' &&
-        releaseMatch && !releaseMatch[1].split('-').slice(1).join('-').split('.').some(part => /^0[0-9]+$/.test(part));
+        releaseMatch && !releaseMatch[1]!.split('-').slice(1).join('-').split('.').some(part => /^0[0-9]+$/.test(part));
       if (file.path !== selector.path && !releaseResolved) throw refusal();
       if (selector.name === 'release/MANIFEST.json' && !releaseResolved) throw refusal();
       if (releaseResolved) {
@@ -138,7 +138,7 @@ function environmentValue(bytes: Buffer, name: string): string | undefined {
   if (values.length > 1) throw refusal();
   let value = values[0]?.trim();
   if (value?.startsWith('"') || value?.startsWith("'")) {
-    if (!value.endsWith(value[0]) || value.length < 2) throw refusal();
+    if (!value.endsWith(value[0]!) || value.length < 2) throw refusal();
     value = value.slice(1, -1);
   }
   return value;
@@ -151,7 +151,7 @@ function validateRootContinuity(material: RecoveryMaterial): void {
     const kcv = `kcv1:${createHmac('sha256', bsk).update('zn-vault-bsk-kcv-v1').digest('hex').slice(0, 32)}`;
     if (bsk.length !== 32 || installation.installationUuid !== material.installationUuid ||
         installation.rootKeyKcv !== kcv || environmentValue(env, 'LMK_PATH') !== files.get('vault/bsk')!.path) throw refusal();
-    for (const [variable, name] of [['TLS_CERT', 'tls/fullchain.pem'], ['TLS_KEY', 'tls/privkey.pem'], ['AWS_CONFIG_FILE', 'aws/config']]) {
+    for (const [variable, name] of [['TLS_CERT', 'tls/fullchain.pem'], ['TLS_KEY', 'tls/privkey.pem'], ['AWS_CONFIG_FILE', 'aws/config']] as const) {
       const value = environmentValue(env, variable);
       if (value !== undefined && value !== files.get(name)!.path) throw refusal();
     }
@@ -167,7 +167,7 @@ function validateRuntimeConfiguration(runtime: Record<string, unknown>, files: M
       !safePath(runtime.credentialHelper) || !Number.isSafeInteger(runtime.sessionDuration) ||
       (runtime.sessionDuration as number) < 1 || (runtime.sessionDuration as number) > 86400) throw refusal();
   for (const [field, name] of [['configFile', 'aws/config'], ['certificateFile', 'aws/runtime.pem'], ['privateKeyFile', 'aws/runtime.key'],
-    ['caCertificateFile', 'aws/runtime-ca.pem'], ['caPrivateKeyFile', 'aws/runtime-ca.key']])
+    ['caCertificateFile', 'aws/runtime-ca.pem'], ['caPrivateKeyFile', 'aws/runtime-ca.key']] as const)
     if (runtime[field] !== files.get(name)!.path) throw refusal();
   const anchor = /^arn:(aws(?:-[a-z]+)?):rolesanywhere:([a-z0-9-]+):([0-9]{12}):trust-anchor\/([a-f0-9-]{36})$/.exec(runtime.trustAnchorArn as string);
   const profile = /^arn:(aws(?:-[a-z]+)?):rolesanywhere:([a-z0-9-]+):([0-9]{12}):profile\/([a-f0-9-]{36})$/.exec(runtime.profileArn as string);
@@ -185,8 +185,8 @@ function validateRuntimeConfiguration(runtime: Record<string, unknown>, files: M
     if (text.startsWith('[')) { selected = text === `[profile ${runtime.awsProfile}]`; if (selected && ++sections > 1) throw refusal(); continue; }
     if (!selected) continue;
     const match = /^([a-z_]+)\s*=\s*(.*)$/.exec(text);
-    if (!match || values.has(match[1]) || !['region', 'credential_process', 'output'].includes(match[1])) throw refusal();
-    values.set(match[1], match[2]);
+    if (!match || values.has(match[1]!) || !['region', 'credential_process', 'output'].includes(match[1]!)) throw refusal();
+    values.set(match[1]!, match[2]!);
   }
   const expected = [runtime.credentialHelper, 'credential-process', '--certificate', runtime.certificateFile,
     '--private-key', runtime.privateKeyFile, '--trust-anchor-arn', runtime.trustAnchorArn, '--profile-arn', runtime.profileArn,
