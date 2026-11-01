@@ -35,8 +35,9 @@ znvault recovery inspect --input dump.arcn --manifest manifest.json --reference 
 `inspect` reads a structural ARCN1 header and bounded public JSON metadata (1 MiB
 per file). Its JSON result always says `authenticated: false`: it does not verify
 ciphertext, unwrap keys, decrypt, or establish recoverability. Files must be
-regular files without symlinks or hardlinks. `recovery verify` and `recovery extract`
-currently fail closed because the complete recovery pipeline is not yet connected.
+regular files without symlinks or hardlinks. `verify` authenticates the complete
+set and codecs, then removes provisional plaintext. `extract` publishes the complete
+set under a new directory. Both require an independently custodied selection.
 
 The recovery entry point is selected before importing profiles/configuration,
 HTTP clients, plugins, update checks, or session/QR recovery. It ignores connected
@@ -44,12 +45,72 @@ environment settings and refuses `--profile`, `--url`, `--insecure`, `--local`,
 `--tls-spki-sha256`, `--backup` and `--key-source`. Existing `--local` continues to
 mean direct PostgreSQL access for ordinary commands.
 
-The forthcoming `--expect PATH` takes a selection explicitly chosen from prior
+The required `--expect PATH` takes a selection explicitly chosen from prior
 independent custody or an authenticated catalogue. Never discover that file next
 to an untrusted backup, or turn a newly calculated digest into authority. The
 loader checks closed schemas, exact fingerprints and bounded stable bytes; it
 cannot establish the provenance of a file the operator chooses. Legacy references
 need no new retrospective HMAC. No inline or environment key input is provided.
+
+```bash
+znvault recovery verify --input dump.arcn --manifest manifest.json --expect selection.json --key-file protected-kek
+znvault recovery extract --input dump.arcn --companion-input companion.enc --manifest manifest.json --expect selection.json --key-file dump-kek --key-file companion-kek --output /trusted/parent/new-set
+# Live read-only S3 transport is explicit and separate from Vault key custody:
+znvault recovery extract --s3-config protected-s3.json --manifest manifest.json --expect selection.json --key-file protected-kek --output /trusted/parent/new-set
+```
+
+Every declared component needs an explicit source. Local paths may reference an
+already available read-only Mimir copy/mount; the CLI never mounts or configures
+storage. `--input` and `--s3-config` are mutually exclusive. Key files contain
+**exactly 32 raw bytes**, belong to the current uid, have no group/other access,
+and are regular one-link files without symlinks. Repeat `--key-file` up to 32
+times for distinct required fingerprints; duplicate, unused or missing keys fail
+before any DEK unwrap. There is no trial decryption. The CLI never changes or
+deletes operator inputs, sends keys through environment variables, or prints keys
+and recovered contents in errors, JSON, debug output or public receipts.
+
+`--output NEW_PATH` requires a trusted existing parent owned by the operator and
+protected against other writers. The CLI exclusively creates a 0700 reservation,
+stages all files privately, authenticates every component and checks final
+identity, synchronizes files/directories, then renames the complete set to
+`NEW_PATH/content`. Output contains `database.sql`, optional `companion/`, and a
+public `recovery-receipt.json`. Files are 0600 and directories 0700; installation
+ownership/modes in the companion are never applied. Existing paths are never
+replaced. Cancellation, input changes, codec errors and insufficient space fail
+closed; SIGKILL may leave private staging, which is never resumed or treated as
+success. Filesystem deletion is not a promise of physical secure erasure. This
+recovers files only; it never imports SQL or starts/restores an application.
+
+The default aggregate ciphertext and expanded-set limits are 1 TiB each,
+configurable using `--max-input-bytes` and `--max-expanded-bytes` (positive safe
+integers). `--max-expansion-ratio` defaults to 10000. Queues are 64 KiB; the zstd
+decoder window is capped at 8 MiB, compatible with Archon's existing `zstd -c -`
+default writer and tested using a synthetic 16 MiB stream. Larger-window frames
+are rejected explicitly as a resource limit; they are not silently accepted.
+Gzip/zstd must consume every authenticated packed byte. Metadata and companion
+JSON are limited to 1 MiB, companion ciphertext to 1 MiB+33 bytes, and each fixed
+allowlisted companion member to 128 KiB. A 64 MiB free-space floor is checked
+initially and during large writes. These are bounds, not a promise that every
+1 TiB backup fits the local disk. Native Node codecs are included in the required
+runtime; recovery does not invoke an external codec.
+
+The protected S3 JSON has required fields `endpoint`, `region`, `bucket`,
+`accessKeyId`, `secretAccessKey`; optional fields are `sessionToken`, `tlsCaPem`
+(for an explicit trusted CA) and `deadlineMs` (100–120000, default 30000). It uses
+the same owner/mode/regular one-link file checks as key files, with a 64 KiB cap.
+Only HTTPS with verified certificates is accepted; redirects/origin changes are
+rejected. Each component uses only HeadObject/GetObject for the trusted exact
+key and VersionId, with at most two request attempts and one bounded operation
+deadline. No ambient credentials, IMDS, default provider chain, listing, latest,
+write, retention update or VersionId fallback is used. A historical unversioned
+object requires independently pinned ciphertext bytes/digest and complete
+cryptographic authentication; its storage is not described as immutable.
+
+Run `npm run test:recovery` for isolated synthetic filesystem/process/TLS S3 and
+256 MiB memory contracts. The genuine ENOSPC test creates and detaches its own
+64 MiB disk image on macOS; that one platform-specific test is skipped on Linux.
+Real Mimir/C2 custody acceptance, assisted Vault authorization and the exact
+offline bundle remain separate gates.
 
 The reviewed Archon recovery core is included in the CLI's `dist`; ordinary build
 and runtime never consult an Archon checkout. Maintainers explicitly synchronize

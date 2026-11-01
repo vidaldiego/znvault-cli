@@ -28,7 +28,8 @@
     "typecheck": "tsc --noEmit",
     "release:check": "node scripts/check-release.mjs",
     "release:verify-package": "node scripts/verify-package.mjs",
-    "recovery-core:check": "node scripts/sync-archon-recovery.mjs --check"
+    "recovery-core:check": "node scripts/sync-archon-recovery.mjs --check",
+    "test:recovery": "vitest run --config vitest.integration.config.ts test/integration/recovery-filesystem.integration.test.ts"
   },
   "keywords": [
     "znvault",
@@ -44,6 +45,7 @@
     "url": "https://github.com/vidaldiego/znvault-cli"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1161.0",
     "@hpke/chacha20poly1305": "1.8.0",
     "@hpke/core": "1.9.0",
     "@hpke/dhkem-x25519": "1.8.0",

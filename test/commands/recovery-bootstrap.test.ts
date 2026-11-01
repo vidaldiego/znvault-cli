@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fixture } from '../helpers/recovery-fixture.js';
 const root = resolve(import.meta.dirname, '../..');
 const directory = mkdtempSync(join(tmpdir(), 'recovery-bootstrap-'));
 const imports = join(directory, 'imports.jsonl');
@@ -11,13 +12,16 @@ const loader = join(directory, 'guard.mjs');
 const input = join(directory, 'dump.arcn');
 const manifest = join(directory, 'manifest.json');
 let installedCli: string;
+let verifiedFixture: Awaited<ReturnType<typeof fixture>>;
 const run = (args: string[], cli = join(root, 'dist/index.js')) => {
   writeFileSync(imports, ''); writeFileSync(network, '');
   const env = { ...process.env, HOME: directory, ZNVAULT_CONFIG_DIR: join(directory, 'config'), ZNVAULT_URL: 'http://127.0.0.1:1', ZNVAULT_PROFILE: 'hostile', ZNVAULT_LOCAL: '1' };
   delete env.ZNVAULT_NO_PLUGINS; delete env.ZNVAULT_NO_UPDATE_CHECK;
   return spawnSync(process.execPath, ['--import', loader, cli, ...args], { cwd: directory, env, encoding: 'utf8', timeout: 15000 });
 };
-beforeAll(() => {
+beforeAll(async () => {
+  mkdirSync(join(directory, 'verify'));
+  verifiedFixture = await fixture(join(directory, 'verify'), { companion:true, managedKeys:true });
   mkdirSync(join(directory, 'config'));
   writeFileSync(join(directory, 'config/config.json'), 'invalid config that must never be parsed');
   writeFileSync(loader, `import { registerHooks, syncBuiltinESMExports } from 'node:module';
@@ -64,11 +68,34 @@ describe('early offline bootstrap', () => {
     expect(result.status).not.toBe(0); expect(result.stderr).toMatch(/incompatible|unknown option/);
     expect(readFileSync(imports, 'utf8')).toBe(''); expect(readFileSync(network, 'utf8')).toBe('');
   });
-  it('fails closed for unfinished verify/extract without claiming authenticated recovery', () => {
+  it('fails closed for unreadable trusted selection without claiming authenticated recovery', () => {
     for (const operation of ['verify', 'extract']) {
       const result = run(['recovery', operation, '--input', input, '--manifest', manifest, '--expect', 'never-read', '--key-file', 'never-read']);
-      expect(result.status).not.toBe(0); expect(result.stderr).toMatch(/not yet available/);
+      expect(result.status).not.toBe(0); expect(result.stderr).toMatch(/Recovery/);
       expect(result.stdout).toBe(''); expect(readFileSync(imports, 'utf8')).toBe('');
+    }
+  });
+  it('verifies and extracts both components with repeated key files from source and installed CLI without imports or outbound requests', () => {
+    for (const [i, cli] of [join(root,'dist/index.js'), installedCli].entries()) {
+      const base = ['--input', verifiedFixture.paths.dump, '--companion-input', verifiedFixture.paths.companion, '--manifest', join(directory,'verify/manifest.json'), '--expect', join(directory,'verify/selection.json'), ...verifiedFixture.keyFiles.flatMap(path => ['--key-file',path]), '--json', '--debug'];
+      for (const operation of ['verify','extract']) {
+        const result = run(['recovery',operation,...base,...(operation==='extract'?['--output',join(directory,`published-${i}`)]:[])],cli);
+        expect(result.status,result.stderr).toBe(0); expect(JSON.parse(result.stdout).authenticated).toBe(true);
+        expect(result.stdout+result.stderr).not.toContain('SYNTHETIC_SQL_MARKER'); expect(result.stdout+result.stderr).not.toContain('vault/bsk');
+        expect(readFileSync(imports,'utf8')).toBe(''); expect(readFileSync(network,'utf8')).toBe('');
+      }
+    }
+  });
+  it('rejects another complete valid set against an independently pinned selection before key or source reads', async () => {
+    const alternativeDir=join(directory,'substitute');mkdirSync(alternativeDir);const alternative=await fixture(alternativeDir,{companion:true,plain:Buffer.from('OTHER_VALID_SET')});
+    const result=run(['recovery','extract','--input',alternative.paths.dump,'--companion-input',alternative.paths.companion,'--manifest',join(alternativeDir,'manifest.json'),'--expect',join(directory,'verify/selection.json'),'--key-file','never-read','--output',join(directory,'substitute-output'),'--json','--debug']);
+    expect(result.status).not.toBe(0);expect(result.stdout).toBe('');expect(result.stderr).not.toContain('OTHER_VALID_SET');expect(readFileSync(imports,'utf8')).toBe('');expect(readFileSync(network,'utf8')).toBe('');
+  });
+  it('redacts malformed key contents and unrecognized argument values in JSON/debug error paths', () => {
+    const key=join(directory,'invalid-key');writeFileSync(key,'KEY_SECRET_MARKER',{mode:0o600});
+    for(const more of [[],['--unknown=ARG_SECRET_MARKER']]) {
+      const result=run(['recovery','verify','--input',verifiedFixture.paths.dump,'--companion-input',verifiedFixture.paths.companion,'--manifest',join(directory,'verify/manifest.json'),'--expect',join(directory,'verify/selection.json'),'--key-file',key,'--json','--debug',...more]);
+      expect(result.status).not.toBe(0);expect(result.stdout+result.stderr).not.toMatch(/KEY_SECRET_MARKER|ARG_SECRET_MARKER|SYNTHETIC_SQL_MARKER/);expect(result.stdout).toBe('');
     }
   });
   it('does not let delimiters or option values masquerade as command or key selector', async () => {

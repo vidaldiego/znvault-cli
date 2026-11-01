@@ -73,6 +73,9 @@ jobs:
           # `test/lib/restore-drill-ci-wiring.test.ts` pins this.
           DRILL_TEST_DATABASE_URL: postgres://znvault_test:test_password_123@localhost:5433/znvault_test
 
+      - name: Complete local backup recovery contracts
+        run: npm run test:recovery
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -10,8 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Isolated offline `recovery inspect` for public JSON metadata and structural
-  ARCN1 headers, explicitly unauthenticated. Verification/extraction fail closed
-  pending the complete recovery pipeline.
+  ARCN1 headers, explicitly unauthenticated.
+- Complete local `recovery verify` / `extract`, repeated protected key files,
+  whole-set private staging and exclusive output publication, native bounded
+  gzip/zstd codecs, and explicit HTTPS read-only exact-version S3 transport.
 - Explicit custodied-selection loading with bounded stable file reads and the
   exact reviewed Archon recovery source snapshot with checked provenance.
 

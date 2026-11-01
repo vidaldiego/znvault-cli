@@ -34,3 +34,45 @@ export async function loadTrustedSelection(path: string): Promise<ExpectedSelect
   const snapshot = await readMetadataSnapshot(path, MAX_SELECTION_BYTES);
   return parseExpectedSelection(snapshot.bytes);
 }
+
+export interface LocalRecoveryOptions {
+  input?: string; companionInput?: string; s3Config?: string; manifest: string; reference?: string;
+  expect: string; keyFile: string[]; output?: string; maxInputBytes?: string; maxExpandedBytes?: string; maxExpansionRatio?: string;
+}
+/** Metadata trust is established before locators/keys are consumed. All data
+ * sources are explicit and remote transport credentials never enter key maps. */
+export async function runRecoveryOperation(mode: 'verify' | 'extract', options: LocalRecoveryOptions): Promise<void> {
+  const [{ verifyRecoverySet, MAX_METADATA_BYTES }, { loadKeyFiles, readProtectedFile }, { localInputs, s3Inputs }, { recoverSet }, { parseRecoveryJson }] = await Promise.all([
+    import('../../vendor/archon-recovery-core/index.js'), import('../../lib/recovery/protected-files.js'), import('../../lib/recovery/storage.js'), import('../../lib/recovery/recover.js'), import('../../vendor/archon-recovery-core/json.js'),
+  ]);
+  const expected = await loadTrustedSelection(options.expect);
+  const manifest = await readMetadataSnapshot(options.manifest, MAX_METADATA_BYTES);
+  const reference = options.reference ? await readMetadataSnapshot(options.reference, MAX_METADATA_BYTES) : undefined;
+  const set = verifyRecoverySet(expected, manifest.bytes, reference?.bytes);
+  if (Boolean(options.input) === Boolean(options.s3Config) || (options.s3Config && options.companionInput) ||
+      (options.input && set.components.some(c => c.role === 'companion') !== Boolean(options.companionInput))) throw Error('recovery_source_selection_invalid');
+  const keys = await loadKeyFiles(options.keyFile, set);
+  let remote: ReturnType<typeof s3Inputs> | undefined;
+  const controller = new AbortController();
+  const cancel = (): void => { controller.abort(Error('recovery_cancelled')); };
+  process.once('SIGINT', cancel); process.once('SIGTERM', cancel);
+  try {
+    if (options.s3Config) {
+      const bytes = await readProtectedFile(options.s3Config, 65536);
+      try {
+        const config: unknown = parseRecoveryJson(bytes, 65536);
+        const required = ['endpoint','region','bucket','accessKeyId','secretAccessKey'];
+        const allowed = [...required,'sessionToken','tlsCaPem','deadlineMs'];
+        if (config === null || typeof config !== 'object' || Array.isArray(config) || required.some(k => !Object.hasOwn(config,k)) || Object.keys(config).some(k => !allowed.includes(k))) throw Error('recovery_s3_config_invalid');
+        remote = s3Inputs(config as import('../../lib/recovery/storage.js').S3RecoveryConfig);
+        const secret = config as Record<string, unknown>; secret.accessKeyId = ''; secret.secretAccessKey = ''; secret.sessionToken = '';
+      } finally { bytes.fill(0); }
+    }
+    const inputs = remote ?? localInputs({ dump:String(options.input), companion:options.companionInput });
+    const result = await recoverSet(set, inputs, keys.get, { mode, output:options.output, signal:controller.signal,
+      ...(options.maxInputBytes ? { maxInputBytes:Number(options.maxInputBytes) } : {}),
+      ...(options.maxExpandedBytes ? { maxExpandedBytes:Number(options.maxExpandedBytes) } : {}),
+      ...(options.maxExpansionRatio ? { maxExpansionRatio:Number(options.maxExpansionRatio) } : {}) });
+    console.log(JSON.stringify(result));
+  } finally { keys.dispose(); remote?.dispose(); process.removeListener('SIGINT',cancel); process.removeListener('SIGTERM',cancel); }
+}

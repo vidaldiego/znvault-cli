@@ -1,0 +1,17 @@
+{
+  "format": "archon-application-recovery-companion-v1",
+  "profile": "znvault-standalone-v1",
+  "installationUuid": "4db28b83-93b3-4a45-ab4a-e233988c9039",
+  "runId": 42,
+  "backupId": 43,
+  "capturedAt": "2026-11-01T00:00:00.000Z",
+  "sourceFingerprint": "043cb66c04a75d814a1ee24657a5e8cbdbb3f269efdd053112ea9209bce26937",
+  "algorithm": "aes-256-gcm",
+  "wrappedDek": "1002bf965f91685168452b8802dd3c89839347a61895db87a1c9a689780192cc894def8dce0e19759327f04f77d659a4279a81977601a69fa7e96ef5",
+  "wrappingKeyFingerprint": "4bb06f8e4e3a7715d201d573d0aa4237",
+  "sha256": "0b59fe9201e7776824d190d64124a413090f90f09456956849d4c7bc930ba4f1",
+  "bytes": 14567,
+  "storageKey": "synthetic/companion.enc",
+  "versionId": null,
+  "retainedUntil": null
+}
