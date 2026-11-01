@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24.22.1'
       - name: Install pinned npm with OIDC support
         run: npm install -g npm@11.10.1
       - name: Verify tag, main and version metadata

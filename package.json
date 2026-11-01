@@ -27,7 +27,8 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "typecheck": "tsc --noEmit",
     "release:check": "node scripts/check-release.mjs",
-    "release:verify-package": "node scripts/verify-package.mjs"
+    "release:verify-package": "node scripts/verify-package.mjs",
+    "recovery-core:check": "node scripts/sync-archon-recovery.mjs --check"
   },
   "keywords": [
     "znvault",
@@ -91,6 +92,6 @@
     "vitest": "^4.0.17"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.22.1"
   }
 }

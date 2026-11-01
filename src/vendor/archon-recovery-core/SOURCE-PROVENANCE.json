@@ -1,0 +1,54 @@
+{
+  "format": "archon-backup-recovery-core-export-v1",
+  "sourceSha": "f70d4df95d002ef022fa514b498cc121527e4242",
+  "files": [
+    {
+      "path": "arcn-envelope.ts",
+      "sourcePath": "src/modules/backups/recovery-core/arcn-envelope.ts",
+      "sha256": "99140728b3e9367fa3124c2d1eecbfea9dbeeffcf1d042c787592a2523068731",
+      "bytes": 2707
+    },
+    {
+      "path": "arcn-format.ts",
+      "sourcePath": "src/modules/backups/recovery-core/arcn-format.ts",
+      "sha256": "d9e5c28a2639231a5d3ee73267040caf0a176b17ef4d4e3b61120710701d199c",
+      "bytes": 4154
+    },
+    {
+      "path": "arcn-stream.ts",
+      "sourcePath": "src/modules/backups/recovery-core/arcn-stream.ts",
+      "sha256": "1f196888512e5fddede23f391699f1c065d4a8e2cf8eef663bb640a7223df1e1",
+      "bytes": 8816
+    },
+    {
+      "path": "companion.ts",
+      "sourcePath": "src/modules/backups/recovery-core/companion.ts",
+      "sha256": "b95afe87a8c9985e9d7955ee38f0f63f9d37c394c170f458162992a9d75f955c",
+      "bytes": 21327
+    },
+    {
+      "path": "index.ts",
+      "sourcePath": "src/modules/backups/recovery-core/index.ts",
+      "sha256": "04ddde81ed584c6a46db98fab5d74b345753ba919511eaf39bd655d60d307b71",
+      "bytes": 341
+    },
+    {
+      "path": "json.ts",
+      "sourcePath": "src/modules/backups/recovery-core/json.ts",
+      "sha256": "3a0cf7645da79271f1c90e4f6f41e84bfbc8e2fc095f9be23826ea5080a979af",
+      "bytes": 1997
+    },
+    {
+      "path": "selection.ts",
+      "sourcePath": "src/modules/backups/recovery-core/selection.ts",
+      "sha256": "d1a0a712af70661aad811335d9aec5acc9e1280b3d308a8cd596c937e2881b8b",
+      "bytes": 8691
+    },
+    {
+      "path": "types.ts",
+      "sourcePath": "src/modules/backups/recovery-core/types.ts",
+      "sha256": "6e65034d4405eecdb09c93136b7d68c70d0ab3e1fce6d2ee80ff215a3598448a",
+      "bytes": 2554
+    }
+  ]
+}

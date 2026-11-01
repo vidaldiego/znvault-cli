@@ -11,7 +11,7 @@ Trust Root or activate an Emergency DR environment.
    lockfile version fields, VERSION and CHANGELOG together.
 2. Run typecheck, lint, the unit suite with a disposable PostgreSQL through
    DRILL_TEST_DATABASE_URL, and the real MySQL/MariaDB client-security tests.
-   CI validates Node 20 and 22. Never point these tests at a production DB.
+   CI validates Node 24.22.1 and 26. The runtime floor is Node 24.22.1. Never point these tests at a production DB.
 3. Run `npm run release:check -- vX.Y.Z`, then `npm run build:prod` (cleans dist).
    Pack once with `npm pack --ignore-scripts --pack-destination <temporary-dir>`.
    Verify that exact tarball with `npm run release:verify-package -- <tgz> X.Y.Z`.

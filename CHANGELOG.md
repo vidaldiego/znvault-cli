@@ -5,6 +5,23 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Isolated offline `recovery inspect` for public JSON metadata and structural
+  ARCN1 headers, explicitly unauthenticated. Verification/extraction fail closed
+  pending the complete recovery pipeline.
+- Explicit custodied-selection loading with bounded stable file reads and the
+  exact reviewed Archon recovery source snapshot with checked provenance.
+
+### Changed
+
+- Runtime floor is Node.js 24.22.1; CI checks that minimum and Node 26. This source
+  change does not select a release or publish an offline installer.
+- Ordinary CLI initialization moved behind the early offline selector, preserving
+  connected login, secrets, superadmin and existing direct-database semantics.
+
 ## [5.8.0] - 2026-10-31
 
 ### Changed

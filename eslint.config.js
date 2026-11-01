@@ -79,6 +79,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/vendor/archon-recovery-core/**/*.ts'],
+    // Exact generated upstream sources carry a blanket lint marker. Some
+    // upstream files happen to satisfy CLI style without using that marker.
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**', '*.js', '*.cjs', '*.mjs'],
   }
 );
