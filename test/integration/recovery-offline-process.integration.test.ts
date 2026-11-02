@@ -21,3 +21,8 @@ it('platform acceptance requires an exact artifact and never falls back when abs
   const result=spawnSync(process.execPath,[join(root,'scripts/verify-recovery-package.mjs')],{encoding:'utf8'});
   expect(result.status).not.toBe(0);expect(result.stderr).toContain('Require absolute tarball');
 });
+it('production build has no declaration maps that the native bundle would strip', () => {
+ execFileSync('npm',['run','build:prod'],{cwd:root,stdio:'pipe'});
+ const packed=JSON.parse(execFileSync('npm',['pack','--dry-run','--ignore-scripts','--json'],{cwd:root,encoding:'utf8'}))[0];
+ expect(packed.files.filter((f:{path:string})=>f.path.endsWith('.map'))).toEqual([]);
+},60000);

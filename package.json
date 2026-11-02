@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "build:prod": "npm run clean && tsc --sourceMap false",
+    "build:prod": "npm run clean && tsc --sourceMap false --declarationMap false",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "pretest": "npm run build",
