@@ -76,3 +76,20 @@ export function unwrapDekHex(wrappedHex: string, masterKey: Buffer): Buffer {
   if (wrappedHex.length !== 120) throw new Error('wrapped hex envelope must be 60 bytes');
   return unwrapDek(Buffer.from(wrappedHex, 'hex'), masterKey);
 }
+
+/** Decode an already-custodied key in memory. The caller owns the returned copy;
+ * this helper never modifies or retains the borrowed input. The documented text
+ * representation is exactly64 ASCII hex bytes, optionally followed by one LF. */
+export function decodeMasterKeyBytes(input: Buffer): Buffer {
+  if (input.length === MASTER_KEY_SIZE) return Buffer.from(input);
+  if (input.length !== 64 && !(input.length === 65 && input[64] === 10)) {
+    throw new Error('master key must be raw32 or64hex with optional LF');
+  }
+  const hex = input.subarray(0,64);
+  for (const byte of hex) {
+    if (!((byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 70) || (byte >= 97 && byte <= 102))) {
+      throw new Error('master key must be raw32 or64hex with optional LF');
+    }
+  }
+  return Buffer.from(hex.toString('ascii'),'hex');
+}
