@@ -1,3 +1,4 @@
+import {RecoveryPrerequisiteError} from './prerequisites.js';
 import {HttpClient} from '../client/http.js';
 import {authenticationFingerprint,getProfile,profileExists} from '../config/profile.js';
 import {computeKeyFingerprint,parseExpectedSelection,type ExpectedSelection,type KeyProvider,type KeyReference} from '../../vendor/archon-recovery-core/index.js';
@@ -9,15 +10,17 @@ export type VaultKeyProvider = KeyProvider & {dispose():void};
  * Explicit native login remains the prerequisite; recovery never refreshes or
  * rewrites credentials. Server authorization remains authoritative. */
 export function createRecoveryClient(profileName:string,tlsSpkiSha256?:string):HttpClient {
- if(!profileExists(profileName))throw Error('recovery_profile_unknown');
- const stored=getProfile(profileName);if(!stored)throw Error('recovery_profile_unknown');
+ if(!profileExists(profileName))throw new RecoveryPrerequisiteError('recovery_profile_unknown');
+ const stored=getProfile(profileName);if(!stored)throw new RecoveryPrerequisiteError('recovery_profile_unknown');
  const profile=structuredClone(stored);
- const origin=new URL(profile.url);
- if(profile.insecure||origin.protocol!=='https:'||origin.username||origin.password||origin.search||origin.hash||origin.pathname!=='/')throw Error('recovery_verified_tls_required');
+ let origin: URL;
+ try {origin=new URL(profile.url);} catch {throw new RecoveryPrerequisiteError('recovery_verified_tls_required');}
+ if(tlsSpkiSha256!==undefined&&!/^[a-f0-9]{64}$/.test(tlsSpkiSha256))throw new RecoveryPrerequisiteError('recovery_verified_tls_required');
+ if(profile.insecure||origin.protocol!=='https:'||origin.username||origin.password||origin.search||origin.hash||origin.pathname!=='/')throw new RecoveryPrerequisiteError('recovery_verified_tls_required');
  const fingerprint=authenticationFingerprint(profile);
  const assertCurrent=():void=>{
   if(!profileExists(profileName)||authenticationFingerprint(getProfile(profileName))!==fingerprint)throw Error('recovery_profile_changed');
-  if(!profile.apiKey&&(!profile.credentials?.accessToken||profile.credentials.expiresAt<=Date.now()||profile.credentials.pendingRefresh))throw Error('recovery_native_login_required');
+  if(!profile.apiKey&&(!profile.credentials?.accessToken||profile.credentials.expiresAt<=Date.now()||profile.credentials.pendingRefresh))throw new RecoveryPrerequisiteError('recovery_native_login_required');
  };
  assertCurrent();
  return new HttpClient({baseUrl:origin.origin,insecure:false,timeout:profile.timeout,...(tlsSpkiSha256?{tlsSpkiSha256}:{}),invocationContext:{authorization:Object.freeze(profile.apiKey?{apiKey:profile.apiKey}:{accessToken:profile.credentials?.accessToken}),assertCurrent}});

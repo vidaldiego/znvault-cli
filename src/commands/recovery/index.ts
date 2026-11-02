@@ -1,3 +1,4 @@
+import {recoveryPrerequisiteMessage} from '../../lib/recovery/prerequisites.js';
 import {selectAssistedRecovery} from './bootstrap.js';
 import { Command } from 'commander';
 import { constants } from 'node:fs';
@@ -84,7 +85,7 @@ export async function runLocalRecovery(argv: readonly string[] = process.argv.sl
   } catch (error: unknown) {
     if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'commander.helpDisplayed') return;
     const incompatible = error instanceof Error && /^--(?:profile|url|insecure|local|key-source|backup|tls-spki-sha256) is incompatible with offline recovery$/.test(error.message);
-    console.error(incompatible && error instanceof Error ? error.message : error instanceof Error && error.message==='recovery_options_incompatible'?'Recovery error: incompatible recovery options':'Recovery error: recovery_failed');
+    console.error(recoveryPrerequisiteMessage(error) ?? (incompatible && error instanceof Error ? error.message : error instanceof Error && error.message==='recovery_options_incompatible'?'Recovery error: incompatible recovery options':'Recovery error: recovery_failed'));
     process.exitCode = 1;
   }
 }
