@@ -648,18 +648,25 @@ export class HttpClient {
       const protocol = url.protocol === 'https:' ? https : http;
       const req = protocol.request(requestOptions, (res) => {
         let data = '';
+        const recoveryChunks: Buffer[] = [];
         let responseBytes = 0;
         res.on('data', (chunk: Buffer | string) => {
           responseBytes += Buffer.byteLength(chunk);
           if (this.invocationContext && responseBytes > 1024 * 1024) {
-            data = '';req.destroy();reject(new Error('recovery_response_limit'));return;
+            recoveryChunks.length = 0; data = '';req.destroy();reject(new Error('recovery_response_limit'));return;
           }
-          data += String(chunk);
+          if (this.invocationContext) recoveryChunks.push(Buffer.from(chunk));
+          else data += String(chunk);
         });
         res.on('end', () => {
           const statusCode = res.statusCode ?? 0;
           if (this.invocationContext && (statusCode < 200 || statusCode >= 300 || responseBytes > 1024 * 1024)) {
             data = '';reject(Object.assign(new Error('recovery_native_request_failed'), {statusCode}));return;
+          }
+          if (this.invocationContext) {
+            try { data = new TextDecoder('utf-8', {fatal:true}).decode(Buffer.concat(recoveryChunks, responseBytes)); }
+            catch { reject(new Error('recovery_response_invalid')); return; }
+            finally { recoveryChunks.length = 0; }
           }
           const header = (res.headers as http.IncomingHttpHeaders | undefined)?.['retry-after'];
           const wait = typeof header === 'string' ? (/^[0-9]+$/.test(header) ? Number(header) : Math.ceil((Date.parse(header)-Date.now())/1000)) : NaN;

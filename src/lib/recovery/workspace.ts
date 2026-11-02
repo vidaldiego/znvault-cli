@@ -1,9 +1,9 @@
 import { constants, type BigIntStats } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, rmdir, statfs, unlink, type FileHandle } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, open, readdir, rename, rmdir, statfs, unlink, type FileHandle } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Writable } from 'node:stream';
-import { trustedParent } from './protected-files.js';
+import { trustedParent, trustedTemporaryAncestor } from './protected-files.js';
 
 function identity(a: BigIntStats, b: BigIntStats): boolean {
   return a.dev === b.dev && a.ino === b.ino && a.uid === b.uid && a.mode === b.mode && a.isDirectory() === b.isDirectory();
@@ -12,6 +12,33 @@ export async function syncDirectory(path: string): Promise<void> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try { await handle.sync(); } finally { await handle.close(); }
 }
+/** Owns only its exclusive empty reservation. Never adopts or recursively removes replacements. */
+export class TemporaryReservation {
+  private constructor(readonly path: string, private readonly parent: string,
+    private readonly parentStat: BigIntStats, private readonly ownStat: BigIntStats) {}
+  static async reserve(ancestor: string): Promise<TemporaryReservation> {
+    const parent = await trustedTemporaryAncestor(ancestor);
+    const before = await lstat(parent, {bigint:true});
+    const path = await mkdtemp(join(parent, 'znvault-recovery-'));
+    const reservation = new TemporaryReservation(path, parent, before, await lstat(path, {bigint:true}));
+    try { await reservation.assertOwned(); return reservation; }
+    catch (error) { await reservation.cleanup(); throw error; }
+  }
+  private async assertOwned(): Promise<void> {
+    await trustedTemporaryAncestor(this.parent);
+    if (!identity(this.parentStat, await lstat(this.parent, {bigint:true})) ||
+        !identity(this.ownStat, await lstat(this.path, {bigint:true})) ||
+        this.ownStat.uid !== BigInt(process.getuid?.() ?? -1) || (this.ownStat.mode & 0o077n) !== 0n) {
+      throw Error('recovery_workspace_changed');
+    }
+    await trustedParent(this.path);
+  }
+  async cleanup(): Promise<boolean> {
+    try { await this.assertOwned(); await rmdir(this.path); return true; }
+    catch { return false; }
+  }
+}
+
 /** Every removal/publication uses a recorded inode; never recursively remove a
  * pathname whose contents or ancestry may have been replaced by another actor. */
 export class Workspace {

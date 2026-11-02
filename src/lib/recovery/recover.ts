@@ -7,7 +7,7 @@ import { finished, pipeline } from 'node:stream/promises';
 import { createGunzip, createZstdDecompress, constants as codecConstants } from 'node:zlib';
 import { computeKeyFingerprint, decryptArcn, MAX_RECOVERY_ENCRYPTED_BYTES, openCompanion, unwrapDekHex,
   type KeyProvider, type VerifiedRecoverySet } from '../../vendor/archon-recovery-core/index.js';
-import { Workspace, boundedSink } from './workspace.js';
+import { Workspace, TemporaryReservation, boundedSink } from './workspace.js';
 import { localInputs, type RecoveryInputs } from './storage.js';
 import type { ObservedCiphertext, RecoveryResult } from './receipt.js';
 export type { RecoveryInputs } from './storage.js';
@@ -34,8 +34,11 @@ export async function recoverSet(set: VerifiedRecoverySet, inputs: RecoveryInput
       (options.mode === 'verify' && options.output) || snapshot.components.length < 1 || snapshot.components.length > 2 ||
       snapshot.components[0]?.role !== 'dump' || (snapshot.components.length === 2 && snapshot.components[1].role !== 'companion') ||
       snapshot.selection.metadata.kind === 'manifest' && snapshot.metadataSha256 !== snapshot.selection.metadata.sha256) throw Error('recovery_set_invalid');
-  const destination = options.mode === 'extract' ? String(options.output) : join(options.temporaryParent ?? tmpdir(), `znvault-recovery-${randomUUID()}`);
-  const work = await Workspace.reserve(destination, minFree);
+  const reservation = options.mode === 'verify' && !options.temporaryParent ? await TemporaryReservation.reserve(tmpdir()) : undefined;
+  const destination = options.mode === 'extract' ? String(options.output) : join(options.temporaryParent ?? reservation!.path, `znvault-recovery-${randomUUID()}`);
+  let work: Workspace;
+  try { work = await Workspace.reserve(destination, minFree); }
+  catch (error) { await reservation?.cleanup(); throw error; }
   const observed: ObservedCiphertext[] = []; let inputTotal = 0, expandedTotal = 0, published = false;
   let result:RecoveryResult | undefined, failure:unknown, failed=false, removed=false;
   try {
@@ -128,7 +131,7 @@ export async function recoverSet(set: VerifiedRecoverySet, inputs: RecoveryInput
       signal.throwIfAborted(); await work.publish(() => { signal.throwIfAborted(); if (JSON.stringify(set) !== identity || JSON.stringify(snapshot) !== identity) throw Error('recovery_identity_changed'); }); published = true;
     }
   } catch (error) { failed=true; failure=error; }
-  finally { removed = await work.cleanup(published); }
+  finally { removed = await work.cleanup(published); if (reservation) removed = await reservation.cleanup() && removed; }
   if (failed) throw failure;
   if (!published && !removed) throw Error('recovery_cleanup_incomplete');
   if (!published) signal.throwIfAborted();

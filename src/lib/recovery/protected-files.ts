@@ -10,7 +10,7 @@ export function stable(a: BigIntStats, b: BigIntStats): boolean {
 /** Resolve an existing parent once, then reject writable/unowned ancestry. Root
  * owned sticky system temporary ancestors are allowed; the immediate parent
  * must be owned by this uid and private against other writers. */
-export async function trustedParent(path: string): Promise<string> {
+async function checkedParent(path: string, systemTemporary: boolean): Promise<string> {
   const parent = await realpath(resolve(path));
   let current = parent;
   for (;;) {
@@ -19,12 +19,16 @@ export async function trustedParent(path: string): Promise<string> {
     const system = stat.uid === 0;
     if (!stat.isDirectory() || stat.isSymbolicLink() || (!own && !system) ||
         ((stat.mode & 0o022) !== 0 && !(system && (stat.mode & 0o1000) !== 0)) ||
-        (current === parent && (!own || (stat.mode & 0o022) !== 0))) throw Error('recovery_parent_unsafe');
+        (current === parent && !systemTemporary && (!own || (stat.mode & 0o022) !== 0))) throw Error('recovery_parent_unsafe');
     if (current === parse(current).root) break;
     current = dirname(current);
   }
   return parent;
 }
+
+export const trustedParent = (path: string): Promise<string> => checkedParent(path, false);
+/** Only for allocating a new exclusive private reservation, never extraction. */
+export const trustedTemporaryAncestor = (path: string): Promise<string> => checkedParent(path, true);
 
 export async function readProtectedFile(path: string, maxBytes: number): Promise<Buffer> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);

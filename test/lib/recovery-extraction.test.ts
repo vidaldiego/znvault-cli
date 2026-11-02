@@ -106,3 +106,16 @@ it('recovers frozen ARCN bytes produced by the original pre-extraction Archon wr
  await expect(f.recoverSet(verifyRecoverySet(expected,manifest),f.inputs,f.provider,{mode:'extract',output:f.output})).resolves.toMatchObject({authenticated:true});
  const restored=readFileSync(join(f.output,'content/database.sql'));expect(restored.length).toBe(196627);expect(restored.every((byte,i)=>byte===i%251)).toBe(true);
 });
+
+it.each(['success','error','cancel'])('normal system tmp verify cleans owned reservation on %s', async outcome => {
+ const f = await setup({companion:true});
+ const before = readdirSync('/tmp').filter(n=>n.startsWith('znvault-recovery-')).sort();
+ const controller=new AbortController();
+ const inputs=outcome==='success'?f.inputs:{async *open(){if(outcome==='cancel')controller.abort();else throw Error('synthetic_failure');yield Buffer.alloc(0);}};
+ vi.stubEnv('TMPDIR','/tmp');vi.stubEnv('TMP','/tmp');vi.stubEnv('TEMP','/tmp');
+ try {
+  const operation=f.recoverSet(f.set,inputs,f.provider,{mode:'verify',signal:controller.signal});
+  if(outcome==='success')expect((await operation).authenticated).toBe(true);else await expect(operation).rejects.toThrow();
+  expect(readdirSync('/tmp').filter(n=>n.startsWith('znvault-recovery-')).sort()).toEqual(before);
+ } finally {vi.unstubAllEnvs();}
+});

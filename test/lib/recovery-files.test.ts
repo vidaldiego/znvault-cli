@@ -35,3 +35,14 @@ it('never replaces an existing operator output or follows its symlink', async()=
  const {recoverSet}=await import('../../src/lib/recovery/recover.js');const {localInputs}=await import('../../src/lib/recovery/storage.js');
  await expect(recoverSet(f.set,localInputs(f.paths),async()=>f.keys[0],{mode:'extract',output})).rejects.toThrow();expect(readFileSync(operator,'utf8')).toBe('keep');
 });
+it('temporary reservation refuses replaced ownership and unsafe writable ancestors without deleting replacements',async()=>{
+ const {TemporaryReservation,Workspace}=await import('../../src/lib/recovery/workspace.js');
+ const {renameSync}=await import('node:fs');
+ const parent=temp(),reservation=await TemporaryReservation.reserve(parent),moved=reservation.path+'-original';
+ renameSync(reservation.path,moved);writeFileSync(reservation.path,'operator-replacement');
+ expect(await reservation.cleanup()).toBe(false);expect(readFileSync(reservation.path,'utf8')).toBe('operator-replacement');
+ const unsafe=temp();chmodSync(unsafe,0o777);
+ await expect(TemporaryReservation.reserve(unsafe)).rejects.toThrow('recovery_parent_unsafe');
+ await expect(Workspace.reserve(join('/tmp','must-not-extract-'+process.pid),1)).rejects.toThrow('recovery_parent_unsafe');
+ chmodSync(unsafe,0o700);
+});

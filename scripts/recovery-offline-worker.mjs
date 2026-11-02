@@ -18,7 +18,7 @@ export async function offlineAcceptance({ root, fixtureDir, work, expected, laun
   writeFileSync(plugin, `import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(marker)},'imported');throw Error('HOSTILE_PLUGIN_MARKER');`);
   writeFileSync(join(config, 'config.json'), JSON.stringify({ activeProfile: 'hostile', profiles: { hostile: { url: endpoint, apiKey: 'HOSTILE_CREDENTIAL_MARKER', accessToken: 'expired', refreshToken: 'HOSTILE_REFRESH_MARKER' } }, plugins: [{ path: plugin, enabled: true }] }));
   const beforeConfig = digest(readFileSync(join(config, 'config.json')));
-  const env = { PATH: '/usr/bin:/bin', HOME: work, TMPDIR: work, ZNVAULT_CONFIG_DIR: config, ZNVAULT_URL: endpoint, ZNVAULT_PROFILE: 'hostile', ZNVAULT_API_KEY: 'HOSTILE_CREDENTIAL_MARKER', AWS_EC2_METADATA_SERVICE_ENDPOINT: `http://127.0.0.1:${port}`, AWS_PROFILE: 'hostile', DATABASE_URL: `postgres://hostile:hostile@127.0.0.1:${port}/hostile` };
+  const env = { PATH: '/usr/bin:/bin', HOME: work, ZNVAULT_CONFIG_DIR: config, ZNVAULT_URL: endpoint, ZNVAULT_PROFILE: 'hostile', ZNVAULT_API_KEY: 'HOSTILE_CREDENTIAL_MARKER', AWS_EC2_METADATA_SERVICE_ENDPOINT: `http://127.0.0.1:${port}`, AWS_PROFILE: 'hostile', DATABASE_URL: `postgres://hostile:hostile@127.0.0.1:${port}/hostile` };
   const sandbox = process.platform === 'darwin' ? ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)'] : [];
   if (!sandbox.length && !denied) throw Error('OS network isolation required');
   const wrap = (command, args) => sandbox.length ? { command: sandbox[0], args: [...sandbox.slice(1), command, ...args] } : { command, args };
@@ -87,12 +87,22 @@ export async function offlineAcceptance({ root, fixtureDir, work, expected, laun
   const poll=setInterval(()=>{if(existsSync(output)&&readdirSync(output).some(n=>n.startsWith('.staging-'))){killed=child.kill('SIGTERM');clearInterval(poll);}},1);
   const timeout=setTimeout(()=>child.kill('SIGKILL'),10000);const [code]=await exited;clearInterval(poll);clearTimeout(timeout);checkPublic(text);
   if(!killed||code===0||(existsSync(output)&&readdirSync(output).length))throw Error('Cancellation did not clean private output');negatives++;
+  // Normal default verify owns an extra system-temp reservation. Interrupt it
+  // while copying and prove that reservation is removed as well.
+  const beforeTemporary=new Set(readdirSync('/tmp').filter(n=>n.startsWith('znvault-recovery-')));
+  const verifyCommand=wrap(launcher.command,[...launcher.args,'recovery','verify','--input',join(cancelDir,'input.arcn'),'--manifest',join(cancelDir,'manifest.json'),'--expect',join(cancelDir,'selection.json'),'--key-file',join(f.dir,'key-0'),'--json']);
+  const verifier=spawn(verifyCommand.command,verifyCommand.args,{env,cwd:work,stdio:['ignore','pipe','pipe']});let verifyText='';
+  verifier.stdout.on('data',b=>verifyText+=b);verifier.stderr.on('data',b=>verifyText+=b);
+  const verifyExited=once(verifier,'exit');let verifyKilled=false;
+  const verifyPoll=setInterval(()=>{if(readdirSync('/tmp').some(n=>n.startsWith('znvault-recovery-')&&!beforeTemporary.has(n))){verifyKilled=verifier.kill('SIGTERM');clearInterval(verifyPoll);}},1);
+  const verifyTimeout=setTimeout(()=>verifier.kill('SIGKILL'),10000);const [verifyCode]=await verifyExited;clearInterval(verifyPoll);clearTimeout(verifyTimeout);checkPublic(verifyText);
+  if(!verifyKilled||verifyCode===0||readdirSync('/tmp').some(n=>n.startsWith('znvault-recovery-')&&!beforeTemporary.has(n)))throw Error('Cancellation did not clean private output');negatives++;
   if(existsSync(marker)||digest(readFileSync(join(config,'config.json')))!==beforeConfig)throw Error('Offline bootstrap touched hostile config/plugins');
   const outboundPackets=beforeTx===null?null:netTx()-beforeTx;
   if(outboundPackets!==null&&outboundPackets!==0)throw Error('Outbound packets observed');
   const canaryEvidence=await canary.endWindow();
   assertSilentRecoveryWindow(canaryEvidence);
-  return {...identity,...canaryEvidence,enforcedPolicy:true,rawPacketMeasurement:beforeTx===null?null:'proc-net-dev-tx-packets',platform:process.platform,arch:process.arch,runtime:process.version,positives,negatives,networkDenyProbe:probed.stdout.trim(),outboundPackets,networkIsolation:process.platform==='darwin'?'sandbox-exec deny network*':'docker network none',ciphertext:fixtures.map(f=>f.ciphertext)};
+  return {...identity,...canaryEvidence,enforcedPolicy:true,temporaryEnvironment:{TMPDIR:env.TMPDIR??null,TMP:env.TMP??null,TEMP:env.TEMP??null},defaultVerifyCancellation:true,rawPacketMeasurement:beforeTx===null?null:'proc-net-dev-tx-packets',platform:process.platform,arch:process.arch,runtime:process.version,positives,negatives,networkDenyProbe:probed.stdout.trim(),outboundPackets,networkIsolation:process.platform==='darwin'?'sandbox-exec deny network*':'docker network none',ciphertext:fixtures.map(f=>f.ciphertext)};
   } finally {await canary.close();}
 }
 if(process.argv[2]==='--worker'){
