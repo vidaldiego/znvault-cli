@@ -1,35 +1,29 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { createServer, connect } from 'node:net';
 import { pathToFileURL } from 'node:url';
 import { Readable, Writable } from 'node:stream';
 import { once } from 'node:events';
 import { isDeepStrictEqual } from 'node:util';
 import { digest, readJson, verifyIdentity } from './recovery-artifact.mjs';
+import { startRecoveryCanary, assertSilentRecoveryWindow } from './recovery-network-canary.mjs';
 import { copyPreparedFixtures } from './recovery-artifact-fixtures.mjs';
 export async function offlineAcceptance({ root, fixtureDir, work, expected, launcher, denied = false }) {
   const identity = await verifyIdentity(root, expected);
+  const canary=await startRecoveryCanary();
+  try {
+  const port=canary.port,endpoint=`https://127.0.0.1:${port}`;
   const config = join(work, 'hostile'); mkdirSync(config, { recursive: true });
   const plugin = join(config, 'hostile.mjs'), marker = join(config, 'imported');
   writeFileSync(plugin, `import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(marker)},'imported');throw Error('HOSTILE_PLUGIN_MARKER');`);
-  writeFileSync(join(config, 'config.json'), JSON.stringify({ activeProfile: 'hostile', profiles: { hostile: { url: 'https://127.0.0.1:1', apiKey: 'HOSTILE_CREDENTIAL_MARKER', accessToken: 'expired', refreshToken: 'HOSTILE_REFRESH_MARKER' } }, plugins: [{ path: plugin, enabled: true }] }));
+  writeFileSync(join(config, 'config.json'), JSON.stringify({ activeProfile: 'hostile', profiles: { hostile: { url: endpoint, apiKey: 'HOSTILE_CREDENTIAL_MARKER', accessToken: 'expired', refreshToken: 'HOSTILE_REFRESH_MARKER' } }, plugins: [{ path: plugin, enabled: true }] }));
   const beforeConfig = digest(readFileSync(join(config, 'config.json')));
-  const env = { PATH: '/usr/bin:/bin', HOME: work, TMPDIR: work, ZNVAULT_CONFIG_DIR: config, ZNVAULT_URL: 'https://127.0.0.1:1', ZNVAULT_PROFILE: 'hostile', ZNVAULT_API_KEY: 'HOSTILE_CREDENTIAL_MARKER', AWS_EC2_METADATA_SERVICE_ENDPOINT: 'http://169.254.169.254', AWS_PROFILE: 'hostile', DATABASE_URL: 'postgres://hostile:hostile@127.0.0.1:1/hostile' };
+  const env = { PATH: '/usr/bin:/bin', HOME: work, TMPDIR: work, ZNVAULT_CONFIG_DIR: config, ZNVAULT_URL: endpoint, ZNVAULT_PROFILE: 'hostile', ZNVAULT_API_KEY: 'HOSTILE_CREDENTIAL_MARKER', AWS_EC2_METADATA_SERVICE_ENDPOINT: `http://127.0.0.1:${port}`, AWS_PROFILE: 'hostile', DATABASE_URL: `postgres://hostile:hostile@127.0.0.1:${port}/hostile` };
   const sandbox = process.platform === 'darwin' ? ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)'] : [];
   if (!sandbox.length && !denied) throw Error('OS network isolation required');
   const wrap = (command, args) => sandbox.length ? { command: sandbox[0], args: [...sandbox.slice(1), command, ...args] } : { command, args };
-  let observedCanaryConnections = 0, observedCanaryBytes = 0;
-  const canary = createServer(socket => { observedCanaryConnections++; socket.on('data', b => { observedCanaryBytes += b.length; socket.end(); }); });
-  await new Promise(r => canary.listen(0, '127.0.0.1', r));
-  const port = canary.address().port;
-  const control = connect(port, '127.0.0.1', () => control.write('positive-control'));
-  await once(control, 'close');
-  if (observedCanaryConnections !== 1 || observedCanaryBytes !== 16) throw Error('Network canary positive control failed');
-  observedCanaryConnections = 0; observedCanaryBytes = 0;
   const localProbe = wrap(process.execPath, ['-e', `const s=require('node:net').connect(${port},'127.0.0.1');s.once('connect',()=>process.exit(90));s.once('error',e=>process.exit(['EPERM','EACCES'].includes(e.code)?0:91));setTimeout(()=>process.exit(92),2000)`]);
   if (process.platform === 'darwin' && spawnSync(localProbe.command, localProbe.args, {env,timeout:4000}).status !== 0) throw Error('Sandbox canary denial failed');
-  canary.close();
   const probe = wrap(process.execPath, ['-e', "const s=require('node:net').connect(443,'198.51.100.1');s.once('connect',()=>process.exit(90));s.once('error',e=>{console.log(e.code);process.exit(['EPERM','EACCES','ENETUNREACH','EHOSTUNREACH'].includes(e.code)?0:91)});setTimeout(()=>process.exit(92),2000)"]);
   const probed = spawnSync(probe.command, probe.args, { env, encoding: 'utf8', timeout: 4000 });
   if (probed.status !== 0) throw Error('OS deny probe failed');
@@ -46,6 +40,7 @@ export async function offlineAcceptance({ root, fixtureDir, work, expected, laun
   };
   const args = (f, mode='extract', output=join(f.dir,'output')) => ['recovery',mode,'--input',join(f.dir,'input.arcn'),'--manifest',join(f.dir,'manifest.json'),'--expect',join(f.dir,'selection.json'),'--companion-input',join(f.dir,'companion.enc'),'--key-file',join(f.dir,'key-0'),'--key-file',join(f.dir,'key-1'),...(mode==='extract'?['--output',output]:[]),'--json','--debug'];
   let positives=0, negatives=0;
+  await canary.beginWindow();
   for(const f of fixtures) {
     const immutable = Object.fromEntries(['input.arcn','companion.enc','manifest.json','selection.json','key-0','key-1'].map(n=>[n,digest(readFileSync(join(f.dir,n)))]));
     invoke(args(f,'verify')); if(existsSync(join(f.dir,'output'))) throw Error('Verify published output');
@@ -95,7 +90,10 @@ export async function offlineAcceptance({ root, fixtureDir, work, expected, laun
   if(existsSync(marker)||digest(readFileSync(join(config,'config.json')))!==beforeConfig)throw Error('Offline bootstrap touched hostile config/plugins');
   const outboundPackets=beforeTx===null?null:netTx()-beforeTx;
   if(outboundPackets!==null&&outboundPackets!==0)throw Error('Outbound packets observed');
-  return {...identity,observedCanaryConnections,observedCanaryBytes,canaryPositiveControl:true,enforcedPolicy:true,rawPacketMeasurement:beforeTx===null?null:'proc-net-dev-tx-packets',platform:process.platform,arch:process.arch,runtime:process.version,positives,negatives,networkDenyProbe:probed.stdout.trim(),outboundPackets,networkIsolation:process.platform==='darwin'?'sandbox-exec deny network*':'docker network none',ciphertext:fixtures.map(f=>f.ciphertext)};
+  const canaryEvidence=await canary.endWindow();
+  assertSilentRecoveryWindow(canaryEvidence);
+  return {...identity,...canaryEvidence,enforcedPolicy:true,rawPacketMeasurement:beforeTx===null?null:'proc-net-dev-tx-packets',platform:process.platform,arch:process.arch,runtime:process.version,positives,negatives,networkDenyProbe:probed.stdout.trim(),outboundPackets,networkIsolation:process.platform==='darwin'?'sandbox-exec deny network*':'docker network none',ciphertext:fixtures.map(f=>f.ciphertext)};
+  } finally {await canary.close();}
 }
 if(process.argv[2]==='--worker'){
   const options=readJson(process.argv[3]);
