@@ -132,3 +132,36 @@ jobs:
 
       - name: Prove binary-mode fence with MySQL 8.4 and MariaDB 11
         run: npm run test:mysql-client-security
+
+  recovery-artifact:
+    name: Recovery exact artifact (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.22.1'
+      - run: npm ci
+      - name: Actual package and offline process contracts
+        run: |
+          npm run build
+          npx vitest run --config vitest.integration.config.ts test/integration/recovery-offline-process.integration.test.ts
+      - name: Pack exact clean candidate
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/pack-recovery-package.mjs "$RUNNER_TEMP/recovery-candidate" "$EXPECTED_SHA"
+      - name: Prepare Linux isolation image
+        if: runner.os == 'Linux'
+        run: docker pull node:24.22.1-bookworm-slim
+      - name: Verify installed exact candidate with OS egress denied
+        run: |
+          PACKAGE_PATH=$(node -p "require(process.env.RUNNER_TEMP + '/recovery-candidate/candidate.json').artifact")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          node scripts/verify-package.mjs "$PACKAGE_PATH" "$PACKAGE_VERSION"
+          node scripts/verify-recovery-package.mjs "$PACKAGE_PATH" "$RUNNER_TEMP/recovery-candidate/candidate.json" "$PWD/test/fixtures/recovery"

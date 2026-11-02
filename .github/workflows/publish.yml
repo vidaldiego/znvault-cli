@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: '24.22.1'
       - name: Install pinned npm with OIDC support
-        run: npm install -g npm@11.10.1
+        run: npm install -g npm@11.19.1
       - name: Verify tag, main and version metadata
         run: node scripts/check-release.mjs "$GITHUB_REF_NAME"
       - run: npm ci
@@ -38,11 +38,11 @@ jobs:
         run: npm run build:prod
       - name: Pack once and verify the exact installable artifact
         run: |
-          mkdir -p "$RUNNER_TEMP/cli-release"
-          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/cli-release" --json > "$RUNNER_TEMP/cli-pack.json"
-          PACKAGE_FILE=$(node -p "require(process.env.RUNNER_TEMP + '/cli-pack.json')[0].filename")
-          PACKAGE_PATH="$RUNNER_TEMP/cli-release/$PACKAGE_FILE"
+          node scripts/pack-recovery-package.mjs "$RUNNER_TEMP/cli-release" "$GITHUB_SHA"
+          PACKAGE_PATH=$(node -p "require(process.env.RUNNER_TEMP + '/cli-release/candidate.json').artifact")
           node scripts/verify-package.mjs "$PACKAGE_PATH" "${GITHUB_REF_NAME#v}"
+          docker pull node:24.22.1-bookworm-slim
+          node scripts/verify-recovery-package.mjs "$PACKAGE_PATH" "$RUNNER_TEMP/cli-release/candidate.json" "$PWD/test/fixtures/recovery"
           sha256sum "$PACKAGE_PATH" > "$RUNNER_TEMP/cli-package.sha256"
           printf 'PACKAGE_PATH=%s\n' "$PACKAGE_PATH" >> "$GITHUB_ENV"
       - name: Preserve release artifact and digest

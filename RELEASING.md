@@ -46,3 +46,15 @@ release validation.
 
 The canonical workstation is this Mac. Claude Remote is the normal remote work
 path; Codex Handoff is deferred until the end of the overall reorganization.
+
+Recovery artifact qualification uses `node scripts/pack-recovery-package.mjs
+ABSOLUTE_NEW_DIRECTORY EXACT_CLI_COMMIT` from a clean candidate. Its public
+`candidate.json` pins the tarball, source commit, lockfile and reviewed Archon
+snapshot. `node scripts/verify-recovery-package.mjs ABSOLUTE_TGZ
+ABSOLUTE_CANDIDATE_JSON ABSOLUTE_SYNTHETIC_FIXTURE_DIRECTORY` installs that exact
+package and dependencies during preparation, then exercises recovery under an
+OS network denial with hostile profiles/plugins. The npm tarball is not a
+self-contained offline installer. Linux uses Docker network none; macOS uses
+sandbox-exec deny network. macOS records a tested OS denial and independent
+canary observations, not an unavailable raw packet capture. Windows is not
+qualified. Recovery only writes authenticated local files, never imports SQL.

@@ -5,6 +5,10 @@ import { execFileSync } from 'node:child_process';
 
 const [tarball, expectedVersion] = process.argv.slice(2);
 if (!tarball || !expectedVersion) throw new Error('Usage: verify-package.mjs <tgz> <version>');
+const members = execFileSync('tar', ['-tzf', resolve(tarball)], { encoding: 'utf8' }).split('\n');
+for (const file of ['index.js', 'arcn-stream.js', 'companion.js', 'selection.js', 'provenance.js']) {
+  if (!members.includes(`package/dist/vendor/archon-recovery-core/${file}`)) throw new Error('Missing recovery snapshot');
+}
 const scratch = mkdtempSync(join(tmpdir(), 'znvault-package-check-'));
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
   !key.startsWith('ZNVAULT_') && key !== 'DATABASE_URL'));
