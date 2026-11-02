@@ -7,7 +7,7 @@ import { Readable, Writable } from 'node:stream';
 import { once } from 'node:events';
 import { isDeepStrictEqual } from 'node:util';
 import { digest, readJson, verifyIdentity } from './recovery-artifact.mjs';
-import { prepareFixtures } from './recovery-artifact-fixtures.mjs';
+import { copyPreparedFixtures } from './recovery-artifact-fixtures.mjs';
 export async function offlineAcceptance({ root, fixtureDir, work, expected, launcher, denied = false }) {
   const identity = await verifyIdentity(root, expected);
   const config = join(work, 'hostile'); mkdirSync(config, { recursive: true });
@@ -35,7 +35,7 @@ export async function offlineAcceptance({ root, fixtureDir, work, expected, laun
   if (probed.status !== 0) throw Error('OS deny probe failed');
   const netTx = () => process.platform === 'linux' ? readFileSync('/proc/net/dev','utf8').split('\n').filter(l=>l.includes(':')).reduce((n,l)=>n+Number(l.split(':')[1].trim().split(/\s+/)[9]),0) : null;
   const beforeTx = netTx();
-  const fixtures = await prepareFixtures(root, fixtureDir, join(work, 'fixtures'));
+  const fixtures = copyPreparedFixtures(fixtureDir, join(work, 'fixtures'));
   const markers = [Buffer.from('SYNTHETIC_SQL_MARKER'), Buffer.from('HOSTILE_CREDENTIAL_MARKER'), Buffer.from('HOSTILE_REFRESH_MARKER'), Buffer.from('HOSTILE_PLUGIN_MARKER'), ...fixtures.flatMap(f => [...f.keys.flatMap(k=>[k,Buffer.from(k.toString('hex')),Buffer.from(k.toString('base64'))]), ...f.material.files.map(m=>Buffer.from(m.contentBase64,'base64'))])];
   const checkPublic = text => { const bytes=Buffer.from(text); if(markers.some(m=>m.length>=16&&bytes.includes(m))) throw Error('Private fixture marker leaked'); };
   const invoke = (args, success=true) => {

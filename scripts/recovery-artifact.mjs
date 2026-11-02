@@ -19,6 +19,7 @@ export function tree(root) {
 }
 export async function verifyIdentity(root, expected) {
   const pkg = readJson(join(root, 'package.json'));
+  if (expected.packageSha256 && digest(readFileSync(join(root, 'package.json'))) !== expected.packageSha256) throw Error('CLI package metadata mismatch');
   if (pkg.version !== expected.version) throw Error('CLI version mismatch');
   let receipt;
   try { receipt = readJson(join(root, 'dist/recovery-build.json')); } catch { throw Error('Missing recovery build receipt'); }

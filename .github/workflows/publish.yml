@@ -42,7 +42,8 @@ jobs:
           PACKAGE_PATH=$(node -p "require(process.env.RUNNER_TEMP + '/cli-release/candidate.json').artifact")
           node scripts/verify-package.mjs "$PACKAGE_PATH" "${GITHUB_REF_NAME#v}"
           docker pull node:24.22.1-bookworm-slim
-          node scripts/verify-recovery-package.mjs "$PACKAGE_PATH" "$RUNNER_TEMP/cli-release/candidate.json" "$PWD/test/fixtures/recovery"
+          node scripts/prepare-recovery-fixtures.mjs "$PWD" "$PWD/test/fixtures/recovery" "$RUNNER_TEMP/recovery-fixtures"
+          node scripts/verify-recovery-package.mjs "$PACKAGE_PATH" "$RUNNER_TEMP/cli-release/candidate.json" "$RUNNER_TEMP/recovery-fixtures"
           sha256sum "$PACKAGE_PATH" > "$RUNNER_TEMP/cli-package.sha256"
           printf 'PACKAGE_PATH=%s\n' "$PACKAGE_PATH" >> "$GITHUB_ENV"
       - name: Preserve release artifact and digest

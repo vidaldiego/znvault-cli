@@ -13,6 +13,6 @@ writeFileSync(join(root, 'dist/recovery-build.json'), JSON.stringify({ format: '
 mkdirSync(output, { mode: 0o700 });
 const packed = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', output]))[0];
 const provenance = readJson(join(root, 'src/vendor/archon-recovery-core/SOURCE-PROVENANCE.json'));
-const receipt = { artifact: join(output, packed.filename), sha256: digest(readFileSync(join(output, packed.filename))), commit: expectedCommit, version: readJson(join(root, 'package.json')).version, lockSha256: digest(readFileSync(join(root, 'package-lock.json'))), sourceSha: provenance.sourceSha, exportSha256: digest(readFileSync(join(root, 'src/vendor/archon-recovery-core/SOURCE-PROVENANCE.json'))) };
+const receipt = { packageSha256: digest(readFileSync(join(root, 'package.json'))), artifact: join(output, packed.filename), sha256: digest(readFileSync(join(output, packed.filename))), commit: expectedCommit, version: readJson(join(root, 'package.json')).version, lockSha256: digest(readFileSync(join(root, 'package-lock.json'))), sourceSha: provenance.sourceSha, exportSha256: digest(readFileSync(join(root, 'src/vendor/archon-recovery-core/SOURCE-PROVENANCE.json'))) };
 writeFileSync(join(output, 'candidate.json'), JSON.stringify(receipt, null, 2));
 console.log(JSON.stringify(receipt));

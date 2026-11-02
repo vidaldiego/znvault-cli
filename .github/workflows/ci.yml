@@ -164,4 +164,5 @@ jobs:
           PACKAGE_PATH=$(node -p "require(process.env.RUNNER_TEMP + '/recovery-candidate/candidate.json').artifact")
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           node scripts/verify-package.mjs "$PACKAGE_PATH" "$PACKAGE_VERSION"
-          node scripts/verify-recovery-package.mjs "$PACKAGE_PATH" "$RUNNER_TEMP/recovery-candidate/candidate.json" "$PWD/test/fixtures/recovery"
+          node scripts/prepare-recovery-fixtures.mjs "$PWD" "$PWD/test/fixtures/recovery" "$RUNNER_TEMP/recovery-fixtures"
+          node scripts/verify-recovery-package.mjs "$PACKAGE_PATH" "$RUNNER_TEMP/recovery-candidate/candidate.json" "$RUNNER_TEMP/recovery-fixtures"

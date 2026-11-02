@@ -1,5 +1,5 @@
 // Synthetic marker fixtures only. Companion bytes were produced by the original Archon writer.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Readable, Writable } from 'node:stream';
@@ -24,4 +24,11 @@ export async function prepareFixtures(root, originals, target) {
     cases.push({ name: `${epoch}-${compression}`, dir, plain, material, keys, ciphertext: digest(dump) });
   }
   return cases;
+}
+
+export function copyPreparedFixtures(prepared, target) {
+  const names=readJson(join(prepared,'cases.json'));
+  if(!Array.isArray(names)||names.length!==6||names.some(n=>!/^(before|after)-(none|gzip|zstd)$/.test(n)))throw Error('Synthetic prepared fixture set required');
+  mkdirSync(target,{recursive:true,mode:0o700});
+  return names.map(name=>{const dir=join(target,name);cpSync(join(prepared,name),dir,{recursive:true});return {name,dir,plain:readFileSync(join(dir,'expected.sql')),material:readJson(join(prepared,'writer-material.json')),keys:[readFileSync(join(dir,'key-0')),readFileSync(join(dir,'key-1'))],ciphertext:digest(readFileSync(join(dir,'input.arcn')))};});
 }
