@@ -75,7 +75,13 @@ export interface PolicyAttachmentsResponse {
 /**
  * HTTP client configuration
  */
+/** Recovery-only frozen native authentication. No refresh, login or global fallback. */
+export interface InvocationContext {
+  readonly authorization: Readonly<{accessToken?: string; apiKey?: string}>;
+  readonly assertCurrent: () => void;
+}
 export interface ClientConfig {
+  invocationContext?: InvocationContext;
   baseUrl: string;
   insecure: boolean;
   timeout: number;

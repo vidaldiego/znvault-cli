@@ -32,7 +32,7 @@ import {
 import type {QrLoginPeer, QrLoginResult} from '../qr-login.js';
 import { acquireRefreshLock, computeLockKey } from './refresh-lock.js';
 import * as output from '../output.js';
-import type { RequestOptions, ClientConfig } from './types.js';
+import type { RequestOptions, ClientConfig, InvocationContext } from './types.js';
 import type { LoginResponse, StoredCredentials, FullConfig } from '../../types/index.js';
 
 /** Invocation-wide policy shared by facade and domain clients; no HTTP/singleton cycle. */
@@ -130,10 +130,12 @@ export class HttpClient {
   private insecureOverride?: boolean;
   private tlsSpkiSha256Override?: string;
   protected timeout: number;
+  private readonly invocationContext?: InvocationContext;
   private refreshPromise: Promise<void> | null = null;
 
   constructor(config?: Partial<ClientConfig>) {
-    const defaultConfig = getConfig();
+    this.invocationContext = config?.invocationContext;
+    const defaultConfig = this.invocationContext ? {timeout: 30000} : getConfig();
     if (config?.baseUrl !== undefined) this.urlOverride = config.baseUrl;
     if (config?.insecure !== undefined) this.insecureOverride = config.insecure;
     if (config?.tlsSpkiSha256 !== undefined) {
@@ -200,6 +202,7 @@ export class HttpClient {
    * Update client configuration (explicit --url / --insecure overrides).
    */
   configure(url?: string, insecure?: boolean, tlsSpkiSha256?: string): void {
+    if (this.invocationContext) throw new Error('recovery_transport_frozen');
     if (insecure === true && tlsSpkiSha256 !== undefined) {
       throw new Error('TLS SPKI pinning requires certificate verification');
     }
@@ -459,6 +462,17 @@ export class HttpClient {
    */
   async request<T>(options: RequestOptions): Promise<T> {
     options.signal?.throwIfAborted();options.sessionGuard?.();
+    if (this.invocationContext) {
+      try {
+        this.invocationContext.assertCurrent();
+        const result = await this.prepareRequest<T>({...options, skipAuthRefresh: true});
+        options.signal?.throwIfAborted();this.invocationContext.assertCurrent();
+        return result;
+      } catch (error) {
+        const statusCode = (error as {statusCode?: number} | null)?.statusCode;
+        throw Object.assign(new Error('recovery_native_request_failed'), {statusCode});
+      }
+    }
     const recovery = {attempted: false};
     let replayed = false;
     const eligible = (): boolean => automaticRecovery !== null && !recovery.attempted && !options.skipAuth && !options.skipAuthRefresh &&
@@ -544,7 +558,13 @@ export class HttpClient {
     }
 
     // Add authentication
-    if (!options.skipAuth) {
+    if (this.invocationContext) {
+      this.invocationContext.assertCurrent();
+      const auth = this.invocationContext.authorization;
+      if (auth.apiKey) headers['X-API-Key'] = auth.apiKey;
+      else if (auth.accessToken) headers.Authorization = `Bearer ${auth.accessToken}`;
+      else throw new Error('recovery_native_login_required');
+    } else if (!options.skipAuth) {
       const apiKey = getApiKey();
       if (hasApiKey() && apiKey) {
         headers['X-API-Key'] = apiKey;
@@ -628,9 +648,19 @@ export class HttpClient {
       const protocol = url.protocol === 'https:' ? https : http;
       const req = protocol.request(requestOptions, (res) => {
         let data = '';
-        res.on('data', (chunk: Buffer | string) => (data += String(chunk)));
+        let responseBytes = 0;
+        res.on('data', (chunk: Buffer | string) => {
+          responseBytes += Buffer.byteLength(chunk);
+          if (this.invocationContext && responseBytes > 1024 * 1024) {
+            data = '';req.destroy();reject(new Error('recovery_response_limit'));return;
+          }
+          data += String(chunk);
+        });
         res.on('end', () => {
           const statusCode = res.statusCode ?? 0;
+          if (this.invocationContext && (statusCode < 200 || statusCode >= 300 || responseBytes > 1024 * 1024)) {
+            data = '';reject(Object.assign(new Error('recovery_native_request_failed'), {statusCode}));return;
+          }
           const header = (res.headers as http.IncomingHttpHeaders | undefined)?.['retry-after'];
           const wait = typeof header === 'string' ? (/^[0-9]+$/.test(header) ? Number(header) : Math.ceil((Date.parse(header)-Date.now())/1000)) : NaN;
           const retryAfterSeconds = Number.isSafeInteger(wait) && wait >= 0 ? Math.max(1, wait) : undefined;

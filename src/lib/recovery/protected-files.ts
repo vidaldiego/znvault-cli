@@ -1,6 +1,7 @@
 import { constants, type BigIntStats } from 'node:fs';
 import { open, lstat, realpath } from 'node:fs/promises';
 import { dirname, parse, resolve } from 'node:path';
+import { decodeMasterKeyBytes } from '../../vendor/archon-recovery-core/arcn-envelope.js';
 import { computeKeyFingerprint, type KeyProvider, type VerifiedRecoverySet } from '../../vendor/archon-recovery-core/index.js';
 
 export function stable(a: BigIntStats, b: BigIntStats): boolean {
@@ -46,14 +47,16 @@ export async function readProtectedFile(path: string, maxBytes: number): Promise
 }
 
 export interface LocalKeys { get: KeyProvider; dispose(): void }
-/** Raw 32-byte files only: no ambiguous encoding, inline or environment keys. */
+/** Existing protected raw32 or64hex/LF custody; decoding is entirely in memory. */
 export async function loadKeyFiles(paths: readonly string[], set: VerifiedRecoverySet): Promise<LocalKeys> {
   const map = new Map<string, Buffer>();
   try {
     if (paths.length < 1 || paths.length > 32) throw Error('recovery_key_set_invalid');
     const required = new Set(set.components.map(c => c.key.fingerprint));
     for (const path of paths) {
-      const key = await readProtectedFile(path, 32);
+      const input = await readProtectedFile(path, 65);
+      let key: Buffer;
+      try { key = decodeMasterKeyBytes(input); } finally { input.fill(0); }
       const fingerprint = computeKeyFingerprint(key);
       if (key.length !== 32 || map.has(fingerprint) || !required.has(fingerprint)) { key.fill(0); throw Error('recovery_key_set_invalid'); }
       map.set(fingerprint, key);

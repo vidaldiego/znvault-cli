@@ -1,3 +1,4 @@
+import {selectAssistedRecovery} from './bootstrap.js';
 import { Command } from 'commander';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { readMetadataSnapshot, runRecoveryOperation, type LocalRecoveryOptions }
 
 interface InspectOptions { input: string; manifest: string; reference?: string }
 
-export function registerLocalRecoveryCommands(program: Command): void {
+export function registerLocalRecoveryCommands(program: Command, assisted = false): void {
   const recovery = program.command('recovery').description('Offline backup metadata inspection and recovery');
   recovery.command('inspect').description('Inspect public metadata and ARCN1 header; does not authenticate or decrypt')
     .requiredOption('--input <path>', 'Explicit local ARCN1 dump')
@@ -31,14 +32,14 @@ export function registerLocalRecoveryCommands(program: Command): void {
       } finally { await input.close(); }
     });
   for (const operation of ['verify', 'extract'] as const) {
-    recovery.command(operation).description(operation === 'verify' ? 'Authenticate the complete set and codecs; discard provisional plaintext' : 'Authenticate the complete set and publish a new private directory')
+    const command = recovery.command(operation).description(operation === 'verify' ? 'Authenticate the complete set and codecs; discard provisional plaintext' : 'Authenticate the complete set and publish a new private directory')
       .option('--input <path>', 'Explicit local dump, including a read-only Mimir copy/mount')
       .option('--companion-input <path>', 'Explicit local companion when declared')
       .option('--s3-config <path>', 'Protected explicit S3 transport JSON; verified TLS and exact Head/Get only')
       .requiredOption('--manifest <path>', 'Manifest JSON, maximum 1 MiB')
       .option('--reference <path>', 'Custodied historical exact reference JSON')
-      .requiredOption('--expect <path>', 'Selection explicitly chosen from prior independent custody')
-      .requiredOption('--key-file <path>', 'Protected raw 32-byte KEK; repeat up to 32 times', (path: string, paths: string[]) => [...paths,path], [])
+      .option('--expect <path>', 'Selection explicitly chosen from prior independent custody')
+      .option('--key-file <path>', 'Protected raw32 or64hex/LF KEK; repeat up to 32 times', (path: string, paths: string[]) => [...paths,path], [])
       .option('--output <path>', 'NEW_PATH under a trusted existing parent; exclusively reserved 0700')
       .option('--max-input-bytes <bytes>', 'Total ciphertext bound, default 1 TiB')
       .option('--max-expanded-bytes <bytes>', 'Expanded set bound, default 1 TiB')
@@ -46,26 +47,44 @@ export function registerLocalRecoveryCommands(program: Command): void {
       .option('--json', 'Public result only (all results are JSON)')
       .option('--debug', 'Retain safe public diagnostics; never plaintext or keys')
       .addHelpText('after', '\nBounds: 64 KiB queues; zstd window <=8 MiB; 64 MiB free-space floor; companion JSON <=1 MiB, ciphertext <=1 MiB+33, members <=128 KiB. No SQL import/application restore. NEW_PATH is reserved exclusively; residual workspaces are never resumed.')
-      .action(async (options: LocalRecoveryOptions) => runRecoveryOperation(operation, options));
+      .action(async (options: LocalRecoveryOptions & {backup?:string;keySource?:string}) => {
+        if(assisted){
+          if(options.keyFile.length||options.keySource!=='vault'||Boolean(options.expect)===Boolean(options.backup))throw Error('recovery_options_incompatible');
+          const {runAssistedRecovery}=await import('./assisted.js');
+          await runAssistedRecovery(operation,options,program.opts<{profile:string;tlsSpkiSha256?:string}>());
+        }else{
+          if(!options.expect||!options.keyFile.length)throw Error('recovery_options_incompatible');
+          await runRecoveryOperation(operation,options);
+        }
+      });
+    if(assisted)command.option('--backup <record-id>', 'Exact authenticated catalog selection record UUID').option('--key-source <source>', 'Explicit vault source');
   }
+  if(assisted)for(const name of ['keys','status'] as const)recovery.command(name).description('Read authorized public recovery metadata; no key values')
+    .option('--id <uuid>', name==='keys'?'Exact material ID':'Exact selection record ID')
+    .option('--after <uuid>', 'Exclusive pagination cursor for lists')
+    .action(async(options:{id?:string;after?:string})=>{
+      const {runRecoveryAdmin}=await import('./admin.js');await runRecoveryAdmin(name,options,program.opts<{profile:string;tlsSpkiSha256?:string}>());
+    });
 }
 
 export async function runLocalRecovery(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   try {
     // Refuse connected options anywhere before the delimiter. Environment profile,
     // URL, local-mode and plugin/update settings never configure this command graph.
+    const assisted = selectAssistedRecovery(argv);
     const forbidden = new Set(['--profile', '--url', '--insecure', '--local', '--key-source', '--backup', '--tls-spki-sha256']);
     for (const arg of argv) {
       if (arg === '--') break;
-      if (forbidden.has(arg.split('=')[0])) throw new Error(`${arg.split('=')[0]} is incompatible with offline recovery`);
+      if (!assisted && forbidden.has(arg.split('=')[0])) throw new Error(`${arg.split('=')[0]} is incompatible with offline recovery`);
     }
     const program = new Command().name('znvault').exitOverride().configureOutput({ writeErr: () => { /* parser diagnostics can contain untrusted argument values */ } });
-    registerLocalRecoveryCommands(program);
+    if(assisted)program.requiredOption('--profile <name>', 'Exact existing profile; verified TLS and stored native authentication only').option('--tls-spki-sha256 <hex>', 'Optional verified TLS SPKI pin');
+    registerLocalRecoveryCommands(program, assisted);
     await program.parseAsync([...argv], { from: 'user' });
   } catch (error: unknown) {
     if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'commander.helpDisplayed') return;
     const incompatible = error instanceof Error && /^--(?:profile|url|insecure|local|key-source|backup|tls-spki-sha256) is incompatible with offline recovery$/.test(error.message);
-    console.error(incompatible && error instanceof Error ? error.message : 'Recovery error: recovery_failed');
+    console.error(incompatible && error instanceof Error ? error.message : error instanceof Error && error.message==='recovery_options_incompatible'?'Recovery error: incompatible recovery options':'Recovery error: recovery_failed');
     process.exitCode = 1;
   }
 }
