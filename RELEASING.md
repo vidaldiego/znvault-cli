@@ -58,3 +58,10 @@ self-contained offline installer. Linux uses Docker network none; macOS uses
 sandbox-exec deny network. macOS records a tested OS denial and independent
 canary observations, not an unavailable raw packet capture. Windows is not
 qualified. Recovery only writes authenticated local files, never imports SQL.
+
+Prepare synthetic acceptance inputs once with
+`node scripts/prepare-recovery-fixtures.mjs ABSOLUTE_BUILT_CLI_ROOT
+ABSOLUTE_ORIGINAL_WRITER_FIXTURES ABSOLUTE_NEW_DIRECTORY`, then pass that new
+directory to both verifiers. This preserves identical encrypted pre/post sets
+across npm/bundle and platform runs. Linux containers run as the invoking UID
+and GID so private recovery outputs remain removable by that same identity.
