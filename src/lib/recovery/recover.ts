@@ -35,7 +35,12 @@ export async function recoverSet(set: VerifiedRecoverySet, inputs: RecoveryInput
       snapshot.components[0]?.role !== 'dump' || (snapshot.components.length === 2 && snapshot.components[1].role !== 'companion') ||
       snapshot.selection.metadata.kind === 'manifest' && snapshot.metadataSha256 !== snapshot.selection.metadata.sha256) throw Error('recovery_set_invalid');
   const reservation = options.mode === 'verify' && !options.temporaryParent ? await TemporaryReservation.reserve(tmpdir()) : undefined;
-  const destination = options.mode === 'extract' ? String(options.output) : join(options.temporaryParent ?? reservation!.path, `znvault-recovery-${randomUUID()}`);
+  let destination = String(options.output);
+  if (options.mode === 'verify') {
+    const parent = options.temporaryParent ?? reservation?.path;
+    if (!parent) throw Error('recovery_parent_unsafe');
+    destination = join(parent, `znvault-recovery-${randomUUID()}`);
+  }
   let work: Workspace;
   try { work = await Workspace.reserve(destination, minFree); }
   catch (error) { await reservation?.cleanup(); throw error; }
