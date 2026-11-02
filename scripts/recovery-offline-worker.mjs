@@ -58,7 +58,7 @@ export async function offlineAcceptance({ root, fixtureDir, work, expected, laun
     if(!isDeepStrictEqual(immutable,Object.fromEntries(Object.keys(immutable).map(n=>[n,digest(readFileSync(join(f.dir,n)))]))))throw Error('Immutable input changed');
   }
   const f=fixtures[0];
-  for(const kind of ['wrong-key','corruption','unknown-format','valid-set-replay','last-companion']){
+  for(const kind of ['wrong-key','corruption','unknown-format','last-companion']){
     const path=join(f.dir,kind==='wrong-key'?'key-0':kind==='corruption'?'input.arcn':kind==='last-companion'?'companion.enc':kind==='valid-set-replay'?'selection.json':'manifest.json');
     const original=readFileSync(path);let changed=Buffer.from(original);
     if(kind==='wrong-key')changed=Buffer.alloc(32,99);
@@ -70,6 +70,12 @@ export async function offlineAcceptance({ root, fixtureDir, work, expected, laun
     writeFileSync(path,changed);const output=join(f.dir,kind);
     try{invoke(args(f,'extract',output),false);negatives++;if(existsSync(output)&&readdirSync(output).length)throw Error('Failure left partial output');}finally{writeFileSync(path,original);writeFileSync(join(f.dir,'selection.json'),originalSelection);}
   }
+  // Replace the entire valid set under the same KEK while preserving the independently fixed expectation.
+  const replay=args(fixtures[1],'extract',join(f.dir,'valid-set-replay'));
+  replay[replay.indexOf('--expect')+1]=join(f.dir,'selection.json');
+  const fixedExpectation=readFileSync(join(f.dir,'selection.json'));
+  invoke(replay,false);negatives++;
+  if(!readFileSync(join(f.dir,'selection.json')).equals(fixedExpectation)||existsSync(join(f.dir,'valid-set-replay/content')))throw Error('Replay changed independent expectation or published content');
   // Cancel an actual installed CLI while its private input snapshot is being copied.
   const cancelDir=join(work,'cancel');mkdirSync(cancelDir,{mode:0o700});
   const {encryptStream}=await import(pathToFileURL(join(root,'dist/vendor/archon-recovery-core/index.js')).href);

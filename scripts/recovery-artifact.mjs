@@ -18,8 +18,9 @@ export function tree(root) {
   walk(root); return files;
 }
 export async function verifyIdentity(root, expected) {
+  for (const name of ['lockSha256','sourceSha','exportSha256','packageSha256']) if (!(name === 'sourceSha' ? /^[a-f0-9]{40}$/ : /^[a-f0-9]{64}$/).test(expected[name] ?? '')) throw Error('Missing exact artifact identity');
   const pkg = readJson(join(root, 'package.json'));
-  if (expected.packageSha256 && digest(readFileSync(join(root, 'package.json'))) !== expected.packageSha256) throw Error('CLI package metadata mismatch');
+  if (digest(readFileSync(join(root, 'package.json'))) !== expected.packageSha256) throw Error('CLI package metadata mismatch');
   if (pkg.version !== expected.version) throw Error('CLI version mismatch');
   let receipt;
   try { receipt = readJson(join(root, 'dist/recovery-build.json')); } catch { throw Error('Missing recovery build receipt'); }

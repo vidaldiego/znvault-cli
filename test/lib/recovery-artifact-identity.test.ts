@@ -13,7 +13,7 @@ it('rejects actual missing/tampered compiled snapshot, wrong CLI version, commit
  cpSync(resolve('src/vendor/archon-recovery-core'),join(root,'dist/recovery-source'),{recursive:true});
  writeFileSync(join(root,'package.json'),JSON.stringify({type:'module',version:'5.8.1'}));
  const original=readFileSync(resolve('src/vendor/archon-recovery-core/SOURCE-PROVENANCE.json'));
- const expected={version:'5.8.1',commit:'1'.repeat(40),lockSha256:'2'.repeat(64),sourceSha:'7a6cf89dff25cdb2dbb82441fca7b0d6f4c6ef31',exportSha256:digest(original)};
+ const expected={packageSha256:digest(readFileSync(join(root,'package.json'))),version:'5.8.1',commit:'1'.repeat(40),lockSha256:'2'.repeat(64),sourceSha:'7a6cf89dff25cdb2dbb82441fca7b0d6f4c6ef31',exportSha256:digest(original)};
  writeFileSync(join(root,'dist/recovery-build.json'),JSON.stringify({commit:expected.commit,lockSha256:expected.lockSha256,files:tree(join(root,'dist'))}));
  await expect(verifyIdentity(root,expected)).resolves.toMatchObject({installedSourceCommit:expected.commit});
  for(const override of [{version:'0.0.0'},{commit:'3'.repeat(40)},{lockSha256:'4'.repeat(64)},{sourceSha:'5'.repeat(40)}])await expect(verifyIdentity(root,{...expected,...override})).rejects.toThrow(/mismatch/);
