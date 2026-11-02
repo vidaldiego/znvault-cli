@@ -10,16 +10,16 @@ import {createVaultKeyProvider,createRecoveryClient} from '../../src/lib/recover
 import {loadKeyFiles} from '../../src/lib/recovery/protected-files.js';
 
 const offsiteOrigin='https://offsite.invalid';
-let directory:string, f:Awaited<ReturnType<typeof fixture>>, paths:string[], auth:string[], reply:(path:string)=>unknown, afterReply:()=>void,status:number;
+let directory:string, f:Awaited<ReturnType<typeof fixture>>, paths:string[], auth:string[], requestIds:string[], reply:(path:string)=>unknown, afterReply:()=>void,status:number;
 beforeEach(async()=>{
- directory=mkdtempSync(join(tmpdir(),'recovery-assisted-'));f=await fixture(directory,{companion:true,managedKeys:true});paths=[];auth=[];afterReply=()=>{};status=200;
+ directory=mkdtempSync(join(tmpdir(),'recovery-assisted-'));f=await fixture(directory,{companion:true,managedKeys:true});paths=[];auth=[];requestIds=[];afterReply=()=>{};status=200;
  store.set('profiles',{main:{url:'https://main.invalid',insecure:false,timeout:1000,apiKey:'MAIN_MARKER'},offsite:{url:offsiteOrigin,insecure:false,timeout:1000,credentials:{accessToken:'OFFSITE_MARKER',refreshToken:'NEVER_REFRESH',expiresAt:Date.now()+60000,userId:'human',username:'human',role:'user',tenantId:'lab'}}});store.set('activeProfile','main');
  vi.stubEnv('ZNVAULT_URL','https://hostile.invalid');vi.stubEnv('ZNVAULT_API_KEY','ENV_MARKER');vi.stubEnv('ZNVAULT_USERNAME','env');vi.stubEnv('ZNVAULT_PASSWORD','env');
  reply=path=>{const i=path.includes('222222222221')||path.includes('444444444441')?1:0;const key=f.expected.keyBindings[i].key;
  if(path.includes('/resolve'))return {secretId:`44444444-4444-4444-8444-44444444444${i}`,dataVersion:1,sourceIdentity:key,fingerprint:key.fingerprint};
  if(path.endsWith('/meta'))return {version:2};
  return {id:`44444444-4444-4444-8444-44444444444${i}`,version:1,data:{key:f.keys[i].toString('hex')}};};
- vi.spyOn(https,'request').mockImplementation(((options:any,callback:any)=>{paths.push(`https://${options.hostname}${options.path}`);auth.push(options.headers.Authorization??options.headers['X-API-Key']);expect(options.rejectUnauthorized).toBe(true);
+ vi.spyOn(https,'request').mockImplementation(((options:any,callback:any)=>{paths.push(`https://${options.hostname}${options.path}`);requestIds.push(options.headers['X-Request-ID']);auth.push(options.headers.Authorization??options.headers['X-API-Key']);expect(options.rejectUnauthorized).toBe(true);
  const req=new EventEmitter() as any;req.write=()=>{};req.destroy=()=>{};req.end=()=>{queueMicrotask(()=>{const res=new EventEmitter() as any;res.statusCode=status;res.headers={};callback(res);res.emit('data',JSON.stringify(reply(options.path)));afterReply();res.emit('end');});};return req;}) as any);
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();rmSync(directory,{recursive:true,force:true});});
@@ -29,6 +29,9 @@ describe('assisted exact native profile',()=>{
   const provider=createVaultKeyProvider('offsite',request());const buffers:Buffer[]=[];
   try{for(const b of f.expected.keyBindings)buffers.push(await provider(b.key,new AbortController().signal));expect(buffers).toEqual(f.keys);expect([...new Set(paths.map(p=>new URL(p).origin))]).toEqual([offsiteOrigin]);expect(new Set(auth)).toEqual(new Set(['Bearer OFFSITE_MARKER']));expect(paths.filter(p=>p.includes('history/1/decrypt'))).toHaveLength(2);}finally{provider.dispose();}
   expect(buffers.every(b=>b.every(v=>v===0))).toBe(true);
+ });
+ it('correlates native metadata and value requests with the public recovery request id',async()=>{
+  const provider=createVaultKeyProvider('offsite',request());try{await provider(f.expected.keyBindings[0].key,new AbortController().signal);expect(requestIds).toEqual(['synthetic-request','synthetic-request','synthetic-request']);}finally{provider.dispose();}
  });
  it('rejects unknown and unauthenticated explicit profile before transport, never env login',()=>{
   expect(()=>createRecoveryClient('unknown')).toThrow();const profiles=store.get('profiles');delete profiles.offsite.credentials;store.set('profiles',profiles);expect(()=>createRecoveryClient('offsite')).toThrow();expect(paths).toEqual([]);

@@ -40,6 +40,8 @@ function decodeValue(data:unknown):Buffer {
  try{return decodeMasterKeyBytes(input);}finally{input.fill(0);}
 }
 export function createVaultKeyProvider(profileName:string,request:RecoveryRequest,client=createRecoveryClient(profileName)):VaultKeyProvider {
+ if(!/^[A-Za-z0-9-]{1,128}$/.test(request.requestId))throw Error('recovery_request_id_invalid');
+ const headers={'X-Request-ID':request.requestId};
  const selection=parseExpectedSelection(Buffer.from(JSON.stringify(request.selection)));
  const buffers=new Set<Buffer>();let disposed=false;
  const dispose=():void=>{disposed=true;for(const b of buffers)b.fill(0);buffers.clear();request.signal.removeEventListener('abort',dispose);};
@@ -49,14 +51,14 @@ export function createVaultKeyProvider(profileName:string,request:RecoveryReques
   const combined=AbortSignal.any([signal,request.signal]);
   try{
    combined.throwIfAborted();if(disposed||!selection.keyBindings.some(b=>canonical(b.key)===canonical(key)))throw Error('recovery_key_not_selected');
-   const binding=await client.request<{secretId:string;dataVersion:number;sourceIdentity:KeyReference;fingerprint:string}>({method:'POST',path:key.kind==='vault-backup-key-v1'?`/v1/backup-recovery/materials/${key.materialId}/resolve`:'/v1/backup-recovery/materials/resolve',body:{key},signal:combined});
+   const binding=await client.request<{secretId:string;dataVersion:number;sourceIdentity:KeyReference;fingerprint:string}>({method:'POST',path:key.kind==='vault-backup-key-v1'?`/v1/backup-recovery/materials/${key.materialId}/resolve`:'/v1/backup-recovery/materials/resolve',body:{key},signal:combined,headers});
    // Validate the returned descriptor with the maintained parser as well as equality.
    const checked=parseExpectedSelection(Buffer.from(JSON.stringify({...selection,keyBindings:[{fingerprint:binding.fingerprint,key:binding.sourceIdentity}]}))).keyBindings[0].key;
    if(!uuid.test(binding.secretId)||!Number.isSafeInteger(binding.dataVersion)||binding.dataVersion<1||binding.fingerprint!==key.fingerprint||!validateBinding(key,checked))throw Error('recovery_binding_mismatch');
-   const meta=await client.request<{version:number;referencesEnabled?:boolean;hasReferences?:boolean;subType?:string}>({method:'GET',path:`/v1/secrets/${binding.secretId}/meta`,signal:combined});
+   const meta=await client.request<{version:number;referencesEnabled?:boolean;hasReferences?:boolean;subType?:string}>({method:'GET',path:`/v1/secrets/${binding.secretId}/meta`,signal:combined,headers});
    if(!Number.isSafeInteger(meta.version)||meta.version<binding.dataVersion||meta.referencesEnabled||meta.hasReferences||meta.subType==='link')throw Error('recovery_binding_invalid');
    const path=meta.version===binding.dataVersion?`/v1/secrets/${binding.secretId}/decrypt?resolve=false`:`/v1/secrets/${binding.secretId}/history/${binding.dataVersion}/decrypt`;
-   const value=await client.request<{id:string;version:number;data:unknown}>({method:'POST',path:path.split('?')[0],...(path.includes('?')?{query:{resolve:false}}:{}),body:{},signal:combined});
+   const value=await client.request<{id:string;version:number;data:unknown}>({method:'POST',path:path.split('?')[0],...(path.includes('?')?{query:{resolve:false}}:{}),body:{},signal:combined,headers});
    if(value.id!==binding.secretId||value.version!==binding.dataVersion)throw Error('recovery_native_version_mismatch');
    decoded=decodeValue(value.data);value.data=undefined;
    combined.throwIfAborted();if(computeKeyFingerprint(decoded)!==key.fingerprint)throw Error('recovery_key_mismatch');
