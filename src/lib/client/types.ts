@@ -80,4 +80,6 @@ export interface ClientConfig {
   insecure: boolean;
   timeout: number;
   tlsSpkiSha256?: string;
+  /** Fixed per instance; strict clients reject every non-2xx response before reading its body. */
+  responsePolicy?: 'legacy' | 'strict-2xx';
 }

@@ -86,6 +86,22 @@ function isConflict(err: unknown): boolean {
   return (err as {statusCode?: number} | null)?.statusCode === 409;
 }
 
+/** Closed transport error: remote content is never attached or rendered. */
+class HttpResponseStatusError extends Error {
+  readonly code = 'HTTP_STATUS_REJECTED';
+  declare readonly statusCode?: number;
+
+  constructor(statusCode: number | undefined) {
+    super('HTTP response rejected');
+    // Like Error.message, keep the name non-enumerable so refresh-conflict
+    // classification can copy safe status fields without renaming its error.
+    Object.defineProperty(this, 'name', {value: 'HttpResponseStatusError', configurable: true});
+    if (typeof statusCode === 'number' && Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599) {
+      this.statusCode = statusCode;
+    }
+  }
+}
+
 /**
  * Type guard to check if a value looks like an API error response
  */
@@ -129,10 +145,16 @@ export class HttpClient {
   private urlOverride?: string;
   private insecureOverride?: boolean;
   private tlsSpkiSha256Override?: string;
+  private readonly responsePolicy: NonNullable<ClientConfig['responsePolicy']>;
   protected timeout: number;
   private refreshPromise: Promise<void> | null = null;
 
   constructor(config?: Partial<ClientConfig>) {
+    const responsePolicy: unknown = config?.responsePolicy;
+    if (responsePolicy !== undefined && responsePolicy !== 'legacy' && responsePolicy !== 'strict-2xx') {
+      throw new Error('Invalid HTTP response policy');
+    }
+    this.responsePolicy = responsePolicy ?? 'legacy';
     const defaultConfig = getConfig();
     if (config?.baseUrl !== undefined) this.urlOverride = config.baseUrl;
     if (config?.insecure !== undefined) this.insecureOverride = config.insecure;
@@ -180,6 +202,7 @@ export class HttpClient {
         ? { tlsSpkiSha256: this.tlsSpkiSha256Override }
         : {}),
       timeout: this.timeout,
+      responsePolicy: this.responsePolicy,
     };
   }
 
@@ -366,7 +389,8 @@ export class HttpClient {
       await this.postRefreshWithRetry(fresh ?? credentials, 0, guard);
     } catch (error) {
       guard();
-      if (getConfig().cliRecovery?.state === 'active' && !(error instanceof RefreshHardReauthError)) {
+      if (getConfig().cliRecovery?.state === 'active' && !(error instanceof RefreshHardReauthError) &&
+          !(error instanceof HttpResponseStatusError)) {
         throw Object.assign(new Error('Session refresh failed. Run znvault login --recover or complete a normal login.', {cause: error}),
           error !== null && typeof error === 'object' ? error : {});
       }
@@ -627,6 +651,16 @@ export class HttpClient {
     return new Promise((resolve, reject) => {
       const protocol = url.protocol === 'https:' ? https : http;
       const req = protocol.request(requestOptions, (res) => {
+        if (this.responsePolicy === 'strict-2xx' &&
+            !(typeof res.statusCode === 'number' && Number.isInteger(res.statusCode) &&
+              res.statusCode >= 200 && res.statusCode <= 299)) {
+          reject(new HttpResponseStatusError(res.statusCode));
+          // Close immediately rather than draining an unbounded remote body.
+          // Destroy may emit a late response error; the rejection above is final.
+          res.on('error', () => undefined);
+          res.destroy();
+          return;
+        }
         let data = '';
         res.on('data', (chunk: Buffer | string) => (data += String(chunk)));
         res.on('end', () => {
