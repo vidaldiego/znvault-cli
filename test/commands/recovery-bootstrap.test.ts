@@ -39,7 +39,9 @@ beforeAll(() => {
   expect(packed.status, packed.stderr).toBe(0);
   const [{ filename }] = JSON.parse(packed.stdout);
   const prefix = join(directory, 'installed');
-  const install = spawnSync('npm', ['install', '--prefix', prefix, '--offline', '--ignore-scripts', '--no-audit', '--no-fund', join(directory, filename)], { cwd: directory, encoding: 'utf8', timeout: 120000 });
+  // Install dependencies during online preparation; the CLI workers below retain
+  // their offline import and network guards. The tarball is not an offline installer.
+  const install = spawnSync('npm', ['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', join(directory, filename)], { cwd: directory, encoding: 'utf8', timeout: 120000 });
   expect(install.status, install.stderr).toBe(0);
   installedCli = join(prefix, 'node_modules/@zincapp/znvault-cli/dist/index.js');
 }, 180000);
