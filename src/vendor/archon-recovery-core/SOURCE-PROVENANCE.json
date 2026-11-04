@@ -1,6 +1,6 @@
 {
   "format": "archon-backup-recovery-core-export-v1",
-  "sourceSha": "7a6cf89dff25cdb2dbb82441fca7b0d6f4c6ef31",
+  "sourceSha": "e3270c4d3cedb764479e4b3a01c4d78f031941de",
   "files": [
     {
       "path": "arcn-envelope.ts",
@@ -23,8 +23,8 @@
     {
       "path": "companion.ts",
       "sourcePath": "src/modules/backups/recovery-core/companion.ts",
-      "sha256": "26ae37eb4c4fc3626f6883593338c637c4b5c44fc3b53fd2939ba975ba762e17",
-      "bytes": 21351
+      "sha256": "1d7b5abd355a32f5da44390d2f9d36b1d519a7f0ba1a05ccf813b4cd02ecc129",
+      "bytes": 22172
     },
     {
       "path": "index.ts",
@@ -41,8 +41,8 @@
     {
       "path": "selection.ts",
       "sourcePath": "src/modules/backups/recovery-core/selection.ts",
-      "sha256": "55c90b092179feb4c4f3f3faab5b51d4c2d6bbb60aafacb975dac937b538db5f",
-      "bytes": 8716
+      "sha256": "e6d2a0885ba13169abae7a15bcfff91fe0c91631b03bab2add11bf79d80614db",
+      "bytes": 8772
     },
     {
       "path": "types.ts",

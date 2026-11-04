@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Reject duplicate or incomplete prepared recovery fixture combinations before
-  creating or copying the verification destination.
-- Refresh the pinned recovery core to clear helper-owned unwrap DEK temporaries
-  on success/failure and reject non-string historical reference buckets.
-  Valid envelopes, legacy references and caller buffer ownership are unchanged.
+- Reject duplicate or non-string names and incomplete prepared recovery fixture
+  sets before creating or copying the verification destination.
+- Refresh the pinned recovery core to clear helper-owned unwrap DEK, companion
+  plaintext and validation buffers on success/failure, and reject non-string
+  historical reference buckets. Valid envelopes, legacy references and caller
+  buffer ownership are unchanged.
 
 ### Added
 

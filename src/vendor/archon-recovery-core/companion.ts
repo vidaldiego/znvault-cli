@@ -59,8 +59,9 @@ function safePath(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 1024 && value.startsWith('/') &&
     !value.includes('\0') && value.slice(1).split('/').every(part => part && part !== '.' && part !== '..');
 }
-function content(file: MaterialFile): Buffer {
+function content(file: MaterialFile, owned: Buffer[]): Buffer {
   const bytes = Buffer.from(file.contentBase64, 'base64');
+  owned.push(bytes);
   if (bytes.length === 0 || bytes.length > 128 * 1024 || bytes.toString('base64') !== file.contentBase64 || sha(bytes) !== file.sha256) throw refusal();
   return bytes;
 }
@@ -68,6 +69,8 @@ function content(file: MaterialFile): Buffer {
 /** Validates independently from the root helper, including its actual included
  * configuration. Only the release manifest can resolve a configured symlink. */
 export function validateRecoveryMaterial(bytes: Buffer, installationUuid: string): RecoveryMaterial {
+  // Only decoded helper-owned bytes enter this scope; input and returned material remain caller-owned.
+  const owned: Buffer[] = [];
   try {
     if (bytes.length > MAX_RECOVERY_JSON_BYTES) throw refusal();
     const value = parseRecoveryJson(bytes, MAX_RECOVERY_JSON_BYTES);
@@ -91,14 +94,14 @@ export function validateRecoveryMaterial(bytes: Buffer, installationUuid: string
       if ((/\.key$|privkey|vault\/env|vault\/bsk|operator\/|tailscale\.state|ssh\/host-ed25519$/.test(file.name)) && !file.private) throw refusal();
       if (Object.hasOwn(OPTIONAL_RECOVERY_FILES, file.name) &&
           (file.path !== OPTIONAL_RECOVERY_FILES[file.name] || file.private || file.uid !== 0 || file.gid !== 0)) throw refusal();
-      content(file as MaterialFile); names.add(file.name); paths.add(file.path);
+      content(file as MaterialFile, owned); names.add(file.name); paths.add(file.path);
     }
     if (!REQUIRED_RECOVERY_FILES.every(name => names.has(name))) throw refusal();
     const material = value as RecoveryMaterial;
     const configFile = material.files.find(file => file.name === 'recovery/files.json')!;
     if (configFile.path !== '/etc/znvault/recovery-files.json' || configFile.uid !== 0 || configFile.gid !== 0 ||
         !configFile.private || !['0400', '0600'].includes(configFile.mode)) throw refusal();
-    const configBytes = content(configFile);
+    const configBytes = content(configFile, owned);
     if (sha(configBytes) !== material.configSha256) throw refusal();
     const config = parseRecoveryJson(configBytes, MAX_RECOVERY_JSON_BYTES);
     if (!closed(config, ['format', 'installationUuid', 'files']) || config.format !== 'znvault-recovery-files-v1' ||
@@ -118,7 +121,7 @@ export function validateRecoveryMaterial(bytes: Buffer, installationUuid: string
       if (file.path !== selector.path && !releaseResolved) throw refusal();
       if (selector.name === 'release/MANIFEST.json' && !releaseResolved) throw refusal();
       if (releaseResolved) {
-        const manifest = parseRecoveryJson(content(file), MAX_RECOVERY_JSON_BYTES);
+        const manifest = parseRecoveryJson(content(file, owned), MAX_RECOVERY_JSON_BYTES);
         if (manifest.version !== releaseMatch![1] || !/^[a-f0-9]{40}$/.test(manifest.git?.commit) || manifest.git?.dirty !== false ||
             file.uid !== 0 || file.gid !== 0 || (parseInt(file.mode, 8) & 0o222)) throw refusal();
       }
@@ -126,9 +129,10 @@ export function validateRecoveryMaterial(bytes: Buffer, installationUuid: string
     }
     const { fingerprint, ...unsigned } = material;
     if (sha(canonicalRecoveryJson(unsigned)) !== fingerprint) throw refusal();
-    validateRootContinuity(material);
+    validateRootContinuity(material, owned);
     return material;
   } catch { throw refusal(); }
+  finally { owned.forEach(buffer => buffer.fill(0)); }
 }
 
 /** Read only literal path/config values; never evaluate an environment file. */
@@ -143,11 +147,11 @@ function environmentValue(bytes: Buffer, name: string): string | undefined {
   }
   return value;
 }
-function validateRootContinuity(material: RecoveryMaterial): void {
+function validateRootContinuity(material: RecoveryMaterial, owned: Buffer[]): void {
   const files = new Map(material.files.map(file => [file.name, file]));
-  const env = content(files.get('vault/env')!), bsk = content(files.get('vault/bsk')!);
+  const env = content(files.get('vault/env')!, owned), bsk = content(files.get('vault/bsk')!, owned);
   try {
-    const installation = parseRecoveryJson(content(files.get('recovery/installation.json')!), MAX_RECOVERY_JSON_BYTES);
+    const installation = parseRecoveryJson(content(files.get('recovery/installation.json')!, owned), MAX_RECOVERY_JSON_BYTES);
     const kcv = `kcv1:${createHmac('sha256', bsk).update('zn-vault-bsk-kcv-v1').digest('hex').slice(0, 32)}`;
     if (bsk.length !== 32 || installation.installationUuid !== material.installationUuid ||
         installation.rootKeyKcv !== kcv || environmentValue(env, 'LMK_PATH') !== files.get('vault/bsk')!.path) throw refusal();
@@ -155,11 +159,11 @@ function validateRootContinuity(material: RecoveryMaterial): void {
       const value = environmentValue(env, variable);
       if (value !== undefined && value !== files.get(name)!.path) throw refusal();
     }
-    validateRuntimeConfiguration(installation.runtimeIdentity, files, env);
+    validateRuntimeConfiguration(installation.runtimeIdentity, files, env, owned);
   } finally { bsk.fill(0); env.fill(0); }
 }
 
-function validateRuntimeConfiguration(runtime: Record<string, unknown>, files: Map<string, MaterialFile>, env: Buffer): void {
+function validateRuntimeConfiguration(runtime: Record<string, unknown>, files: Map<string, MaterialFile>, env: Buffer, owned: Buffer[]): void {
   if (!closed(runtime, ['awsProfile', 'configFile', 'credentialHelper', 'certificateFile', 'privateKeyFile',
     'caCertificateFile', 'caPrivateKeyFile', 'region', 'trustAnchorArn', 'profileArn', 'roleArn', 'sessionDuration']) ||
       typeof runtime.awsProfile !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(runtime.awsProfile) ||
@@ -179,7 +183,7 @@ function validateRuntimeConfiguration(runtime: Record<string, unknown>, files: M
     'AWS_WEB_IDENTITY_TOKEN_FILE', 'AWS_ROLE_ARN']) if (environmentValue(env, variable)) throw refusal();
   const values = new Map<string, string>();
   let selected = false, sections = 0;
-  for (const line of content(files.get('aws/config')!).toString('utf8').split(/\r?\n/)) {
+  for (const line of content(files.get('aws/config')!, owned).toString('utf8').split(/\r?\n/)) {
     const text = line.trim();
     if (!text || text.startsWith('#') || text.startsWith(';')) continue;
     if (text.startsWith('[')) { selected = text === `[profile ${runtime.awsProfile}]`; if (selected && ++sections > 1) throw refusal(); continue; }
@@ -202,32 +206,38 @@ function aad(binding: CompanionBinding & { sourceFingerprint: string }): Buffer 
 }
 export function encryptRecoveryMaterial(material: RecoveryMaterial, binding: CompanionBinding, key: CompanionEncryptionKey,
   capturedAt = new Date().toISOString()): EncryptedRecoveryMaterial {
-  validateRecoveryMaterial(Buffer.from(canonicalRecoveryJson(material)), binding.installationUuid);
-  const dek = randomBytes(32), iv = randomBytes(12);
+  const plain = Buffer.from(canonicalRecoveryJson(material));
+  let dek: Buffer | undefined;
   try {
+    validateRecoveryMaterial(plain, binding.installationUuid);
+    dek = randomBytes(32);
+    const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', dek, iv);
     cipher.setAAD(aad({ ...binding, sourceFingerprint: material.fingerprint }));
-    const bytes = Buffer.concat([HEADER, iv, cipher.update(canonicalRecoveryJson(material)), cipher.final(), cipher.getAuthTag()]);
+    const bytes = Buffer.concat([HEADER, iv, cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
     return { bytes, reference: { format: 'archon-application-recovery-companion-v1', profile: APPLICATION_RECOVERY_PROFILE,
       ...binding, capturedAt, sourceFingerprint: material.fingerprint, algorithm: 'aes-256-gcm',
       wrappedDek: wrapDekHex(dek, key.key), wrappingKeyFingerprint: key.fingerprint, sha256: sha(bytes), bytes: bytes.length } };
-  } finally { dek.fill(0); }
+  } finally { dek?.fill(0); plain.fill(0); }
 }
 
 function verifyMaterialCoherence(material: RecoveryMaterial): void {
-  const files = new Map(material.files.map(file => [file.name, content(file)]));
-  const ca = new X509Certificate(files.get('aws/runtime-ca.pem')!);
-  const leaf = new X509Certificate(files.get('aws/runtime.pem')!);
-  const tls = new X509Certificate(files.get('tls/fullchain.pem')!);
-  if (!ca.ca || !ca.verify(ca.publicKey) || !ca.checkPrivateKey(createPrivateKey(files.get('aws/runtime-ca.key')!)) ||
-      !leaf.checkIssued(ca) || !leaf.verify(ca.publicKey) || !leaf.checkPrivateKey(createPrivateKey(files.get('aws/runtime.key')!)) ||
-      !tls.checkPrivateKey(createPrivateKey(files.get('tls/privkey.pem')!))) throw Error();
-  const installation = parseRecoveryJson(files.get('recovery/installation.json')!, MAX_RECOVERY_JSON_BYTES);
-  if (installation.installationUuid !== material.installationUuid) throw Error();
-  for (const name of ['operator/bootstrap-admin.json', 'operator/tenant-admin.json', 'operator/custodian.json', 'release/MANIFEST.json']) {
-    const value = parseRecoveryJson(files.get(name)!, MAX_RECOVERY_JSON_BYTES);
-    if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length === 0) throw Error();
-  }
+  const owned: Buffer[] = [];
+  try {
+    const files = new Map(material.files.map(file => [file.name, content(file, owned)]));
+    const ca = new X509Certificate(files.get('aws/runtime-ca.pem')!);
+    const leaf = new X509Certificate(files.get('aws/runtime.pem')!);
+    const tls = new X509Certificate(files.get('tls/fullchain.pem')!);
+    if (!ca.ca || !ca.verify(ca.publicKey) || !ca.checkPrivateKey(createPrivateKey(files.get('aws/runtime-ca.key')!)) ||
+        !leaf.checkIssued(ca) || !leaf.verify(ca.publicKey) || !leaf.checkPrivateKey(createPrivateKey(files.get('aws/runtime.key')!)) ||
+        !tls.checkPrivateKey(createPrivateKey(files.get('tls/privkey.pem')!))) throw Error();
+    const installation = parseRecoveryJson(files.get('recovery/installation.json')!, MAX_RECOVERY_JSON_BYTES);
+    if (installation.installationUuid !== material.installationUuid) throw Error();
+    for (const name of ['operator/bootstrap-admin.json', 'operator/tenant-admin.json', 'operator/custodian.json', 'release/MANIFEST.json']) {
+      const value = parseRecoveryJson(files.get(name)!, MAX_RECOVERY_JSON_BYTES);
+      if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length === 0) throw Error();
+    }
+  } finally { owned.forEach(buffer => buffer.fill(0)); }
 }
 
 
@@ -251,18 +261,19 @@ export function validateCompanionReference(ref: RecoveryCompanionReference,
 
 export function storageKey(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 4096 &&
-    !/[\\\x00-\x1f\x7f]/.test(value) && !value.startsWith('/') &&
+    !value.includes('\\') && !Array.from(value).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) && !value.startsWith('/') &&
     value.split('/').every(part => part && part !== '.' && part !== '..');
 }
 export function objectVersion(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && value.length > 0 && value.length <= 1024 &&
-    value !== 'null' && !/[\x00-\x1f\x7f]/.test(value));
+    value !== 'null' && !Array.from(value).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127));
 }
 
 /** Authenticates this component's own envelope, exact ciphertext and all content
  * checks. The caller retains private provisional output until the full set succeeds. */
 export function openCompanion(ciphertext: Buffer, component: RecoveryComponent, kek: Buffer): RecoveryMaterial {
   let dek: Buffer | undefined, plain: Buffer | undefined;
+  const parts: Buffer[] = [];
   try {
     if (component.role !== 'companion' || component.format !== 'archon-application-recovery-companion-v1' ||
         component.compression !== 'none' || component.key.algorithm !== 'aes-256-gcm' || kek.length !== 32) throw refusal();
@@ -277,11 +288,14 @@ export function openCompanion(ciphertext: Buffer, component: RecoveryComponent, 
     dek = unwrapDekHex(ref.wrappedDek, kek);
     const decipher = createDecipheriv('aes-256-gcm', dek, ciphertext.subarray(5, 17));
     decipher.setAAD(aad(ref)); decipher.setAuthTag(ciphertext.subarray(-16));
-    plain = Buffer.concat([decipher.update(ciphertext.subarray(17, -16)), decipher.final()]);
+    // Retain each owned output before final() can reject authentication.
+    parts.push(decipher.update(ciphertext.subarray(17, -16)));
+    parts.push(decipher.final());
+    plain = Buffer.concat(parts);
     const material = validateRecoveryMaterial(plain, ref.installationUuid);
     if (material.fingerprint !== ref.sourceFingerprint) throw refusal();
     verifyMaterialCoherence(material);
     return material;
   } catch { throw refusal(); }
-  finally { dek?.fill(0); plain?.fill(0); }
+  finally { dek?.fill(0); plain?.fill(0); parts.forEach(buffer => buffer.fill(0)); }
 }

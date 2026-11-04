@@ -28,7 +28,7 @@ export async function prepareFixtures(root, originals, target) {
 
 export function copyPreparedFixtures(prepared, target) {
   const names=readJson(join(prepared,'cases.json'));
-  if(!Array.isArray(names)||names.length!==6||new Set(names).size!==6||names.some(n=>!/^(before|after)-(none|gzip|zstd)$/.test(n)))throw Error('Synthetic prepared fixture set required');
+  if(!Array.isArray(names)||names.length!==6||new Set(names).size!==6||names.some(n=>typeof n!=='string'||!/^(before|after)-(none|gzip|zstd)$/.test(n)))throw Error('Synthetic prepared fixture set required');
   mkdirSync(target,{recursive:true,mode:0o700});
   return names.map(name=>{const dir=join(target,name);cpSync(join(prepared,name),dir,{recursive:true});return {name,dir,plain:readFileSync(join(dir,'expected.sql')),material:readJson(join(prepared,'writer-material.json')),keys:[readFileSync(join(dir,'key-0')),readFileSync(join(dir,'key-1'))],ciphertext:digest(readFileSync(join(dir,'input.arcn')))};});
 }

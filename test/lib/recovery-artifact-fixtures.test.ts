@@ -30,6 +30,7 @@ describe('prepared recovery fixture set', () => {
   it.each([
     ['duplicate valid name replacing a missing compression', ['before-none', 'before-gzip', 'before-zstd', 'after-none', 'after-gzip', 'after-gzip']],
     ['incomplete epoch/compression Cartesian product', ['before-none', 'before-gzip', 'before-zstd', 'after-none', 'after-gzip']],
+    ['non-string names coercing to valid cases', names.map(name => [name])],
   ])('rejects %s before creating or copying the destination', (_label, cases) => {
     const { source, target } = prepared(cases);
     expect(() => copyPreparedFixtures(source, target)).toThrow('Synthetic prepared fixture set required');

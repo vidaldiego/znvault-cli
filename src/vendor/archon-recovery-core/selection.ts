@@ -9,7 +9,7 @@ export const MAX_METADATA_BYTES = 1024 * 1024;
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const hex = (v: unknown, n: number): v is string => typeof v === 'string' && new RegExp(`^[a-f0-9]{${n}}$`).test(v);
 const uuid = (v: unknown): v is string => typeof v === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v);
-const text = (v: unknown, max = 1024): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
+const text = (v: unknown, max = 1024): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= max && !Array.from(v).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 const positive = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0;
 const fail = (): never => { throw Error('recovery_selection_invalid'); };
 function shape(v: any, required: string[], optional: string[] = []): boolean {
