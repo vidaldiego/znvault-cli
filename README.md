@@ -20,11 +20,13 @@ npm run build
 npm link
 ```
 
-## Offline backup inspection (unreleased)
+## Offline backup inspection (6.0.0 candidate, unpublished)
 
 This source candidate requires **Node.js 24.22.1 or later**. CI exercises the
 minimum runtime and Node 26. Initial offline filesystem support is Unix; Windows
-is not claimed. No release number or publication is selected by this change.
+is not claimed. The next planned release is **6.0.0**: raising the runtime floor
+from Node 20 to Node 24.22.1 drops Node 20/22 compatibility and requires a major
+release. This candidate has not been published; upgrade Node before installing it.
 
 ```bash
 znvault recovery inspect --input dump.arcn --manifest manifest.json

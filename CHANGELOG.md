@@ -5,10 +5,12 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.0.0] - Unreleased
 
 ### Fixed
 
+- Reject duplicate or incomplete prepared recovery fixture combinations before
+  creating or copying the verification destination.
 - Refresh the pinned recovery core to clear helper-owned unwrap DEK temporaries
   on success/failure and reject non-string historical reference buckets.
   Valid envelopes, legacy references and caller buffer ownership are unchanged.
@@ -25,8 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Runtime floor is Node.js 24.22.1; CI checks that minimum and Node 26. This source
-  change does not select a release or publish an offline installer.
+- **Breaking:** raise the Node.js runtime floor from 20.0.0 to 24.22.1, dropping
+  Node 20/22 support. This selects the next major candidate, 6.0.0, rather than
+  reusing the 5.8.1 patch identity. Upgrade Node before installing the candidate.
+  CI checks 24.22.1 and 26. No tag, publication or offline installer is created.
 - Ordinary CLI initialization moved behind the early offline selector, preserving
   connected login, secrets, superadmin and existing direct-database semantics.
 

@@ -4,10 +4,25 @@ Run releases from the independent `~/Drive/vault/znvault-cli` repository.
 A release distributes CLI code; it does not deploy the Vault server, commission
 Trust Root or activate an Emergency DR environment.
 
+## 6.0.0 compatibility decision
+
+The backup-recovery integration is the unpublished **6.0.0** candidate. Upstream
+5.8.1 declares Node >=20.0.0; this candidate requires >=24.22.1 for its native
+bounded gzip/zstd recovery codecs. Dropping Node 20/22 support is a breaking
+compatibility change and must not be published as a 5.8.1 patch. Upgrade Node
+before installing 6.0.0. CI validates the exact minimum and Node 26; an engine
+range alone is not evidence that both runtimes passed. Candidate version metadata
+does not authorize a tag, npm publication, global installation or deployment.
+
+The recovery feature branch and pull requests targeting main run validation only.
+`publish.yml` accepts version-tag pushes only and checks that the tag names the
+current main commit. Feature-branch pushes and CI dispatches cannot publish.
+
 ## Gates
 
 1. Classify the compatibility impact. Removing commands or changing automatic
-   local/API selection requires a major release. Update package.json, both
+   local/API selection, or dropping a previously supported Node version, requires
+   a major release. Update package.json, both
    lockfile version fields, VERSION and CHANGELOG together.
 2. Run typecheck, lint, the unit suite with a disposable PostgreSQL through
    DRILL_TEST_DATABASE_URL, and the real MySQL/MariaDB client-security tests.

@@ -4,9 +4,12 @@ on:
   workflow_call:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feat/backup-recovery-cli-20261101]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   build:
