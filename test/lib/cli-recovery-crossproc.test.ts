@@ -37,17 +37,17 @@ describe('real profile-store processes share one authentication generation', () 
   it('shares one recovery between processes without follower promotion', async () => {
     const owner = launch('automatic');await owner.wait('before-complete');
     const follower = launch('automatic');await follower.wait('following');
-    // Give the follower a real lock observation before releasing the phone result.
-    await new Promise(resolveWait => setTimeout(resolveWait, 200));
-    owner.child.send({continue:true});
-    expect((await owner.done).status).toBe(0);expect((await follower.done).status).toBe(0);
+    // Old profile is read; release owner before the follower observes the now-free lock.
+    owner.child.send({continue:true});expect((await owner.done).status).toBe(0);
+    follower.child.send({continue:true});expect((await follower.done).status).toBe(0);
     expect(data().profiles.remembered.credentials.accessToken).toBe('recovery-access-token');
   },20000);
   it('does not promote a follower or push again after owner death', async () => {
     const owner = launch('automatic');await owner.wait('before-complete');
     const follower = launch('automatic');await follower.wait('following');
-    await new Promise(resolveWait => setTimeout(resolveWait, 200));owner.child.kill('SIGKILL');
-    expect((await follower.done).status).toBe(1);expect(data().profiles.remembered.credentials).toBeUndefined();
+    owner.child.kill('SIGKILL');await owner.done;follower.child.send({continue:true});
+    // A dead owner leaves no release event. Explicit cancellation ends the bounded wait, never promotion.
+    await follower.wait('lock-observed');follower.child.send({cancel:true});expect((await follower.done).status).toBe(1);expect(data().profiles.remembered.credentials).toBeUndefined();
   },20000);
 
   it('keeps an in-flight URL change on its initiating profile when another process switches active profile', async () => {

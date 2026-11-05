@@ -5,6 +5,25 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - 2026-11-05
+
+### Changed
+
+- **Breaking:** QR sign-in, iPhone session approvals and remembered CLI recovery now wait on
+  authenticated POST SSE hints. Protected status reads occur only for real
+  changed revisions, with no idle refresh or polling fallback. The Vault server
+  must be >=1.84.0 and advertise `waitEvents` v1; older or disconnected servers require an
+  explicit retry or password/TOTP alternative. Install backend support on every
+  node first; upgrading only the CLI breaks these flows against older servers.
+  Polling fallback is prohibited by owner policy.
+- Concurrent recovery followers watch configuration replacement and lock
+  release events. They never take over or push again. A crashed owner without
+  a release event leaves followers waiting until cancellation or the original
+  deadline, replacing the former stale-lock discovery timeout.
+- Preserve the original attempt deadlines, TLS/SPKI and named-profile fences,
+  separate unseal/User-Sealed approvals, and single-use completion semantics.
+  The Node.js runtime floor remains 24.22.1.
+
 ## [6.0.1] - 2026-11-05
 
 ### Fixed

@@ -42,7 +42,7 @@ function fixture(origin = 'https://vault-sec.example.test', superadmin = false) 
   let point: Buffer;
   const request = vi.fn(async (options: RequestOptions): Promise<unknown> => {
     options.sessionGuard?.();
-    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, origin, installationId, deviceLogin: {version: 1, enabled: true}, cliRecovery: {version: 1, enabled: true}};
+    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, waitEvents:{version:1,enabled:true}, origin, installationId, deviceLogin: {version: 1, enabled: true}, cliRecovery: {version: 1, enabled: true}};
     if (options.path.endsWith('/start')) {
       point = Buffer.from((options.body as {browserPublicKey: string}).browserPublicKey, 'base64url');
       return {origin, installationId, requestId: challengeId, claimant, expiresAt};
@@ -60,7 +60,7 @@ function fixture(origin = 'https://vault-sec.example.test', superadmin = false) 
     if (options.path.endsWith('/cancel')) return {cancelled: true};
     throw new Error('Unexpected path');
   });
-  const peer = {getBaseUrl: () => origin, request};
+  const peer = {getBaseUrl: () => origin, request, openEventStream: async function* () {yield {type:'changed' as const,version:1 as const,requestId:challengeId,revision:'1'};}};
   state.profile = {url: origin, insecure: false, timeout: 1000, credentials: {accessToken: 'old-session', refreshToken: 'old-refresh'}};
   return {peer, origin, installationId, challengeId, claimant, expiresAt, user, tokens, primary,
     calls: (action: string) => request.mock.calls.filter(([value]) => value.path.endsWith('/' + action))};
@@ -317,16 +317,30 @@ describe('terminal QR device login', () => {
     expect(f.calls('cancel')).toHaveLength(0);
     expect(state.writes).toBe(0);
   });
-  it('polls serially and stops at the original deadline without extending it', async () => {
-    const f = fixture(), original = f.peer.request.getMockImplementation()!, startedAt = Date.now();
-    let polls = 0;
-    f.peer.request.mockImplementation(async options => {
-      if (!options.path.endsWith('/status')) return await original(options);
-      if (++polls === 2) vi.spyOn(Date, 'now').mockReturnValue(startedAt + 125000);
-      return {state: 'pending', expiresAt: f.expiresAt};
-    });
-    expect(await qrLogin(f.peer, {onPending: vi.fn()})).toMatchObject({success: false});
-    expect(f.calls('status')).toHaveLength(2);
-    expect(f.calls('start')).toHaveLength(1); expect(f.calls('complete')).toHaveLength(0); expect(state.writes).toBe(0);
+  it('stays idle until the original deadline without extending it', async () => {
+    vi.useFakeTimers();const f = fixture(), original = f.peer.request.getMockImplementation()!;
+    let observed!:()=>void;const statusRead=new Promise<void>(r=>{observed=r;});
+    f.peer.request.mockImplementation(async options => {if(options.path.endsWith('/status')){observed();return {state:'pending',expiresAt:f.expiresAt};}return await original(options);});
+    f.peer.openEventStream = async function* () {
+      yield {type:'changed' as const,version:1 as const,requestId:f.challengeId,revision:'1'};
+      await new Promise<void>(()=>{});
+    };
+    const result = qrLogin(f.peer, {onPending:vi.fn()});await statusRead;await vi.advanceTimersByTimeAsync(0);
+    expect(f.calls('status')).toHaveLength(1);await vi.advanceTimersByTimeAsync(90000);expect(f.calls('status')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(31000);expect(await result).toMatchObject({success:false,error:expect.stringContaining('expired')});
+    expect(f.calls('start')).toHaveLength(1);expect(f.calls('complete')).toHaveLength(0);expect(state.writes).toBe(0);
   });
+  it.each([undefined,{version:1,enabled:false}])('fails clearly without event support %j and never starts or polls',async capability=>{
+    const f=fixture(), original=f.peer.request.getMockImplementation()!;
+    f.peer.request.mockImplementation(async options=>{const value=await original(options);if(options.path.endsWith('/protocol'))return {...value as object,waitEvents:capability};return value;});
+    expect(await qrLogin(f.peer,{onPending:vi.fn()})).toMatchObject({success:false,error:expect.stringContaining('events are unavailable')});
+    expect(f.calls('start')).toHaveLength(0);expect(f.calls('status')).toHaveLength(0);
+  });
+  it('reports a disconnected event stream with zero fallback reads or replay',async()=>{
+    const f=fixture(), original=f.peer.request.getMockImplementation()!;
+    f.peer.request.mockImplementation(async options=> options.path.endsWith('/status') ? {state:'pending',expiresAt:f.expiresAt}:await original(options));
+    expect(await qrLogin(f.peer,{onPending:vi.fn()})).toMatchObject({success:false,error:expect.stringContaining('events disconnected')});
+    expect(f.calls('status')).toHaveLength(1);expect(f.calls('complete')).toHaveLength(0);expect(f.calls('start')).toHaveLength(1);
+  });
+
 });

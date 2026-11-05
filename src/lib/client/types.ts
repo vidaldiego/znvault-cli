@@ -5,6 +5,8 @@
  */
 
 export interface RequestOptions {
+  /** Internal native POST SSE response; bypasses JSON buffering and automatic recovery. */
+  _eventStream?: boolean;
   /** Explicit endpoint guarantee; never inferred from method/body/headers. */
   recoveryReplaySafe?: boolean;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

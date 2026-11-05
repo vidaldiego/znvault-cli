@@ -45,3 +45,24 @@ describe('retirement uses the real HTTPS SPKI guard', () => {
     } finally {await new Promise<void>(resolve => {server.close(() => {resolve();});});}
   });
 });
+
+describe('native POST event stream retains TLS and pinning', () => {
+  it.each([false,true])('verifies the same CA and SPKI before sending claimant (mismatch=%s)', async mismatch => {
+    const {HttpClient}=await import('../../src/lib/client/http.js');
+    let received=0;
+    const server=https.createServer({key:privateKey,cert:certificate},(request,response)=>{
+      received++;request.resume();request.on('end',()=>{response.writeHead(200,{'Content-Type':'text/event-stream','Connection':'close'});
+        response.end('event: changed\nid: 1\ndata: {"version":1,"requestId":"synthetic-attempt","revision":"1"}\n\n');});
+    });server.on('tlsClientError',()=>{});
+    await new Promise<void>(resolve=>{server.listen(0,'127.0.0.1',resolve);});
+    try {
+      const origin=`https://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
+      https.globalAgent.options.ca=certificate;
+      const peer=new HttpClient({baseUrl:origin,insecure:true,tlsSpkiSha256:mismatch?'0'.repeat(64):pin});
+      const consume=async()=>{const events=[];for await(const e of peer.openEventStream('/auth/cli/recovery/events',
+        {requestId:'synthetic-attempt',claimant:'synthetic-proof'},{signal:AbortSignal.timeout(2000),skipAuth:true}))events.push(e);return events;};
+      if(mismatch){await expect(consume()).rejects.toThrow(/SPKI/);expect(received).toBe(0);}
+      else {expect(await consume()).toEqual([{type:'changed',version:1,requestId:'synthetic-attempt',revision:'1'}]);expect(received).toBe(1);}
+    }finally{server.closeAllConnections();await new Promise<void>(resolve=>{server.close(()=>{resolve();});});}
+  });
+});

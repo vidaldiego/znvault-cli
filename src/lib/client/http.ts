@@ -6,6 +6,7 @@
  */
 
 import https from 'node:https';
+import {parseMobileWaitEvents, type MobileWaitEvent} from '../mobile-auth/mobile-auth-wait.js';
 import http from 'node:http';
 import { createHash, timingSafeEqual, X509Certificate } from 'node:crypto';
 import { checkServerIdentity, type PeerCertificate } from 'node:tls';
@@ -536,6 +537,25 @@ export class HttpClient {
     }
   }
 
+  /** The same prepared authentication/TLS transport, with no refresh, redirects or recovery replay. */
+  async *openEventStream(path: string, body: unknown, options: {
+    signal: AbortSignal; skipAuth?: boolean; sessionGuard?: RequestOptions['sessionGuard'];
+    headers?: Readonly<Record<string, string>>;
+  }): AsyncGenerator<MobileWaitEvent> {
+    const guard = this.authenticationGuard(options.sessionGuard);
+    guard();options.signal.throwIfAborted();
+    const requestId = (body as {requestId?: unknown} | null)?.requestId;
+    if (typeof requestId !== 'string' || !requestId) throw new Error('MOBILE_AUTH_EVENTS_INVALID');
+    const response = await this.prepareRequest<http.IncomingMessage>({method:'POST',path,body,...options,
+      sessionGuard: guard,skipAuthRefresh:true,_eventStream:true});
+    try {
+      guard();
+      for await (const event of parseMobileWaitEvents(response, requestId)) {
+        options.signal.throwIfAborted();guard();yield event;
+      }
+    } finally {response.destroy();}
+  }
+
   private async prepareRequest<T>(options: RequestOptions): Promise<T> {
     options.sessionGuard?.();
     const url = new URL(this.baseUrl);
@@ -550,7 +570,7 @@ export class HttpClient {
     }
 
     const headers: Record<string, string> = {
-      'Accept': 'application/json',
+      'Accept': options._eventStream ? 'text/event-stream' : 'application/json',
     };
 
     if (options.body !== undefined && options.body !== null) {
@@ -627,7 +647,7 @@ export class HttpClient {
       path: url.pathname + url.search,
       method: options.method,
       headers,
-      timeout: this.timeout,
+      timeout: options._eventStream ? 0 : this.timeout,
       rejectUnauthorized: !this.insecure,
       ...(options.signal ? {signal: options.signal} : {}),
     };
@@ -647,6 +667,13 @@ export class HttpClient {
     return new Promise((resolve, reject) => {
       const protocol = url.protocol === 'https:' ? https : http;
       const req = protocol.request(requestOptions, (res) => {
+        if (options._eventStream) {
+          const statusCode = res.statusCode ?? 0;
+          if (statusCode !== 200 || res.headers['content-type']?.split(';')[0]?.trim() !== 'text/event-stream') {
+            res.destroy();reject(Object.assign(new Error('MOBILE_AUTH_EVENTS_UNAVAILABLE: explicitly retry.'), {statusCode}));return;
+          }
+          resolve(res as T);return;
+        }
         let data = '';
         const recoveryChunks: Buffer[] = [];
         let responseBytes = 0;

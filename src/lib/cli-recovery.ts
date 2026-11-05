@@ -1,12 +1,13 @@
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
-import {setTimeout as delay} from 'node:timers/promises';
+import {observeMobileStatus} from './mobile-auth/mobile-auth-wait.js';
+import {waitForRecoveryOwner} from './mobile-auth/recovery-follower.js';
 import {HttpClient} from './client/http.js';
 import {client} from './client.js';
 import {getConfigPath, getRuntimeProfile} from './config/store.js';
 import {authenticationFingerprint, beginProfileAuthentication, cancelProfileAuthentication, getActiveProfileName,
   getProfile, invalidateProfileCache, mutateProfileAuthentication, setRuntimeProfile, type Profile, type StoredCliRecovery} from './config.js';
 import {cliLoginOrigin, parseCliLoginResponse, type QrLoginPeer, type QrLoginResult, type RecoveryReceipt} from './qr-login.js';
-import {acquireRefreshLock, isRefreshLockHeld, computeLockKey} from './client/refresh-lock.js';
+import {acquireRefreshLock, isRefreshLockHeld, computeLockKey, lockFilePathFor} from './client/refresh-lock.js';
 import {getVersion} from './version.js';
 
 export interface RecoverCliOptions {
@@ -109,6 +110,8 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
     if (protocol.protocolVersion !== 3 || protocol.origin !== origin || protocol.installationId !== saved.installationId || feature.version !== 1 || feature.enabled !== true) {
       fail('CLI recovery is not enabled on this Vault.');
     }
+    const waitEvents = record(protocol.waitEvents ?? {}), openEvents = peer.openEventStream?.bind(peer);
+    if (waitEvents.version !== 1 || waitEvents.enabled !== true || !openEvents) fail('Live authentication events are unavailable. Explicitly retry or use password/TOTP.');
     const codeVerifier = randomBytes(32).toString('base64url');
     const started = record(await request('start', {grantId: saved.grantId, credential: saved.credential,
       codeChallenge: createHash('sha256').update(codeVerifier).digest('base64url')}));
@@ -120,8 +123,12 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
     clearTimeout(timer);timer = setTimeout(() => {controller.abort('expired');}, Math.max(0, deadline-Date.now()));
     await options.onPending({comparisonNumber: started.comparisonNumber, expiresAtSec: attempt.expiresAt, origin});check();
     const proof = {requestId: attempt.requestId, claimant: attempt.claimant};
-    for (;;) {
-      const state = record(await request('status', proof));
+    for await (const value of observeMobileStatus({requestId:attempt.requestId,expiresAt:deadline,signal:controller.signal,
+      openEvents:(afterRevision,signal)=>{check();return openEvents('/auth/cli/recovery/events',
+        {...proof,...(afterRevision === undefined ? {} : {afterRevision})},{signal,skipAuth:true,
+          sessionGuard:()=>{check();},headers:{'User-Agent':'znvault-cli/'+getVersion()}});},
+      readStatus:async()=>await request('status',proof)})) {
+      const state = record(value);
       if (state.expiresAt !== attempt.expiresAt) fail('Invalid CLI recovery response. Start again.');
       if (state.state === 'approved') {
         const tokens = parseCliLoginResponse(await request('complete', {...proof, codeVerifier}));
@@ -139,8 +146,8 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
         stored = true;return {success: true, user: tokens.user, recoveryReceipt: {profileName: name, authGeneration: generation ?? fail('CLI recovery generation missing.'), grantId: saved.grantId, expiresAtSec: saved.expiresAtSec, origin, tlsSpkiSha256: initialPin, insecure: initialInsecure}};
       }
       if (!['pending', 'claimed'].includes(String(state.state))) fail('CLI recovery ended without approval. Start a new explicit request.');
-      await delay(Math.min(2000, Math.max(0, deadline-Date.now())), undefined, {signal: controller.signal});
     }
+    return fail('CLI recovery ended. Explicitly retry.');
   } catch (error) {
     const status = error !== null && typeof error === 'object' ? error as {statusCode?: number; errorCode?: string; retryAfterSeconds?: number} : {};
     const metadata = {
@@ -153,6 +160,8 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
     }
     const retry = status.statusCode === 429 ? ` Too many requests. Retry after ${Math.max(1, Math.ceil(status.retryAfterSeconds ?? 30)).toString()} seconds.` : '';
     return {success: false, ...metadata, error: retry ? 'CLI recovery was rate limited.' + retry : controller.signal.aborted ? 'CLI recovery expired or cancelled.' :
+      error instanceof Error && error.message === 'MOBILE_AUTH_EVENTS_DISCONNECTED' ? 'Live authentication events disconnected. Run login --recover explicitly to try again; no session was stored.' :
+      error instanceof Error && error.message.startsWith('MOBILE_AUTH_EVENTS_') ? 'Live authentication events are unavailable. Explicitly retry or use password/TOTP; no session was stored.' :
       error instanceof RecoveryError ? error.message : 'CLI recovery did not finish. Run login --recover explicitly to try again; no session was stored.'};
   } finally {
     if (timer) clearTimeout(timer);
@@ -198,15 +207,24 @@ export async function coordinateCliRecovery(peer: QrLoginPeer,
     check();
     const lock = await acquireRefreshLock(key, {timeoutMs: 0});
     if (!lock) {
-      for (;;) {
+      let receipt: RecoveryReceipt | undefined;
+      const reconcile = (): boolean => {
         const current = check(), tokens = current.credentials;
         if ((current.authGeneration !== initial.authGeneration || !initial.credentials?.accessToken) && tokens?.accessToken && tokens.refreshToken && tokens.expiresAt > Date.now() &&
             (!initial.credentials?.userId || (tokens.userId === initial.credentials.userId && tokens.tenantId === initial.credentials.tenantId))) {
-          return {profileName: name, authGeneration: current.authGeneration ?? fail('CLI recovery generation missing.'), grantId: grant.grantId, expiresAtSec: grant.expiresAtSec, origin: grant.origin, tlsSpkiSha256: initialPin, insecure: initialInsecure};
+          receipt = {profileName: name, authGeneration: current.authGeneration ?? fail('CLI recovery generation missing.'), grantId: grant.grantId, expiresAtSec: grant.expiresAtSec, origin: grant.origin, tlsSpkiSha256: initialPin, insecure: initialInsecure};
+          return true;
         }
-        if (!await isRefreshLockHeld(key)) fail('The other CLI recovery ended without installing a session. Explicitly retry.');
-        await delay(100, undefined, {signal: controller.signal});
-      }
+        return false;
+      };
+      await waitForRecoveryOwner({configPath:getConfigPath(),lockPath:lockFilePathFor(key)+'.lock',signal:controller.signal,
+        recheck:async()=>{
+          if (reconcile()) return 'ready';
+          if (await isRefreshLockHeld(key)) return 'pending';
+          // Owner may store/release between our profile read and the lock observation.
+          return reconcile() ? 'ready' : 'failed';
+        }});
+      return receipt ?? fail('CLI recovery session missing. Explicitly retry.');
     }
     try {
       const current = check();

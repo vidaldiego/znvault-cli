@@ -21,7 +21,7 @@ async function exerciseRecovery(coordinated = false) {
   const requestId = randomUUID(), claimant = randomBytes(32).toString('base64url'), expiresAt = Math.floor(Date.now()/1000)+120;
   const peer = {getBaseUrl: () => saved.origin, request: async options => {
     options.sessionGuard?.();
-    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, origin: saved.origin, installationId: saved.installationId, cliRecovery: {version: 1, enabled: true}};
+    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, waitEvents:{version:1,enabled:true}, origin: saved.origin, installationId: saved.installationId, cliRecovery: {version: 1, enabled: true}};
     if (options.path.endsWith('/start')) {process.send?.({phase:'recovery-started'});return {requestId, claimant, expiresAt, comparisonNumber: '42'};}
     if (options.path.endsWith('/status')) return {state: 'approved', expiresAt};
     if (options.path.endsWith('/complete')) {
@@ -32,9 +32,15 @@ async function exerciseRecovery(coordinated = false) {
     }
     if (options.path.endsWith('/cancel')) return {cancelled: true};
     throw new Error('Unexpected test request');
-  }};
+  },openEventStream:async function*(){yield {type:'changed',version:1,requestId,revision:'1'};}};
   const present = (target, signal) => recoverCliLogin(target, {signal, onPending: async () => {}});
-  if (coordinated) {process.send?.({phase:'following'});await coordinateCliRecovery(peer, present);return true;}
+  if (coordinated) {
+    // Deterministically stop after the follower read the old profile, before it observes the lock.
+    const lockfile=(await import('proper-lockfile')).default, originalCheck=lockfile.check;
+    lockfile.check=async (...args)=>{await barrier('following');lockfile.check=originalCheck;const held=await originalCheck(...args);process.send?.({phase:'lock-observed'});return held;};
+    const controller=new AbortController();const cancel=message=>{if(message.cancel)controller.abort();};process.on('message',cancel);
+    try {await coordinateCliRecovery(peer,present,controller.signal);return true;}finally{process.removeListener('message',cancel);}
+  }
   return (await present(peer)).success;
 }
 
