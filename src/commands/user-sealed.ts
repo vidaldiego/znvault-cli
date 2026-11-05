@@ -23,7 +23,7 @@ export async function readApprovalCode(fromStdin: boolean, input: Readable = pro
 }
 
 const guidance: Record<string, string> = {
-  SECRET_REQUIRES_USER_SESSION: 'Run znvault login with password or a linked PRF passkey to make the primary key available.',
+  SECRET_REQUIRES_USER_SESSION: 'The primary User-Sealed key is locked or unavailable. Run znvault login --qr with an enabled iPhone, or znvault login --web with password, a linked PRF passkey or an enabled iPhone, then repeat the approval.',
   USER_SEALED_APPROVAL_REQUIRED: 'Run znvault user-sealed approve --iphone or --otp, then explicitly repeat the operation.',
   SESSION_APPROVAL_HUMAN_SESSION_REQUIRED: 'Use a named profile with a HUMAN login; remove ambient API key or password authentication.',
   SESSION_APPROVAL_CONTEXT_CHANGED: 'The profile, Vault or login changed. Start a new approval in the intended profile.',
