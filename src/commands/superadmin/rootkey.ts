@@ -44,6 +44,8 @@ interface RootKeyProbeState {
   at: string;
   degraded: boolean;
   results: RootKeyProbeResult[];
+  stale?: boolean;
+  delivery?: Array<{providerId:string;state:'connecting'|'connected'|'disconnected'|'unsupported'}>;
 }
 
 interface RootKeyResolutionState {
@@ -54,7 +56,7 @@ interface RootKeyResolutionState {
   totalLatencyMs: number;
   attempts: RootKeyAttempt[];
   configured: Array<{ id: string; type: string; priority: number }>;
-  /** Latest periodic post-boot provider probe, when the service has run one. */
+  /** Latest initial/event observation and delivery freshness. */
   lastProbe?: RootKeyProbeState;
 }
 
@@ -94,6 +96,8 @@ interface RootKeyWrapReceipt {
   keyId: string | null;
   kcv: string;
   createdAt: string;
+  operationId?: string;
+  ciphertextSha256?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -124,7 +128,7 @@ export async function rootkeyStatus(options: { json?: boolean }): Promise<void> 
     }
 
     const resolution = response.resolution;
-    // Effective degraded = boot resolution OR the latest periodic probe;
+    // Effective degraded = boot resolution OR the latest provider observation;
     // status must never report last-boot nostalgia as current health.
     const effectiveDegraded =
       resolution !== null &&
@@ -137,10 +141,16 @@ export async function rootkeyStatus(options: { json?: boolean }): Promise<void> 
       'Resolved at': formatDate(resolution?.resolvedAt),
       'Total latency': resolution ? `${String(resolution.totalLatencyMs)}ms` : '-',
       'Last probe': resolution?.lastProbe
-        ? `${formatDate(resolution.lastProbe.at)} — ${resolution.lastProbe.degraded ? 'DEGRADED' : 'healthy'}`
+        ? `${formatDate(resolution.lastProbe.at)} — ${resolution.lastProbe.stale ? 'STALE' : resolution.lastProbe.degraded ? 'DEGRADED' : 'healthy'}`
         : 'never (probe has not run yet)',
+      'Event delivery': resolution?.lastProbe?.stale === true ? 'STALE — explicit verification required' :
+        resolution?.lastProbe?.stale === false ? 'connected' : 'unknown (legacy monitor)',
       'Cleartext file on this node': response.localFile.present ? 'present' : 'absent',
     });
+
+    if(resolution?.lastProbe?.stale){
+      output.warn('The last observation is not current provider health. Event delivery is disconnected or unsupported; use rootkey verify explicitly.');
+    }
 
     if (effectiveDegraded) {
       output.warn(
@@ -273,6 +283,7 @@ const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 export async function rootkeyWrap(options: {
   provider: string;
   json?: boolean;
+  operationId?: string;
 }): Promise<void> {
   if (!PROVIDER_ID_PATTERN.test(options.provider)) {
     output.error(
@@ -282,15 +293,34 @@ export async function rootkeyWrap(options: {
     process.exit(1);
   }
 
+  if (options.provider === 'trust-root' &&
+      (options.operationId === undefined || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(options.operationId))) {
+    output.error('Trust Root requires a persisted public operation UUID; reuse it on every retry.');
+    process.exit(1);
+  }
+
   const spinner = output.spinner(
     `Wrapping the bootstrap key into '${options.provider}'...`,
   ).start();
 
   try {
-    const receipt = await client.post<RootKeyWrapReceipt>(
+    const rawReceipt = await client.post<unknown>(
       '/v1/superadmin/rootkey/wrap',
-      { provider: options.provider },
+      { provider: options.provider,
+        ...(options.provider === 'trust-root' ? {operationId: options.operationId} : {}) },
     );
+    const receipt = rawReceipt as RootKeyWrapReceipt;
+    if (options.provider === 'trust-root') {
+      const expected = ['providerId','keyId','kcv','createdAt','operationId','ciphertextSha256'].sort();
+      if (rawReceipt === null || typeof rawReceipt !== 'object' ||
+          JSON.stringify(Object.keys(receipt).sort()) !== JSON.stringify(expected) ||
+          receipt.providerId !== 'trust-root' || receipt.keyId !== 'trustroot/0200/e0001' ||
+          receipt.operationId !== options.operationId ||
+          typeof receipt.kcv !== 'string' || !/^kcv1:[0-9a-f]{32}$/.test(receipt.kcv) ||
+          typeof receipt.ciphertextSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(receipt.ciphertextSha256) ||
+          typeof receipt.createdAt !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(receipt.createdAt) ||
+          !Number.isFinite(Date.parse(receipt.createdAt))) throw new Error('trust-root-unavailable');
+    }
     spinner.stop();
 
     if (options.json) {
@@ -313,7 +343,9 @@ export async function rootkeyWrap(options: {
     );
   } catch (err) {
     spinner.fail('Failed to wrap the bootstrap key');
-    output.error(err instanceof Error ? err.message : String(err));
+    output.error(options.provider === 'trust-root'
+      ? 'Trust Root wrap unavailable; retain the operation UUID and reconcile before retrying.'
+      : err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 }
@@ -341,6 +373,7 @@ export function registerRootkeyCommands(parent: Command): void {
     .command('wrap')
     .description("Wrap the current bootstrap key into a provider's envelope (never retires anything)")
     .requiredOption('--provider <id>', "Configured envelope provider id (e.g. 'aws-kms')")
+    .option('--operation-id <uuid>', 'Persisted public UUID for trust-root; reuse it on every retry')
     .option('--json', 'Output the receipt as JSON')
     .action(rootkeyWrap);
 }

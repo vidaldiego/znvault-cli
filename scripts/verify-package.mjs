@@ -25,6 +25,11 @@ try {
   }
   const run = (...args) => execFileSync(process.execPath, [join(root, 'dist/index.js'), '--no-plugins', ...args], { env, cwd: scratch, encoding: 'utf8' });
   if (run('--version').trim() !== expectedVersion) throw new Error('CLI version mismatch');
+  const [major,minor]=pkg.version.split('.').map(Number);
+  if ((major>7 || major===7&&minor>=1) &&
+      !run('superadmin','rootkey','wrap','--help').includes('--operation-id <uuid>')) {
+    throw new Error('Trust Root stable operation UUID surface missing');
+  }
   const login = run('login', '--help');
   if (!['--qr', '--web', '--recover', '--remember-iphone'].every(option => login.includes(option))) throw new Error('QR/browser/recovery login surface missing');
   const recovery = run('superadmin', 'cli-recovery', '--help');
