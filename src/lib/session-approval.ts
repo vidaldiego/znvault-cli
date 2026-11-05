@@ -1,4 +1,4 @@
-import {setTimeout as delay} from 'node:timers/promises';
+import {observeMobileStatus, type MobileWaitEvent} from './mobile-auth/mobile-auth-wait.js';
 import {client, VaultClient, type RequestOptions} from './client.js';
 import {getActiveProfileName, getProfile, invalidateProfileCache, setRuntimeProfile} from './config.js';
 import {getRuntimeProfile} from './config/store.js';
@@ -25,6 +25,7 @@ export interface ApprovalSession {
   origin: string;
   account: string;
   check: (candidateAccessToken?: string) => void;
+  openEvents: (path: string, body: unknown, signal: AbortSignal) => AsyncIterable<MobileWaitEvent>;
   request: <T>(method: RequestOptions['method'], path: string, body?: unknown, signal?: AbortSignal) => Promise<T>;
 }
 
@@ -80,6 +81,9 @@ export async function withApprovalSession<T>(operation: (session: ApprovalSessio
     const session: ApprovalSession = {
       profileName, origin, account: `${profile.credentials.tenantId ?? 'system'}/${profile.credentials.username}`,
       check,
+      openEvents: (path, body, signal) => {
+        check();return peer.openEventStream(path, body, {signal,sessionGuard:check,headers:{'User-Agent':`znvault-cli/${getVersion()}`}});
+      },
       request: async <R>(method: RequestOptions['method'], path: string, body?: unknown, signal?: AbortSignal): Promise<R> => {
         check();
         const target = new URL(path, origin);
@@ -155,6 +159,8 @@ export interface IPhoneApprovalOptions {
 
 export async function approveWithIPhone(session: ApprovalSession, kind: ApprovalKind, options: IPhoneApprovalOptions): Promise<ApprovalResult> {
   await requirePrimaryKey(session, kind);
+  const protocol = await session.request<{waitEvents?:{version:number;enabled:boolean}}>('GET','/auth/mfa/iphone/protocol',undefined,options.signal);
+  if (protocol.waitEvents?.version !== 1 || !protocol.waitEvents.enabled) fail('SESSION_APPROVAL_EVENTS_UNAVAILABLE: explicitly retry or use TOTP.');
   const {devices} = await session.request<{devices: Array<{id: string; ready: boolean; state: string}>}>('GET', '/auth/mfa/iphone/devices', undefined, options.signal);
   const ready = devices.filter(device => device.ready && device.state === 'active');
   const device = options.deviceId ? ready.find(item => item.id === options.deviceId) : ready.length === 1 ? ready[0] : undefined;
@@ -168,16 +174,16 @@ export async function approveWithIPhone(session: ApprovalSession, kind: Approval
   try {
     if (!/^\d{2}$/.test(pending.comparisonNumber) || !Number.isFinite(pending.expiresAt)) fail('SESSION_APPROVAL_INVALID_CHALLENGE');
     options.onPending?.({account: session.account, origin: session.origin, comparisonNumber: pending.comparisonNumber, expiresAt: pending.expiresAt});
-    while (Date.now() < pending.expiresAt * 1000) {
-      options.signal?.throwIfAborted();
-      const value = await session.request<{state: string}>('POST', `${base}/status`, body, options.signal);
+    for await (const value of observeMobileStatus({requestId:pending.requestId,expiresAt:pending.expiresAt*1000,
+      signal:options.signal ?? new AbortController().signal,
+      openEvents:(afterRevision,signal)=>session.openEvents(`${base}/events`,{...body,...(afterRevision === undefined ? {} : {afterRevision})},signal),
+      readStatus:async signal=>await session.request<{state:string}>('POST',`${base}/status`,body,signal)})) {
       if (value.state === 'approved') {
         const result = await completeOnce(session, kind, `${base}/complete`, body, scope, options.signal);
         completed = true;
         return result;
       }
       if (value.state !== 'pending') fail(`SESSION_APPROVAL_${value.state === 'denied' ? 'DENIED' : 'EXPIRED'}`);
-      await delay(2000, undefined, {signal: options.signal});
     }
     return fail('SESSION_APPROVAL_EXPIRED');
   } finally {

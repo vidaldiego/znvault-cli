@@ -18,6 +18,18 @@ The recovery feature branch and pull requests targeting main run validation only
 `publish.yml` accepts version-tag pushes only and checks that the tag names the
 current main commit. Feature-branch pushes and CI dispatches cannot publish.
 
+## 7.0.0 event transport compatibility
+
+The 7.0.0 major candidate requires Vault >=1.84.0 and advertised `waitEvents` v1 for
+QR sign-in, iPhone approvals and remembered CLI recovery. An isolated CLI upgrade
+breaks these commands against earlier servers; this requires a major version.
+Deploy event support
+to every backend first. An unsupported or disconnected stream fails clearly;
+owner policy prohibits fallback to status polling. Password/TOTP alternatives
+remain available. The Node runtime floor stays >=24.22.1. Candidate metadata
+is subject to the independent compatibility review and does not authorize
+publication or installation.
+
 ## Gates
 
 1. Classify the compatibility impact. Removing commands or changing automatic

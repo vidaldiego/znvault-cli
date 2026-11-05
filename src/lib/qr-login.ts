@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {setTimeout as delay} from 'node:timers/promises';
+import {observeMobileStatus} from './mobile-auth/mobile-auth-wait.js';
 import type {HttpClient} from './client.js';
 import {getActiveProfileName, getProfile, invalidateProfileCache, mutateProfileAuthentication, setRuntimeProfile,
   authenticationFingerprint, beginProfileAuthentication, cancelProfileAuthentication, type Profile, type StoredCliRecovery} from './config.js';
@@ -13,7 +13,7 @@ export interface QrLoginOptions {signal?: AbortSignal; rememberIphone?: boolean 
 export interface QrLoginUser {id: string; username: string; role: string; tenantId: string | null; mfaVerified: boolean}
 export interface RecoveryReceipt {profileName: string; authGeneration: string; grantId: string; expiresAtSec: number; origin: string; tlsSpkiSha256?: string | null; insecure?: boolean}
 export type QrLoginResult = {success: true; user: QrLoginUser; recoveryReceipt?: RecoveryReceipt} | {success: false; error: string; statusCode?: number; errorCode?: string; retryAfterSeconds?: number};
-export type QrLoginPeer = Pick<HttpClient, 'getBaseUrl' | 'request'> & Partial<Pick<HttpClient, 'getTlsSpkiSha256' | 'getInsecure'>>;
+export type QrLoginPeer = Pick<HttpClient, 'getBaseUrl' | 'request'> & Partial<Pick<HttpClient, 'getTlsSpkiSha256' | 'getInsecure' | 'openEventStream'>>;
 interface Attempt {requestId: string; claimant: string; expiresAt: number; origin: string; installationId: string}
 export interface CliLoginResponse {accessToken: string; refreshToken: string; expiresIn: number; userSealedUnlocked: boolean; user: QrLoginUser; cliRecovery?: StoredCliRecovery}
 const base = '/auth/mfa/iphone', uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -108,6 +108,8 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     if (protocol.protocolVersion !== 3 || capability.version !== 1 || capability.enabled !== true) {
       fail('Device sign-in is not enabled on this Vault.');
     }
+    const waitEvents = row(protocol.waitEvents ?? {}), openEvents = peer.openEventStream?.bind(peer);
+    if (waitEvents.version !== 1 || waitEvents.enabled !== true || !openEvents) fail('Live authentication events are unavailable. Explicitly retry or use password/TOTP.');
     if (protocol.origin !== origin || !uuid.test(text(protocol.installationId))) fail();
     if (options.rememberIphone !== undefined && options.rememberIphone !== false) {
       let available = false;
@@ -137,8 +139,12 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     await options.onPending({locator: locator.toString(), origin, expiresAt: Math.floor(deadline / 1000), rememberIphone});
     check();
     const proof = {requestId: attempt.requestId, claimant: attempt.claimant};
-    for (;;) {
-      const status = row(await request('status', proof));
+    for await (const value of observeMobileStatus({requestId:attempt.requestId,expiresAt:deadline,signal:controller.signal,
+      openEvents:(afterRevision,signal)=>{check();return openEvents(base+'/device-login/events',
+        {...proof,...(afterRevision === undefined ? {} : {afterRevision})},{signal,skipAuth:true,
+          sessionGuard:()=>{check();},headers:{'User-Agent':'znvault-cli/'+getVersion()}});},
+      readStatus:async()=>await request('status',proof)})) {
+      const status = row(value);
       if (status.expiresAt !== attempt.expiresAt) fail();
       if (status.state === 'approved') {
         if (status.transferContext !== undefined) {
@@ -171,10 +177,12 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
       if (status.state === 'expired') fail('QR sign-in expired. Start again.');
       if (status.state === 'cancelled') fail('QR sign-in cancelled.');
       if (status.state !== 'pending' && status.state !== 'claimed') fail();
-      await delay(Math.min(1000, Math.max(0, deadline - Date.now())), undefined, {signal: controller.signal});
     }
+    return fail('QR sign-in ended. Explicitly retry.');
   } catch (error) {
     const message = controller.signal.reason === 'expired' ? 'QR sign-in expired. Start again.' : controller.signal.aborted ? 'QR sign-in cancelled.' :
+      error instanceof Error && error.message === 'MOBILE_AUTH_EVENTS_DISCONNECTED' ? 'Live authentication events disconnected. Explicitly retry QR sign-in; no session was stored.' :
+      error instanceof Error && error.message.startsWith('MOBILE_AUTH_EVENTS_') ? 'Live authentication events are unavailable. Explicitly retry or use password/TOTP; no session was stored.' :
       error instanceof QrLoginError ? error.message : 'QR sign-in could not finish. Start again; no session was stored.';
     return {success: false, error: message};
   } finally {

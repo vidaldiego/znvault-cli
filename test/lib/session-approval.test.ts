@@ -27,7 +27,8 @@ beforeEach(()=>{
       onRequest(request);
       if(lost&&request.path.endsWith('/complete')){req.emit('error',new Error('Synthetic lost response'));return;}
       let body:unknown={};
-      if(request.path==='/auth/refresh')body={accessToken:token().replace('.fixture','.successor'),refreshToken:'public-refresh-successor',expiresIn:3600};
+      if(request.path==='/auth/mfa/iphone/protocol')body={waitEvents:{version:1,enabled:true}};
+      else if(request.path==='/auth/refresh')body={accessToken:token().replace('.fixture','.successor'),refreshToken:'public-refresh-successor',expiresIn:3600};
       else if(request.path==='/auth/mfa/iphone/devices')body={devices:[{id:'phone-a',name:'Public fixture phone',ready:true,state:'active'}]};
       else if(request.path.endsWith('/start'))body={requestId:'request-a',claimant:'public-synthetic-claimant',comparisonNumber:'42',expiresAt:Math.floor(Date.now()/1000)+120,pushStatus:'sent'};
       else if(request.path.endsWith('/iphone/status'))body={state:'approved'};
@@ -35,6 +36,11 @@ beforeEach(()=>{
       else if(request.path.includes('/auth/unseal/status'))body={unsealed:approved,unsealedUntil:window.expiresAt,method:'iphone',scope:'crypto'};
       else if(request.path.endsWith('/complete')||request.path.endsWith('/totp'))body={approval:window};
       const response=new EventEmitter() as EventEmitter&{statusCode:number;headers:object};response.statusCode=request.path===rejectPath||unauthorized&&request.path.endsWith('/complete')?401:request.path.endsWith('/start')?202:200;response.headers={};
+      if(request.path.endsWith('/events')){
+        Object.assign(response,{headers:{'content-type':'text/event-stream'},destroy:()=>{},[Symbol.asyncIterator]:async function*(){
+          yield Buffer.from('event: changed\nid: 1\ndata: '+JSON.stringify({version:1,requestId:request.body.requestId,revision:'1'})+'\n\n');
+        }});
+      }
       if(approvalDenied){response.statusCode=403;body={code:'USER_SEALED_APPROVAL_REQUIRED',message:'Approval required'};}
       if(htmlFailure&&request.path.endsWith('/complete'))response.statusCode=503;
       (callback as (response:unknown)=>void)(response);response.emit('data',Buffer.from(htmlFailure&&request.path.endsWith('/complete')?'<html>Public proxy error fixture</html>':JSON.stringify(body)));response.emit('end');
@@ -106,7 +112,8 @@ describe('session approval binds the named profile, actor and refresh family',()
   });
   it('does not overwrite a new login that arrives while refreshing the initiating session',async()=>{
     const profiles=store.get('profiles');profiles.a.credentials!.expiresAt=Date.now()-1;store.set('profiles',profiles);invalidateAllProfileCaches();
-    onRequest=request=>{if(request.path==='/auth/refresh'){
+    onRequest=request=>{if(request.path==='/auth/mfa/iphone/protocol')body={waitEvents:{version:1,enabled:true}};
+      else if(request.path==='/auth/refresh'){
       const values=store.get('profiles');values.a.credentials!.accessToken=token('new-login-family');store.set('profiles',values);invalidateAllProfileCaches();
     }};
     await expect(withApprovalSession(async session=>await getApprovalStatus(session,'user-sealed'))).rejects.toThrow('SESSION_APPROVAL_CONTEXT_CHANGED');
@@ -141,7 +148,8 @@ describe('session approval binds the named profile, actor and refresh family',()
     vi.spyOn(console,'log').mockImplementation(()=>{});
     const other=structuredClone(store.get('profiles').b),profiles=store.get('profiles');
     profiles.a.credentials!.expiresAt=Date.now()-1;store.set('profiles',profiles);invalidateAllProfileCaches();
-    onRequest=request=>{if(request.path==='/auth/refresh')store.set('activeProfile','b');};
+    onRequest=request=>{if(request.path==='/auth/mfa/iphone/protocol')body={waitEvents:{version:1,enabled:true}};
+      else if(request.path==='/auth/refresh')store.set('activeProfile','b');};
     const program=new Command();registerUnsealCommands(program);
     await program.parseAsync(['node','test','seal','--scope',scope,'--json']);
     const close=sent.find(request=>request.path===`/v1/auth/unseal/seal?scope=${scope}`);
@@ -157,7 +165,8 @@ describe('session approval binds the named profile, actor and refresh family',()
     vi.spyOn(console,'log').mockImplementation(()=>{});vi.spyOn(console,'error').mockImplementation(()=>{});
     vi.spyOn(process,'exit').mockImplementation(()=>{throw new Error('Expected command failure');});
     const profiles=store.get('profiles');profiles.a.credentials!.expiresAt=Date.now()-1;store.set('profiles',profiles);invalidateAllProfileCaches();
-    onRequest=request=>{if(request.path==='/auth/refresh'){
+    onRequest=request=>{if(request.path==='/auth/mfa/iphone/protocol')body={waitEvents:{version:1,enabled:true}};
+      else if(request.path==='/auth/refresh'){
       const values=store.get('profiles');values.a.credentials!.accessToken=token('new-login-family');store.set('profiles',values);invalidateAllProfileCaches();
     }};
     const program=new Command();registerUnsealCommands(program);

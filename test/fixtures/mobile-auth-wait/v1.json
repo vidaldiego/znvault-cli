@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "requestId": "attempt",
+  "valid": [
+    {
+      "wire": ": heartbeat\n\nevent: changed\nid: 9007199254740993\ndata: {\"version\":1,\"requestId\":\"attempt\",\"revision\":\"9007199254740993\"}\n\n",
+      "event": {
+        "type": "changed",
+        "version": 1,
+        "requestId": "attempt",
+        "revision": "9007199254740993"
+      }
+    },
+    {
+      "wire": "event: expired\ndata: {\"version\":1,\"requestId\":\"attempt\"}\n\n",
+      "event": {
+        "type": "expired",
+        "version": 1,
+        "requestId": "attempt"
+      }
+    }
+  ],
+  "invalid": [
+    "event: changed\nid: 01\ndata: {\"version\":1,\"requestId\":\"attempt\",\"revision\":\"01\"}\n\n",
+    "event: changed\nid: 2\ndata: {\"version\":1,\"requestId\":\"attempt\",\"revision\":\"1\"}\n\n",
+    "event: changed\nid: 1\ndata: {\"version\":1,\"requestId\":\"other\",\"revision\":\"1\"}\n\n"
+  ]
+}

@@ -26,7 +26,7 @@ beforeEach(() => {
       const grant=getProfile('remembered')!.cliRecovery!;
       let status=200, body:unknown={value:'original-data'};
       if(path==='/auth/login') body={accessToken:'environment-access',refreshToken:'environment-refresh',expiresIn:900,user:{id:'human',username:'human',role:'user',tenantId:'tenant'}};
-      else if(path==='/auth/mfa/iphone/protocol') body={protocolVersion:3,origin:grant.origin,installationId:grant.installationId,cliRecovery:{version:1,enabled:true}};
+      else if(path==='/auth/mfa/iphone/protocol') body={protocolVersion:3,waitEvents:{version:1,enabled:true},origin:grant.origin,installationId:grant.installationId,cliRecovery:{version:1,enabled:true}};
       else if(path.endsWith('/start')) body={requestId:'11111111-1111-4111-8111-111111111111',claimant:randomBytes(32).toString('base64url'),comparisonNumber:'42',expiresAt:Math.floor(Date.now()/1000)+120};
       else if(path.endsWith('/status')) body={state:pending?'pending':'approved',expiresAt:Math.floor(Date.now()/1000)+120};
       else if(path.endsWith('/complete')) {body={accessToken:'recovered-access',refreshToken:'recovered-refresh',expiresIn:recoveredExpiresIn,userSealedUnlocked:false,user:{id:'human',username:'human',role:'user',tenantId:'tenant'}};replace?.();}
@@ -34,6 +34,7 @@ beforeEach(() => {
       else if(path.startsWith('/v1/')) {status=outcome;body=outcome===200?body:{error:'rejected'};}
       if(path.endsWith('/start') && recoveryStatus!==200) {status=recoveryStatus;body={error:'rate_limited',code:'FIXTURE_RECOVERY',message:'Try later'};}
       const res=Object.assign(new EventEmitter(),{statusCode:status,headers:status===429?{'retry-after':'47'}:{}});
+      if(path.endsWith('/events'))Object.assign(res,{headers:{'content-type':'text/event-stream'},destroy:()=>{},[Symbol.asyncIterator]:async function*(){yield Buffer.from('event: changed\nid: 1\ndata: '+JSON.stringify({version:1,requestId:'11111111-1111-4111-8111-111111111111',revision:'1'})+'\n\n');}});
       (callback as (res:unknown)=>void)(res);res.emit('data',JSON.stringify(body));res.emit('end');
     });return req as unknown as ReturnType<typeof https.request>;
   });

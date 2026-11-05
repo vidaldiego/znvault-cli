@@ -23,8 +23,9 @@ beforeEach(async()=>{
   server=createServer({key:readFileSync(join(scratch,'key.pem')),cert:readFileSync(join(scratch,'cert.pem'))},(request,response)=>{
     request.resume();request.on('end',()=>{
       const path=request.url!;paths.push(path);let body:unknown;
-      if(path.endsWith('/protocol')) body={protocolVersion:3,origin,installationId:grant.installationId,cliRecovery:{version:1,enabled:true}};
+      if(path.endsWith('/protocol')) body={protocolVersion:3,waitEvents:{version:1,enabled:true},origin,installationId:grant.installationId,cliRecovery:{version:1,enabled:true}};
       else if(path.endsWith('/start')) body={requestId:id,claimant,comparisonNumber:'42',expiresAt};
+      else if(path.endsWith('/events')) {response.writeHead(200,{'Content-Type':'text/event-stream'});response.end('event: changed\nid: 1\ndata: '+JSON.stringify({version:1,requestId:id,revision:'1'})+'\n\n');return;}
       else if(path.endsWith('/status')) body={state:'approved',expiresAt};
       else if(path.endsWith('/complete')) body={accessToken:'synthetic-access',refreshToken:'synthetic-refresh',expiresIn:900,userSealedUnlocked:false,user:{id:'human',username:'human',role:'user',tenantId:'tenant'}};
       else if(path.endsWith('/decrypt')) {
@@ -39,18 +40,19 @@ beforeEach(async()=>{
   writeFileSync(join(scratch,'config.json'),JSON.stringify({activeProfile:'fixture',profiles:{fixture:{url:origin,insecure:true,timeout:2000,authGeneration:randomUUID(),cliRecovery:grant}},plugins:[]}),{mode:0o600});
 });
 afterEach(async()=>{server.closeAllConnections();await new Promise<void>(done=>server.close(()=>done()));});
-async function run(flags:string[]):Promise<{code:number|null;stdout:string;stderr:string}> {
+async function run(flags:string[],closed=false):Promise<{code:number|null;stdout:string;stderr:string}> {
   const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('ZNVAULT_')&&key!=='DATABASE_URL'));
   const child=spawn(process.execPath,[join(root,'dist/index.js'),'--no-plugins','--quiet','secret','decrypt',id,...flags],{
     env:{...env,CI:'1',ZNVAULT_CONFIG_DIR:scratch,ZNVAULT_NO_PLUGINS:'1',ZNVAULT_NO_UPDATE_CHECK:'1'},stdio:['pipe','pipe','pipe']});
   let stdout='',stderr='';child.stdout.on('data',chunk=>{stdout+=String(chunk);});child.stderr.on('data',chunk=>{stderr+=String(chunk);});
-  // Keep stdin open: recovery must finish without consuming agent input.
+  if(closed)child.stdin.end();
+  // Open stdin remains unconsumed; closed stdin must also work.
   const timer=setTimeout(()=>child.kill('SIGKILL'),10000);
   try {return await new Promise((done,reject)=>{child.on('error',reject);child.on('close',code=>done({code,stdout,stderr}));});}
   finally {clearTimeout(timer);child.stdin.destroy();}
 }
-it.each(['--raw','--json'])('preserves real piped %s output with quiet/CI and open stdin',async flag=>{
-  const result=await run([flag]);expect(result.code).toBe(0);
+it.each([{flag:'--raw',closed:false},{flag:'--json',closed:false},{flag:'--raw',closed:true},{flag:'--json',closed:true}])('preserves piped $flag output with quiet/CI (stdin closed=$closed)',async ({flag,closed})=>{
+  const result=await run([flag],closed);expect(result.code).toBe(0);
   if(flag==='--raw') expect(result.stdout).toBe(raw);else expect(JSON.parse(result.stdout)).toEqual({data:{value:raw}});
   expect(result.stderr).toContain('Choose 42');expect(result.stdout).not.toContain('Recover CLI');
   expect(paths.filter(x=>x.endsWith('/start'))).toHaveLength(1);expect(paths.filter(x=>x.endsWith('/decrypt'))).toHaveLength(1);

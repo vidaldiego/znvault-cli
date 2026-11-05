@@ -74,30 +74,42 @@ function recoveryPeer() {
     expiresIn: 900, userSealedUnlocked: false, user: {id: 'fixture-human', username: 'fixture/alice', role: 'user', tenantId: 'fixture' as string | null}};
   const request = vi.fn(async (options: import('../../src/lib/client/types.js').RequestOptions): Promise<unknown> => {
     options.sessionGuard?.();
-    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, origin: saved.origin, installationId: saved.installationId, cliRecovery: {version: 1, enabled: true}};
+    if (options.path.endsWith('/protocol')) return {protocolVersion: 3, waitEvents:{version:1,enabled:true}, origin: saved.origin, installationId: saved.installationId, cliRecovery: {version: 1, enabled: true}};
     if (options.path.endsWith('/start')) return {requestId, claimant, expiresAt, comparisonNumber: '42', pushStatus: 'sent'};
     if (options.path.endsWith('/status')) return {state: 'approved', expiresAt};
     if (options.path.endsWith('/complete')) return tokens;
     if (options.path.endsWith('/cancel')) return {cancelled: true};
     throw new Error('Unexpected recovery path');
   });
-  return {peer: {getBaseUrl: () => saved.origin, request}, tokens, saved, requestId, claimant, expiresAt};
+  return {peer: {getBaseUrl: () => saved.origin, request, openEventStream: async function* () {yield {type:'changed' as const,version:1 as const,requestId,revision:'1'};}}, tokens, saved, requestId, claimant, expiresAt};
 }
 
 describe('explicit same-iPhone recovery', () => {
-  it('polls once every two seconds and never restarts the original request', async () => {
-    vi.useFakeTimers();
-    const f = recoveryPeer(), original = f.peer.request.getMockImplementation()!;let polls = 0;
+  it('stays idle for 90 seconds and reads only on a real revision', async () => {
+    vi.useFakeTimers();const f = recoveryPeer(), original = f.peer.request.getMockImplementation()!;let reads = 0, send!:()=>void;
     f.peer.request.mockImplementation(async options => {
-      if (options.path.endsWith('/status') && ++polls === 1) return {state:'pending',expiresAt:f.expiresAt};
+      if (options.path.endsWith('/status') && ++reads === 1) return {state:'pending',expiresAt:f.expiresAt};
       return await original(options);
     });
+    f.peer.openEventStream = async function* () {
+      yield {type:'changed' as const,version:1 as const,requestId:f.requestId,revision:'1'};
+      await new Promise<void>(r=>{send=r;});
+      yield {type:'changed' as const,version:1 as const,requestId:f.requestId,revision:'2'};
+    };
     const {recoverCliLogin} = await import('../../src/lib/cli-recovery.js');
     const result = recoverCliLogin(f.peer,{onPending:vi.fn(async () => {})});
-    await vi.advanceTimersByTimeAsync(0);expect(polls).toBe(1);
-    await vi.advanceTimersByTimeAsync(1999);expect(polls).toBe(1);
-    await vi.advanceTimersByTimeAsync(1);expect(await result).toMatchObject({success:true});expect(polls).toBe(2);
+    await vi.advanceTimersByTimeAsync(0);expect(reads).toBe(1);
+    await vi.advanceTimersByTimeAsync(90000);expect(reads).toBe(1);send();
+    expect(await result).toMatchObject({success:true});expect(reads).toBe(2);
     expect(f.peer.request.mock.calls.filter(([x]) => x.path.endsWith('/start'))).toHaveLength(1);
+  });
+  it('reports disconnection with zero fallback reads and one original attempt',async()=>{
+    const f=recoveryPeer(), original=f.peer.request.getMockImplementation()!;
+    f.peer.request.mockImplementation(async options=>options.path.endsWith('/status')?{state:'pending',expiresAt:f.expiresAt}:await original(options));
+    const {recoverCliLogin}=await import('../../src/lib/cli-recovery.js');
+    expect(await recoverCliLogin(f.peer,{onPending:vi.fn(async()=>{})})).toMatchObject({success:false,error:expect.stringContaining('events disconnected')});
+    expect(f.peer.request.mock.calls.filter(([x])=>x.path.endsWith('/status'))).toHaveLength(1);
+    expect(f.peer.request.mock.calls.filter(([x])=>x.path.endsWith('/start'))).toHaveLength(1);
   });
   it.each([401, 403, 410])('suggests a normal login after HTTP%s without retrying a revoked recovery', async statusCode => {
     const f = recoveryPeer(), original = f.peer.request.getMockImplementation()!;
