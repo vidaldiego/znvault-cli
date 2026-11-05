@@ -6,11 +6,11 @@ Trust Root or activate an Emergency DR environment.
 
 ## 6.0.0 compatibility decision
 
-The backup-recovery integration is the unpublished **6.0.0** candidate. Upstream
-5.8.1 declares Node >=20.0.0; this candidate requires >=24.22.1 for its native
+The published backup-recovery integration establishes the **6.0.0** baseline.
+Upstream 5.8.1 declared Node >=20.0.0; 6.0.x requires >=24.22.1 for its native
 bounded gzip/zstd recovery codecs. Dropping Node 20/22 support is a breaking
 compatibility change and must not be published as a 5.8.1 patch. Upgrade Node
-before installing 6.0.0. CI validates the exact minimum and Node 26; an engine
+before installing 6.0.x. CI validates the exact minimum and Node 26; an engine
 range alone is not evidence that both runtimes passed. Candidate version metadata
 does not authorize a tag, npm publication, global installation or deployment.
 
