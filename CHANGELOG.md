@@ -5,7 +5,16 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [7.1.0] - Unreleased
+## [7.1.1] - 2026-11-06
+
+### Fixed
+
+- Assisted Archon backup recovery accepts native credential/password key records
+  with an optional username for exact current and historical versions. Secret
+  binding, fingerprint, TLS and native authorization checks remain enforced;
+  unexpected fields and reference-resolved values are rejected.
+
+## [7.1.0] - 2026-11-06
 
 ### Added
 
