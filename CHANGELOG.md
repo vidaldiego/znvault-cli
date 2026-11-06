@@ -5,6 +5,17 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.0] - Unreleased
+
+### Added
+
+- `superadmin rootkey wrap --provider trust-root --operation-id <uuid>` carries
+  the persisted public operation identifier across retries. Validate public
+  receipts and redact untrusted Trust Root errors before printing.
+- Existing provider commands and automatic local/API selection retain their behavior.
+- Root-key status reports stale provider-event observations. The new UUID option
+  is required from7.1.0; published7.0 packages retain their verification contract.
+
 ## [7.0.0] - 2026-11-05
 
 ### Changed

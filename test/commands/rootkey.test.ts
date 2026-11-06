@@ -137,6 +137,14 @@ const VERIFY_NO_MATERIAL = {
 };
 
 describe('superadmin rootkey commands', () => {
+  it('labels stale event delivery instead of presenting the last observation as current health',async()=>{
+    vi.mocked(client.get).mockResolvedValue({...SAMPLE_STATUS,resolution:{...SAMPLE_STATUS.resolution,
+      lastProbe:{...SAMPLE_STATUS.resolution.lastProbe,degraded:false,stale:true,
+        delivery:[{providerId:'sentinel',state:'unsupported'}]}}});
+    const p=makeProgram();await p.parseAsync(['node','cli','superadmin','rootkey','status']);
+    expect(output.keyValue).toHaveBeenCalledWith(expect.objectContaining({'Event delivery':'STALE — explicit verification required'}));
+    expect(output.warn).toHaveBeenCalledWith(expect.stringContaining('not current provider health'));
+  });
   let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -256,6 +264,33 @@ describe('superadmin rootkey commands', () => {
   });
 
   describe('wrap', () => {
+    const operationId='16e93048-b06d-4a38-914e-e5a91e6f5092';
+    const trustReceipt={providerId:'trust-root',keyId:'trustroot/0200/e0001',kcv:'kcv1:'+'a'.repeat(32),
+      createdAt:'2026-11-04T00:00:00.000Z',operationId,ciphertextSha256:'b'.repeat(64)};
+    it('carries the persisted public UUID through the Trust Root API request',async()=>{
+      vi.mocked(client.post).mockResolvedValue(trustReceipt);
+      await makeProgram().parseAsync(['node','test','superadmin','rootkey','wrap','--provider','trust-root','--operation-id',operationId,'--json']);
+      expect(client.post).toHaveBeenCalledWith('/v1/superadmin/rootkey/wrap',{provider:'trust-root',operationId});
+      expect(output.json).toHaveBeenCalledWith(trustReceipt);
+    });
+    it.each([undefined,'injected-credential'])('rejects a missing or invalid Trust Root UUID without echo: %s',async(id)=>{
+      const args=['node','test','superadmin','rootkey','wrap','--provider','trust-root'];
+      if(id!==undefined)args.push('--operation-id',id);
+      await expect(makeProgram().parseAsync(args)).rejects.toThrow('process.exit(1)');
+      expect(client.post).not.toHaveBeenCalled();expect(output.spinner).not.toHaveBeenCalled();
+      expect(JSON.stringify(vi.mocked(output.error).mock.calls)).not.toContain('injected-credential');
+    });
+    it('redacts remote Trust Root error text',async()=>{
+      vi.mocked(client.post).mockRejectedValue(new Error('injected-credential'));
+      await expect(makeProgram().parseAsync(['node','test','superadmin','rootkey','wrap','--provider','trust-root','--operation-id',operationId])).rejects.toThrow('process.exit(1)');
+      expect(output.error).toHaveBeenCalledWith('Trust Root wrap unavailable; retain the operation UUID and reconcile before retrying.');
+      expect(JSON.stringify(vi.mocked(output.error).mock.calls)).not.toContain('injected-credential');
+    });
+    it('never prints an unexpected response field',async()=>{
+      vi.mocked(client.post).mockResolvedValue({...trustReceipt,secret:'injected-credential'});
+      await expect(makeProgram().parseAsync(['node','test','superadmin','rootkey','wrap','--provider','trust-root','--operation-id',operationId,'--json'])).rejects.toThrow('process.exit(1)');
+      expect(output.json).not.toHaveBeenCalled();expect(output.keyValue).not.toHaveBeenCalled();
+    });
     it('POSTs the wrap route with the named provider and prints the receipt', async () => {
       const receipt = {
         providerId: 'aws-kms',
