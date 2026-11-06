@@ -60,6 +60,116 @@ describe('assisted exact native profile',()=>{
   const original=reply;reply=path=>{const value=original(path) as any;if(path.includes('/decrypt'))value.data={filename:'/never/open',content:Buffer.from(f.keys[0].toString('hex')+'\n').toString('base64')};return value;};
   const provider=createVaultKeyProvider('offsite',request());expect(await provider(f.expected.keyBindings[0].key,new AbortController().signal)).toEqual(f.keys[0]);provider.dispose();
  });
+ it('decodes the exact native credential password with an optional username',async()=>{
+  const original=reply;
+  reply=path=>{
+   const value=original(path) as Record<string,unknown>;
+   if(path.endsWith('/meta'))return {...value,type:'credential',subType:'password',referencesEnabled:false,hasReferences:false};
+   if(path.includes('/decrypt'))return {...value,type:'credential',data:{username:'synthetic-backup',password:'06'.repeat(32)}};
+   return value;
+  };
+  const provider=createVaultKeyProvider('offsite',request());
+  try{expect(await provider(f.expected.keyBindings[0].key,new AbortController().signal)).toEqual(Buffer.alloc(32,6));}
+  finally{provider.dispose();}
+  expect(paths).toEqual(['https://offsite.invalid/v1/backup-recovery/materials/22222222-2222-4222-8222-222222222220/resolve','https://offsite.invalid/v1/secrets/44444444-4444-4444-8444-444444444440/meta','https://offsite.invalid/v1/secrets/44444444-4444-4444-8444-444444444440/history/1/decrypt']);
+ });
+ describe('native credential/password encoding',()=>{
+  function credential(data:unknown,meta:Record<string,unknown>={},value:Record<string,unknown>={}):void {
+   const original=reply;
+   reply=path=>{
+    const response=original(path) as Record<string,unknown>;
+    if(path.endsWith('/meta'))return {...response,version:1,type:'credential',subType:'password',referencesEnabled:false,hasReferences:false,...meta};
+    if(path.includes('/decrypt'))return {...response,type:'credential',subType:'password',data,...value};
+    return response;
+   };
+  }
+  async function expectRejected():Promise<void>{
+   const provider=createVaultKeyProvider('offsite',request());
+   try{await expect(provider(f.expected.keyBindings[0].key,new AbortController().signal)).rejects.toThrow('recovery_native_key_unavailable');}
+   finally{provider.dispose();}
+   expect(paths).toHaveLength(3);
+  }
+  it.each([
+   ['password alone',{password:'06'.repeat(32)}],
+   ['empty username',{password:'06'.repeat(32),username:''}],
+   ['bounded username and LF',{password:'06'.repeat(32)+'\n',username:'u'.repeat(256)}],
+  ])('accepts %s through the exact current native route and erases its key buffer',async(_name,data)=>{
+   credential(data);
+   const provider=createVaultKeyProvider('offsite',request());const bytes=await provider(f.expected.keyBindings[0].key,new AbortController().signal);
+   expect(bytes).toEqual(Buffer.alloc(32,6));provider.dispose();expect(bytes.every(byte=>byte===0)).toBe(true);
+   expect(paths.at(-1)).toBe('https://offsite.invalid/v1/secrets/44444444-4444-4444-8444-444444444440/decrypt?resolve=false');
+  });
+  it('accepts the native history response without inventing a missing subtype',async()=>{
+   credential({username:'synthetic',password:'06'.repeat(32)},{version:2},{subType:undefined});
+   const provider=createVaultKeyProvider('offsite',request());
+   try{expect(await provider(f.expected.keyBindings[0].key,new AbortController().signal)).toEqual(Buffer.alloc(32,6));}
+   finally{provider.dispose();}
+   expect(paths.at(-1)).toBe('https://offsite.invalid/v1/secrets/44444444-4444-4444-8444-444444444440/history/1/decrypt');
+  });
+  it.each([
+   ['extra field',{username:'synthetic',password:'06'.repeat(32),other:'KEY_MARKER'}],
+   ['competing key',{username:'synthetic',password:'06'.repeat(32),key:'06'.repeat(32)}],
+   ['file ambiguity',{username:'synthetic',password:'06'.repeat(32),filename:'never-open',content:Buffer.alloc(32,6).toString('base64')}],
+   ['missing password',{username:'06'.repeat(32)}],
+   ['non-string password',{username:'synthetic',password:6}],
+   ['short password',{username:'synthetic',password:'06'.repeat(31)}],
+   ['long password',{username:'synthetic',password:'06'.repeat(33)}],
+   ['non-hex password',{username:'synthetic',password:'z'.repeat(64)}],
+   ['CRLF',{username:'synthetic',password:'06'.repeat(32)+'\r\n'}],
+   ['space',{username:'synthetic',password:'06'.repeat(32)+' '}],
+   ['raw32 string',{username:'synthetic',password:'x'.repeat(32)}],
+   ['null username',{username:null,password:'06'.repeat(32)}],
+   ['numeric username',{username:1,password:'06'.repeat(32)}],
+   ['object username',{username:{},password:'06'.repeat(32)}],
+   ['array username',{username:[],password:'06'.repeat(32)}],
+   ['oversized username',{username:'u'.repeat(257),password:'06'.repeat(32)}],
+  ])('rejects %s without trying another data field',async(_name,data)=>{credential(data);await expectRejected();});
+  it.each([
+   ['wrong metadata type',{type:'opaque'},{}],
+   ['missing metadata type',{type:undefined},{}],
+   ['wrong metadata subtype',{subType:'generic'},{}],
+   ['missing metadata subtype',{subType:undefined},{}],
+   ['missing reference flag',{referencesEnabled:undefined},{}],
+   ['references enabled',{referencesEnabled:true},{}],
+   ['references present',{hasReferences:true},{}],
+   ['metadata subtype alias',{sub_type:'generic'},{}],
+   ['metadata references alias',{references_enabled:true},{}],
+   ['metadata has-references alias',{has_references:true},{}],
+   ['null metadata references alias',{references_enabled:null},{}],
+   ['string metadata has-references alias',{has_references:'false'},{}],
+   ['wrong response type',{}, {type:'opaque'}],
+   ['missing response type',{}, {type:undefined}],
+   ['wrong response subtype',{}, {subType:'generic'}],
+   ['response subtype alias',{}, {sub_type:'generic'}],
+   ['resolved response',{}, {resolved:{count:0}}],
+   ['resolved-from response',{}, {resolvedFrom:{alias:'never-use'}}],
+  ])('rejects %s for an explicit credential candidate',async(_name,meta,value)=>{
+   credential({username:'synthetic',password:'06'.repeat(32)},meta,value);
+   const provider=createVaultKeyProvider('offsite',request());
+   try{await expect(provider(f.expected.keyBindings[0].key,new AbortController().signal)).rejects.toThrow('recovery_native_key_unavailable');}
+   finally{provider.dispose();}
+  });
+  it('does not let a password-only candidate bypass its required metadata',async()=>{
+   credential({password:'06'.repeat(32)},{type:'opaque'});await expectRejected();
+  });
+  it.each(['wrong-version','wrong-id','wrong-fingerprint'])('retains %s fencing for credentials',async kind=>{
+   credential({username:'synthetic',password:kind==='wrong-fingerprint'?'ff'.repeat(32):'06'.repeat(32)},{},kind==='wrong-version'?{version:2}:kind==='wrong-id'?{id:'55555555-5555-4555-8555-555555555555'}:{});
+   await expectRejected();
+  });
+  it.each(['success','invalid-identity','invalid-data'])('clears the native response data on %s',async kind=>{
+   credential({username:'synthetic',password:kind==='invalid-data'?'KEY_MARKER':'06'.repeat(32)},{},kind==='invalid-identity'?{version:2}:{});
+   const native=createRecoveryClient('offsite'),underlying=native.request.bind(native);let observed:{data?:unknown}|undefined;
+   vi.spyOn(native,'request').mockImplementation(async <T>(options:Parameters<typeof native.request>[0]):Promise<T>=>{
+    const result=await underlying<T>(options);if(options.path.includes('/decrypt'))observed=result as {data?:unknown};return result;
+   });
+   const provider=createVaultKeyProvider('offsite',request(),native);
+   try{
+    if(kind==='success')expect(await provider(f.expected.keyBindings[0].key,new AbortController().signal)).toEqual(Buffer.alloc(32,6));
+    else await expect(provider(f.expected.keyBindings[0].key,new AbortController().signal)).rejects.toThrow('recovery_native_key_unavailable');
+   }finally{provider.dispose();}
+   expect(observed).toBeDefined();expect(observed?.data).toBeUndefined();
+  });
+ });
  it.each(['wrong-version','wrong-descriptor','wrong-key','ambiguous-value'])('fails closed on %s',async kind=>{
   const original=reply;reply=path=>{const value=original(path) as any;if(kind==='wrong-version'&&path.includes('/decrypt'))value.version=2;if(kind==='wrong-descriptor'&&path.includes('/resolve'))value.sourceIdentity={...value.sourceIdentity,sourceDataVersion:999};if(kind==='wrong-key'&&path.includes('/decrypt'))value.data={key:'ff'.repeat(32)};if(kind==='ambiguous-value'&&path.includes('/decrypt'))value.data.other='KEY_MARKER';return value;};
   const provider=createVaultKeyProvider('offsite',request());await expect(provider(f.expected.keyBindings[0].key,new AbortController().signal)).rejects.toThrow();provider.dispose();

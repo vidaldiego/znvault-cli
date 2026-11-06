@@ -31,11 +31,30 @@ function validateBinding(requested:KeyReference,source:KeyReference):boolean {
  if(requested.kind==='archon-kek-fingerprint-v1'&&!requested.nativeBinding)return source.kind===requested.kind&&source.fingerprint===requested.fingerprint&&!!source.nativeBinding;
  return canonical(requested)===canonical(source);
 }
-/** Only native file-shaped data or one exact field; never try field/key variants. */
-function decodeValue(data:unknown):Buffer {
+interface NativeKeyMetadata {
+ version:number;type?:string;subType?:string;sub_type?:string;
+ referencesEnabled?:boolean;hasReferences?:boolean;references_enabled?:unknown;has_references?:unknown;
+}
+interface NativeKeyValue {
+ id:string;version:number;type?:string;subType?:string;sub_type?:string;
+ resolved?:unknown;resolvedFrom?:unknown;data:unknown;
+}
+/** Closed native credential, file or single-field formats; never try key variants. */
+function decodeValue(data:unknown,meta:NativeKeyMetadata,value:NativeKeyValue):Buffer {
  if(data===null||typeof data!=='object'||Array.isArray(data))throw Error('recovery_key_format');
  const object=data as Record<string,unknown>,fields=Object.keys(object),field=fields[0];let input:Buffer;
- if(typeof object.filename==='string'&&typeof object.content==='string'){
+ if(Object.hasOwn(object,'password')||Object.hasOwn(object,'username')){
+  if(Object.getPrototypeOf(object)!==Object.prototype||meta.type!=='credential'||meta.subType!=='password'||
+   meta.referencesEnabled!==false||meta.hasReferences!==false||
+   (meta.sub_type!==undefined&&meta.sub_type!=='password')||
+   (meta.references_enabled!==undefined&&meta.references_enabled!==false)||(meta.has_references!==undefined&&meta.has_references!==false)||
+   value.type!=='credential'||(value.subType!==undefined&&value.subType!=='password')||(value.sub_type!==undefined&&value.sub_type!=='password')||
+   Object.hasOwn(value,'resolved')||Object.hasOwn(value,'resolvedFrom')||
+   !Object.hasOwn(object,'password')||!fields.every(name=>name==='password'||name==='username')||
+   typeof object.password!=='string'||!/^[a-fA-F0-9]{64}\n?$/.test(object.password)||
+   (Object.hasOwn(object,'username')&&(typeof object.username!=='string'||object.username.length>256)))throw Error('recovery_key_format');
+  input=Buffer.from(object.password,'ascii');
+ }else if(typeof object.filename==='string'&&typeof object.content==='string'){
   if(object.content.length>88)throw Error('recovery_key_format');input=Buffer.from(object.content,'base64');
   if(input.toString('base64')!==object.content){input.fill(0);throw Error('recovery_key_format');}
  }else if(fields.length===1&&typeof object[field]==='string'&&/^[a-fA-F0-9]{64}\n?$/.test(object[field]))input=Buffer.from(object[field],'ascii');
@@ -50,7 +69,7 @@ export function createVaultKeyProvider(profileName:string,request:RecoveryReques
  const dispose=():void=>{disposed=true;for(const b of buffers)b.fill(0);buffers.clear();request.signal.removeEventListener('abort',dispose);};
  request.signal.addEventListener('abort',dispose,{once:true});
  const provider:VaultKeyProvider=Object.assign(async(key:KeyReference,signal:AbortSignal):Promise<Buffer>=>{
-  let decoded:Buffer|undefined;
+  let decoded:Buffer|undefined,value:NativeKeyValue|undefined;
   const combined=AbortSignal.any([signal,request.signal]);
   try{
    combined.throwIfAborted();if(disposed||!selection.keyBindings.some(b=>canonical(b.key)===canonical(key)))throw Error('recovery_key_not_selected');
@@ -58,15 +77,16 @@ export function createVaultKeyProvider(profileName:string,request:RecoveryReques
    // Validate the returned descriptor with the maintained parser as well as equality.
    const checked=parseExpectedSelection(Buffer.from(JSON.stringify({...selection,keyBindings:[{fingerprint:binding.fingerprint,key:binding.sourceIdentity}]}))).keyBindings[0].key;
    if(!uuid.test(binding.secretId)||!Number.isSafeInteger(binding.dataVersion)||binding.dataVersion<1||binding.fingerprint!==key.fingerprint||!validateBinding(key,checked))throw Error('recovery_binding_mismatch');
-   const meta=await client.request<{version:number;referencesEnabled?:boolean;hasReferences?:boolean;subType?:string}>({method:'GET',path:`/v1/secrets/${binding.secretId}/meta`,signal:combined,headers});
+   const meta=await client.request<NativeKeyMetadata>({method:'GET',path:`/v1/secrets/${binding.secretId}/meta`,signal:combined,headers});
    if(!Number.isSafeInteger(meta.version)||meta.version<binding.dataVersion||meta.referencesEnabled||meta.hasReferences||meta.subType==='link')throw Error('recovery_binding_invalid');
    const path=meta.version===binding.dataVersion?`/v1/secrets/${binding.secretId}/decrypt?resolve=false`:`/v1/secrets/${binding.secretId}/history/${binding.dataVersion}/decrypt`;
-   const value=await client.request<{id:string;version:number;data:unknown}>({method:'POST',path:path.split('?')[0],...(path.includes('?')?{query:{resolve:false}}:{}),body:{},signal:combined,headers});
+   value=await client.request<NativeKeyValue>({method:'POST',path:path.split('?')[0],...(path.includes('?')?{query:{resolve:false}}:{}),body:{},signal:combined,headers});
    if(value.id!==binding.secretId||value.version!==binding.dataVersion)throw Error('recovery_native_version_mismatch');
-   decoded=decodeValue(value.data);value.data=undefined;
+   decoded=decodeValue(value.data,meta,value);
    combined.throwIfAborted();if(computeKeyFingerprint(decoded)!==key.fingerprint)throw Error('recovery_key_mismatch');
    buffers.add(decoded);return decoded;
   }catch{decoded?.fill(0);dispose();throw Error('recovery_native_key_unavailable');}
+  finally{if(value&&typeof value==='object')value.data=undefined;}
  },{dispose});
  return provider;
 }
