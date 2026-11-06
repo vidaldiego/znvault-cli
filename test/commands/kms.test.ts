@@ -257,7 +257,7 @@ describe('kms commands', () => {
       // parameter; the body no longer carries `tenant`.
       expect(client.post).toHaveBeenCalledWith(
         expect.stringMatching(/^\/v1\/superadmin\/kms\/keys\?.*tenantId=acme/),
-        expect.objectContaining({ alias: 'alias/my-key' })
+        expect.objectContaining({ alias: 'my-key' })
       );
       expect(success).toHaveBeenCalledWith('KMS key created successfully!');
     });

@@ -9,6 +9,7 @@
 // ============================================================================
 
 export interface KMSKey {
+  replication?: { selectionId: string; state: 'pending' | 'protected' };
   keyId: string;
   alias?: string;
   arn?: string;
@@ -89,6 +90,8 @@ export interface CreateOptions {
   tags?: string;
   /** Arm an RSA SIGN_VERIFY key for prehashed (digest) signing at create time (jsign/Authenticode). */
   prehashAllowed?: boolean;
+  replicateTo?: string;
+  requestId?: string;
   json?: boolean;
 }
 
@@ -111,6 +114,7 @@ export interface DecryptOptions {
 }
 
 export interface RotateOptions {
+  requestId?: string;
   tenant?: string;
   json?: boolean;
 }
@@ -179,6 +183,8 @@ export interface PublicKeyResponse {
 }
 
 export interface VersionsOptions {
+  limit?: string;
+  offset?: string;
   json?: boolean;
 }
 
@@ -223,7 +229,7 @@ export interface ListGrantsResponse {
 
 export interface CreateGrantResponse {
   grantId: string;
-  grantToken: string;
+  grantToken?: string;
 }
 
 export interface PolicyPutOptions {
@@ -254,6 +260,7 @@ export interface GrantCreateOptions {
   grantee: string;
   operations: string; // comma-separated, e.g. "kms:Decrypt,kms:Encrypt"
   name?: string;
+  recoveryVersions?: string;
   retiringPrincipal?: string;
   expiresAt?: string;
   json?: boolean;

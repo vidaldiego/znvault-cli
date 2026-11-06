@@ -11,20 +11,41 @@ export interface LinkSelection {id:string;binding_id:string;source_secret_id:str
 export interface TenantLinks {bindings:LinkBinding[];selections:LinkSelection[];replicas?:Array<{id:string;binding_id:string}>}
 export interface Recipient {userId:string;username?:string;keyReady:boolean;keyVersion:number|null;fingerprint:string|null}
 export interface LinkOutputOptions {json?:boolean}
-const allowed=new Set(`bindingId revokedAt revocation revoke_request_id installationId capability linking sealedLink fleetReady sealedFleetReady schemaReady enabled reason connections bindings selections replicas id name direction state connection_id local_tenant peer_tenant peer_installation_id peer_binding_id generation last_error last_contact_at revocation_unverified selected_count pending_count retained_count error_count source_api_origin destination_origin source_secret_id source_alias destination_alias protection_mode desired_revision acknowledged_revision source_data_version acknowledged_data_version reserved_replica_id enabled paused origin_deleted_at crypto_closed_at last_data_sync_at hasCopy lifecycle syncState recipient_status recipients grantId grant_id userId recipient_user_id username keyReady keyVersion user_key_version fingerprint recipient_fingerprint created_at revoked_at status accessVerification role readonly usableReaderCount sourceVersion copiedVersion sourceExpiresAt sourceTtlUntil grants queued paused remoteConfirmed revocationUnverified revoked consented sourceBindingId destinationBindingId sourceInstallationId destinationInstallationId local_alias local_data_version applied_revision desired_data_version operation requestId`.split(' '));
+const allowed=new Set(`items keyId selectionId replication pendingOperationId desiredRevision acknowledgedRevision operationId version algorithm createdAt isPrimary isPending total limit offset versionId isCurrentVersion newVersionId alias arn keyState keyUsage keySpec description createdDate currentVersionId resourceKind selector kind revision localConsentRevision peerConsentRevision disabledProposalRevision scanCursor scanComplete matched eligible blocked conflicts futureObjectsIncluded samples pending confirmed retained lastAckAgeSeconds dirtyBuckets verifiedThroughRevision oldestPendingAt lastAckAt epoch rules memberships count blockedReason required protectionRequired receivedVersions bindingId revokedAt revocation revoke_request_id installationId capability linking sealedLink fleetReady sealedFleetReady schemaReady enabled reason connections bindings selections replicas id name direction state connection_id local_tenant peer_tenant peer_installation_id peer_binding_id generation last_error last_contact_at revocation_unverified selected_count pending_count retained_count error_count source_api_origin destination_origin source_secret_id source_alias destination_alias protection_mode desired_revision acknowledged_revision source_data_version acknowledged_data_version reserved_replica_id enabled paused origin_deleted_at crypto_closed_at last_data_sync_at hasCopy lifecycle syncState recipient_status recipients grantId grant_id userId recipient_user_id username keyReady keyVersion user_key_version fingerprint recipient_fingerprint created_at revoked_at status accessVerification role readonly usableReaderCount sourceVersion copiedVersion sourceExpiresAt sourceTtlUntil grants queued paused remoteConfirmed revocationUnverified revoked consented sourceBindingId destinationBindingId sourceInstallationId destinationInstallationId local_alias local_data_version applied_revision desired_data_version operation requestId`.split(' '));
 /** An allowlist, including nested objects: routine JSON cannot print arbitrary response payloads. */
 export function sanitiseLinkMetadata(value:unknown):unknown {
   if(Array.isArray(value))return value.map(sanitiseLinkMetadata);
-  if(value!==null&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([key])=>allowed.has(key)).map(([key,item])=>[key,sanitiseLinkMetadata(item)]));
+  if(value!==null&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([key])=>allowed.has(key)).filter(([key,item])=>key!=='blockedReason'||isPublicBlockedReason(item))
+    .map(([key,item])=>[key,key==='selector'?sanitiseSelector(item):key==='blocked'&&item!==null&&typeof item==='object'?sanitiseBlockedCounts(item):sanitiseLinkMetadata(item)]));
   return value;
+}
+function isPublicBlockedReason(value:unknown):boolean {
+  return value===null || typeof value==='string' && (['missing','missing_versions','behind','source_rollback','conflict','storage_changed','kms_unsupported','scheduled_rotation_unsupported','zk_unsupported','references_unsupported','awaiting_grants'].includes(value)||/^(?:LINKING_|KMS_)[A-Z0-9_]+$/.test(value));
+}
+function sanitiseSelector(value:unknown):unknown {
+  if(value===null||typeof value!=='object'||!('kind' in value)||!('value' in value)||value.kind!=='prefix'||typeof value.value!=='string')return {};
+  return {kind:'prefix',value:value.value};
+}
+function sanitiseBlockedCounts(value:unknown):unknown {
+  if(value===null||typeof value!=='object')return {};
+  return Object.fromEntries(Object.entries(value).filter(([reason,count])=>isPublicBlockedReason(reason)&&typeof count==='number'&&Number.isSafeInteger(count)&&count>=0));
+}
+export function linkStatusAge(value:unknown):unknown {
+  if(value===null||typeof value!=='object'||!('lastAckAt' in value))return value;
+  const timestamp=typeof value.lastAckAt==='string'?Date.parse(value.lastAckAt):NaN;
+  return {...value,lastAckAgeSeconds:Number.isFinite(timestamp)?Math.max(0,Math.floor((Date.now()-timestamp)/1000)):null};
+}
+export function linkingErrorCode(error:unknown):string {
+  const obj=error!==null&&typeof error==='object'?error as {errorCode?:unknown;code?:unknown;message?:unknown}:{};
+  const candidate=obj.errorCode??obj.code??obj.message;
+  return typeof candidate==='string'&&/^(?:LINKING_|KMS_|USER_SEALED_|SECRET_REQUIRES_)[A-Z0-9_]+$/.test(candidate)?candidate:'LINKING_REQUEST_FAILED';
 }
 export async function linkingOperation(operation:()=>Promise<unknown>,options:LinkOutputOptions,message:string):Promise<void>{
   try{
     const result=sanitiseLinkMetadata(await operation());
     if(options.json)output.json(result);else{output.info(message);output.json(result);}
   }catch(error){
-    const candidate=error!==null&&typeof error==='object'&&'code' in error?error.code:error instanceof Error?error.message:'';
-    const code=typeof candidate==='string'&&/^(?:LINKING_|USER_SEALED_|SECRET_REQUIRES_)[A-Z_]+$/.test(candidate)?candidate:'LINKING_REQUEST_FAILED';
+    const code=linkingErrorCode(error);
     output.error(code);process.exitCode=1;
   }
 }
