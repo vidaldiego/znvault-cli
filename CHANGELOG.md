@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cryptographic key material. KMS linking commands require a ready Vault 1.86.0
   installation with the corresponding negotiated capabilities.
 
+### Fixed
+
+- Update only the locked production `fast-uri` dependency from 3.1.6 to 3.1.9
+  to address URI normalization and authority-validation security advisories.
+
 ### Compatibility
 
 - Existing authentication, recovery credential decoding and command routing remain
