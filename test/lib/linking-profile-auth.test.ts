@@ -56,3 +56,34 @@ describe('two-profile linking uses profile JWTs, never ambient auth',()=>{
     expect(sent).toMatchObject([{hostname:'destination.example.com',rejectUnauthorized:true,headers:{Authorization:'Bearer destination-jwt'}}]);
   });
 });
+
+describe('KMS consent profile isolation',()=>{
+  const pin='MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+  const options={sourceProfile:'source',destinationProfile:'destination',sourceBinding:'source-binding',destinationBinding:'destination-binding',sourceSignerPin:pin,destinationSignerPin:pin,destinationRecipientPin:pin};
+  it('uses both verified profile JWT channels and only one protected receiving input',async()=>{
+    const {consentKmsProfiles}=await import('../../src/lib/linking-kms.js');
+    await consentKmsProfiles(options);
+    expect(sent.map(r=>[r.hostname,r.headers.Authorization,r.headers['X-API-Key'],r.rejectUnauthorized])).toEqual([['destination.example.com','Bearer destination-jwt',undefined,true],['source.example.com','Bearer source-jwt',undefined,true]]);
+    expect(prompts.promptPassword).toHaveBeenCalledTimes(1);
+  });
+  it.each(['ZNVAULT_API_KEY','ZNVAULT_USERNAME','ZNVAULT_PASSWORD','ZNVAULT_INSECURE','ZNVAULT_URL'])('refuses ambient override %s before protected input or transport',async name=>{
+    const {consentKmsProfiles}=await import('../../src/lib/linking-kms.js');
+    vi.stubEnv(name,name==='ZNVAULT_INSECURE'?'true':'ambient-sensitive-value');
+    await expect(consentKmsProfiles(options)).rejects.toThrow(/^LINKING_/);
+    expect(sent).toEqual([]);expect(prompts.promptPassword).not.toHaveBeenCalled();
+  });
+  it('checks destination TLS before reading the receiver input',async()=>{
+    const {consentKmsProfiles}=await import('../../src/lib/linking-kms.js');
+    const values=profiles();values.destination.insecure=true;store.set('profiles',values);invalidateAllProfileCaches();
+    await expect(consentKmsProfiles(options)).rejects.toThrow('LINKING_SECURE_PROFILE_REQUIRED');expect(sent).toEqual([]);expect(prompts.promptPassword).not.toHaveBeenCalled();
+  });
+  it('refuses API-key profiles before reading any credentials',async()=>{
+    const {consentKmsProfiles}=await import('../../src/lib/linking-kms.js');
+    const values=profiles();values.destination={...values.destination,apiKey:'profile-key'};store.set('profiles',values);invalidateAllProfileCaches();
+    await expect(consentKmsProfiles(options)).rejects.toThrow('LINKING_PROFILE_SESSION_REQUIRED');expect(sent).toEqual([]);expect(prompts.promptPassword).not.toHaveBeenCalled();
+  });
+  it('rejects an exporter input rather than reading or using it for KMS',async()=>{
+    const {consentKmsProfiles}=await import('../../src/lib/linking-kms.js');
+    await expect(consentKmsProfiles({...options,exportKeyFile:'/unread/exporter'})).rejects.toThrow('LINKING_KMS_EXPORTER_FORBIDDEN');expect(sent).toEqual([]);expect(prompts.promptPassword).not.toHaveBeenCalled();
+  });
+});

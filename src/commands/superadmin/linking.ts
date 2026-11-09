@@ -1,9 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import type {Command} from 'commander';
 import {client} from '../../lib/client.js';
+import {consentKmsProfiles,type KmsConsentOptions} from '../../lib/linking-kms.js';
 import {getActiveProfileName} from '../../lib/config.js';
 import {promptConfirm} from '../../lib/prompts.js';
-import {consentProfiles,linkingOperation,profileOrigin,withLinkProfile,type ConsentOptions,type LinkOutputOptions} from '../../lib/linking.js';
+import {consentProfiles,linkStatusAge,linkingOperation,profileOrigin,withLinkProfile,type LinkOutputOptions} from '../../lib/linking.js';
 
 interface CreateOptions extends LinkOutputOptions {destinationProfile:string;tenant:string;peerTenant:string}
 interface ActionOptions extends LinkOutputOptions {yes?:boolean}
@@ -35,10 +36,40 @@ export function registerLinkingCommands(parent:Command):void {
     .requiredOption('--source-profile <name>','Existing source tenant JWT profile')
     .requiredOption('--destination-profile <name>','Existing destination tenant JWT profile')
     .requiredOption('--source-binding <id>','Source binding UUID').requiredOption('--destination-binding <id>','Destination binding UUID')
+    .option('--kms','Consent KMS transport using the receiving key only')
+    .option('--source-signer-pin <base64>','Explicit source signer SPKI pin')
+    .option('--destination-signer-pin <base64>','Explicit destination signer SPKI pin')
+    .option('--destination-recipient-pin <base64>','Explicit destination recipient SPKI pin')
     .option('--receiver-key-file <path>','Owner-only regular file; otherwise masked prompt')
     .option('--export-key-file <path>','Owner-only regular file; otherwise masked prompt')
     .option('--json','Redacted metadata')
-    .action(async(options:ConsentOptions&LinkOutputOptions)=>{await linkingOperation(async()=>await consentProfiles(options),options,'Tenant consent recorded; no secrets selected.');});
+    .action(async(options:KmsConsentOptions&LinkOutputOptions,command:Command)=>{await linkingOperation(async()=>{
+      const globals=command.optsWithGlobals<{insecure?:boolean;url?:string}>();
+      if(options.kms&&(globals.insecure||globals.url!==undefined))throw new Error('LINKING_SECURE_PROFILE_REQUIRED');
+      return options.kms?await consentKmsProfiles(options):await consentProfiles(options);
+    },options,'Tenant consent recorded; no resources selected.');});
+  const rules=linking.command('rules').description('Literal alias-prefix rules include matching current and future objects; explicit consent remains required');
+  for(const action of ['preview','create'] as const)rules.command(`${action} <bindingId>`)
+    .requiredOption('--kind <kind>','secret or kms_key').requiredOption('--alias-prefix <prefix>','Literal, case-sensitive alias prefix; includes future matching objects')
+    .option('--json','Public metadata only').action(async(id:string,options:LinkOutputOptions&{kind:string;aliasPrefix:string})=>{
+      await linkingOperation(async()=>{
+        const resourceKind=ruleKind(options.kind);
+        if(!options.aliasPrefix.length||options.aliasPrefix.length>500||/\p{Cc}/u.test(options.aliasPrefix))throw new Error('LINKING_RULE_INVALID_SELECTOR');
+        return await client.post(`/v1/linking/bindings/${encodeURIComponent(id)}/rules${action==='preview'?'/preview':''}`,{resourceKind,selector:{kind:'prefix',value:options.aliasPrefix}});
+      },options,action==='preview'?'Preview includes matching current and future objects':'Rule created for matching current and future objects; consent remains pending');
+    });
+  for(const action of ['list','status'] as const)rules.command(`${action} <bindingId>`).requiredOption('--kind <kind>','secret or kms_key').option('--json','Public metadata only')
+    .action(async(id:string,options:LinkOutputOptions&{kind:string})=>{await linkingOperation(async()=>await client.get(`/v1/linking/bindings/${encodeURIComponent(id)}/rules${action==='status'?'/status':''}?resourceKind=${ruleKind(options.kind)}`),options,action==='status'?'Rule state and blocked/retained memberships; inspect sync-status for confirmed revision and age':'Rule metadata');});
+  for(const action of ['consent','disable'] as const)rules.command(`${action} <bindingId> <ruleId>`).requiredOption('--revision <revision>','Exact reviewed rule revision')
+    .option('--confirm-protection-withdrawal','Explicitly acknowledge withdrawal of required protection').option('--json','Public metadata only')
+    .action(async(id:string,ruleId:string,options:LinkOutputOptions&{revision:string;confirmProtectionWithdrawal?:boolean})=>{await linkingOperation(async()=>{
+      if(!/^[1-9][0-9]{0,18}$/.test(options.revision))throw new Error('LINKING_REVISION_INVALID');
+      return await client.post(`/v1/linking/bindings/${encodeURIComponent(id)}/rules/${encodeURIComponent(ruleId)}/${action}`,{revision:options.revision,...(action==='disable'&&options.confirmProtectionWithdrawal?{confirmProtectionWithdrawal:true}:{})});
+    },options,action==='disable'?'Rule disabled; retained copies and local grants remain':'Local consent recorded for this revision; peer consent is independent');});
+  linking.command('verify <bindingId>').requiredOption('--kind <kind>','secret or kms_key').option('--json','Public metadata only')
+    .action(async(id:string,options:LinkOutputOptions&{kind:string})=>{await linkingOperation(async()=>await client.post(`/v1/linking/bindings/${encodeURIComponent(id)}/verify`,{resourceKind:ruleKind(options.kind)}),options,'Finite verification queued; inspect sync-status explicitly');});
+  linking.command('sync-status <bindingId>').requiredOption('--kind <kind>','secret or kms_key').option('--json','Public metadata only')
+    .action(async(id:string,options:LinkOutputOptions&{kind:string})=>{await linkingOperation(async()=>linkStatusAge(await client.get(`/v1/linking/bindings/${encodeURIComponent(id)}/sync-status?resourceKind=${ruleKind(options.kind)}`)),options,'Confirmed transport does not grant cryptographic use; inspect local grants separately');});
   linking.command('revoke-local <bindingId>').description('Stop an incoming binding locally using a destination tenant JWT; retains copies and grants')
     .requiredOption('--request-id <uuid>','Keep and reuse this exact request UUID on retries')
     .option('-y, --yes','Confirm local incoming-transport revocation').option('--json','Redacted metadata')
@@ -56,4 +87,9 @@ export function registerLinkingCommands(parent:Command):void {
       await linkingOperation(async()=>await client.post(`/v1/superadmin/linking/bindings/${encodeURIComponent(id)}/${action}`,{}),options,
         action==='sync'?'Sync queued; remote receipt pending':action==='revoke'?'Transport revocation requested; inspect remote confirmation status':`${action} accepted`);
     });
+}
+
+function ruleKind(value:string):'secret'|'kms_key' {
+  if(value!=='secret'&&value!=='kms_key')throw new Error('LINKING_RULE_INVALID_KIND');
+  return value;
 }

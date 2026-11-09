@@ -8,6 +8,8 @@ import type { Command } from 'commander';
 
 import Table from 'cli-table3';
 import inquirer from 'inquirer';
+import { kmsPost, requireLinkUuid } from '../../lib/linking-kms.js';
+import { linkingErrorCode, sanitiseLinkMetadata } from '../../lib/linking.js';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { getAuthContext } from '../../lib/auth-context.js';
@@ -148,15 +150,19 @@ async function createKey(options: CreateOptions): Promise<void> {
     }
   }
 
+  if (options.replicateTo !== undefined && kmsIsAdminCall(options.tenant)) {
+    output.error('LINKING_TENANT_CONTEXT_REQUIRED'); process.exitCode = 1; return;
+  }
   const spinner = output.spinner('Creating KMS key...').start();
 
   try {
     const body: Record<string, unknown> = {};
 
     if (options.alias) {
-      // Ensure alias starts with "alias/"
-      body.alias = options.alias.startsWith('alias/') ? options.alias : `alias/${options.alias}`;
+      // Aliases are literal on the server; prefix rules match this exact value.
+      body.alias = options.alias;
     }
+    if (options.replicateTo !== undefined) body.replication = { bindingId: requireLinkUuid(options.replicateTo) };
     if (options.description) body.description = options.description;
     if (options.usage) body.usage = options.usage;
     if (options.spec) body.keySpec = options.spec;
@@ -176,17 +182,21 @@ async function createKey(options: CreateOptions): Promise<void> {
     // Routing: if --tenant is cross-tenant (superadmin), use admin surface;
     // otherwise rely on JWT-derived tenant in /v1/kms/keys (server ignores
     // any `tenant` field in the body for tenant-scoped routes).
-    const result = await client.post<KMSKey>(
+    const result = await kmsPost<KMSKey>(
       kmsKeysPath(options.tenant) + kmsKeysQuery(options.tenant),
-      body
+      body, options.requestId
     );
     spinner.stop();
 
     if (options.json) {
-      output.json(result);
+      output.json(sanitiseLinkMetadata({ ...result, ...(options.requestId ? { requestId: options.requestId } : {}) }));
       return;
     }
-
+    if (result.replication) {
+      output.info(result.replication.state === 'protected' ? 'Key replication protected' : 'Key selected; remote receipt pending');
+      output.json(sanitiseLinkMetadata({ replication: result.replication }));
+    }
+    if (options.requestId) output.info(`Request ID: ${options.requestId}; reuse this exact ID on retry`);
     output.success('KMS key created successfully!');
     console.log(`  Key ID:  ${result.keyId}`);
     console.log(`  Alias:   ${result.alias ?? '-'}`);
@@ -196,8 +206,8 @@ async function createKey(options: CreateOptions): Promise<void> {
     console.log(`  Spec:    ${result.keySpec}`);
   } catch (error) {
     spinner.fail('Failed to create key');
-    output.error((error as Error).message);
-    process.exit(1);
+    output.error(linkingErrorCode(error));
+    process.exitCode = 1;
   }
 }
 
@@ -300,11 +310,12 @@ export function registerCrudCommands(parent: Command, asSuperadmin = false): voi
     );
 
   // Create key
-  parent
+  const create = parent
     .command('create')
     .description('Create a new KMS key')
     .option('-t, --tenant <id>', 'Tenant ID (defaults to current user tenant)')
-    .option('-a, --alias <alias>', 'Key alias (e.g., my-key or alias/my-key)')
+    .option('-a, --alias <alias>', 'Literal key alias (e.g., zincapp/my-key)')
+    .option('--request-id <uuid>', 'Idempotency UUID; reuse the exact ID on retry')
     .option('-d, --description <desc>', 'Key description')
     .option('--usage <usage>', 'Key usage (ENCRYPT_DECRYPT, SIGN_VERIFY)', 'ENCRYPT_DECRYPT')
     .option('--spec <spec>', 'Key spec (AES_256, AES_128, RSA_2048, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ED25519)', 'AES_256')
@@ -315,6 +326,7 @@ export function registerCrudCommands(parent: Command, asSuperadmin = false): voi
     )
     .option('--json', 'Output as JSON')
     .action((options: CreateOptions) => withKmsContext(asSuperadmin, () => createKey(options)));
+  if (!asSuperadmin) create.option('--replicate-to <bindingUUID>', 'Explicitly select this key for replication');
 
   // Delete key
   parent

@@ -93,3 +93,56 @@ describe('explicit linking CLI',()=>{
     expect(client.post).toHaveBeenNthCalledWith(2,'/v1/linking/bindings/incoming/revoke',{requestId:id});
   });
 });
+
+describe('KMS linking tenant controls',()=>{
+  const pin='MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+  const args=['linking','consent','--kms','--source-profile','source','--destination-profile','destination','--source-binding','source-binding','--destination-binding','destination-binding','--json'];
+  afterEach(()=>{process.exitCode=0;});
+  beforeEach(()=>{vi.clearAllMocks();vi.mocked(client.post).mockResolvedValue({queued:true});});
+  it('requires all three explicit public pins before reading any credentials',async()=>{await program().parseAsync(args,{from:'user'});expect(promptPassword).not.toHaveBeenCalled();expect(client.post).not.toHaveBeenCalled();expect(output.error).toHaveBeenCalledWith('LINKING_KMS_PINS_REQUIRED');});
+  it('KMS consent exchanges only the receiver credential and never requests an exporter',async()=>{vi.mocked(promptPassword).mockResolvedValueOnce('receiver-secret');await program().parseAsync([...args,'--source-signer-pin',pin,'--destination-signer-pin',pin,'--destination-recipient-pin',pin],{from:'user'});expect(promptPassword).toHaveBeenCalledTimes(1);expect(client.post).toHaveBeenNthCalledWith(1,'/v1/linking/bindings/destination-binding/kms/consent',{peerBindingId:'source-binding',receiverKey:'receiver-secret',pins:{sourceSigner:pin,destinationSigner:pin,destinationRecipient:pin}});expect(client.post).toHaveBeenNthCalledWith(2,'/v1/linking/bindings/source-binding/kms/consent',{peerBindingId:'destination-binding',receiverKey:'receiver-secret',pins:{sourceSigner:pin,destinationSigner:pin,destinationRecipient:pin}});expect(JSON.stringify(vi.mocked(output.json).mock.calls)).not.toContain('secret');});
+  it.each(['preview','create'])('rules %s preserves literal prefix and kind without consenting',async action=>{await program().parseAsync(['linking','rules',action,'binding','--kind','kms_key','--alias-prefix','zincapp/','--json'],{from:'user'});expect(client.post).toHaveBeenCalledWith(`/v1/linking/bindings/binding/rules${action==='preview'?'/preview':''}`,{resourceKind:'kms_key',selector:{kind:'prefix',value:'zincapp/'}});expect(JSON.stringify(vi.mocked(client.post).mock.calls)).not.toContain('consent');});
+  it('verify starts a finite job with kind body and no status loop',async()=>{await program().parseAsync(['linking','verify','binding','--kind','kms_key','--json'],{from:'user'});expect(client.post).toHaveBeenCalledWith('/v1/linking/bindings/binding/verify',{resourceKind:'kms_key'});expect(client.get).not.toHaveBeenCalled();});
+  it('rules status retains rule lifecycle and membership counts without arbitrary reason data',async()=>{vi.mocked(client.get).mockResolvedValueOnce({rules:[{id:'rule',state:'pending_consent',revision:'9',selector:{kind:'prefix',value:'zincapp/'},capsule:'sensitive'}],memberships:[{blockedReason:'KMS_LINKING_UNSUPPORTED_KEY',retained:false,count:2}]});await program().parseAsync(['linking','rules','status','binding','--kind','kms_key','--json'],{from:'user'});expect(client.get).toHaveBeenCalledWith('/v1/linking/bindings/binding/rules/status?resourceKind=kms_key');expect(output.json).toHaveBeenCalledWith({rules:[{id:'rule',state:'pending_consent',revision:'9',selector:{kind:'prefix',value:'zincapp/'}}],memberships:[{blockedReason:'KMS_LINKING_UNSUPPORTED_KEY',retained:false,count:2}]});});
+});
+
+describe('linking metadata safety and reviewed rule operations',()=>{
+  afterEach(()=>{process.exitCode=0;vi.useRealTimers();});
+  beforeEach(()=>{vi.clearAllMocks();});
+  it('keeps only public inventory reasons with nonnegative integer counts',()=>{
+    expect(sanitiseLinkMetadata({blocked:{missing:2,conflict:1,storage_changed:3,credential:'sensitive',unknown:5,behind:-1,missing_versions:1.5},memberships:[{blockedReason:'sensitive',count:1}],value:'sensitive'})).toEqual({blocked:{missing:2,conflict:1,storage_changed:3},memberships:[{count:1}]});
+  });
+  it('sync-status shows confirmed revision and acknowledgement age separately from local permissions',async()=>{
+    vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-06T12:00:10Z'));
+    vi.mocked(client.get).mockResolvedValueOnce({scanComplete:true,pending:1,confirmed:2,blocked:{missing:1},retained:3,dirtyBuckets:1,verifiedThroughRevision:'9',oldestPendingAt:null,lastAckAt:'2026-11-06T12:00:00Z',capsule:'sensitive'});
+    await program().parseAsync(['linking','sync-status','binding','--kind','kms_key','--json'],{from:'user'});
+    expect(output.json).toHaveBeenCalledWith({scanComplete:true,pending:1,confirmed:2,blocked:{missing:1},retained:3,dirtyBuckets:1,verifiedThroughRevision:'9',oldestPendingAt:null,lastAckAt:'2026-11-06T12:00:00Z',lastAckAgeSeconds:10});
+  });
+  it('rules disable sends only reviewed revision and explicit protection withdrawal',async()=>{
+    await program().parseAsync(['linking','rules','disable','binding','rule','--revision','9','--confirm-protection-withdrawal','--json'],{from:'user'});
+    expect(client.post).toHaveBeenCalledWith('/v1/linking/bindings/binding/rules/rule/disable',{revision:'9',confirmProtectionWithdrawal:true});
+  });
+  it.each(['other','kms'])('rejects unsupported kind %s before network IO',async kind=>{
+    await program().parseAsync(['linking','rules','preview','binding','--kind',kind,'--alias-prefix','zincapp/','--json'],{from:'user'});expect(client.post).not.toHaveBeenCalled();expect(output.error).toHaveBeenCalledWith('LINKING_RULE_INVALID_KIND');
+  });
+  it('rules consent records only this local reviewed revision',async()=>{
+    await program().parseAsync(['linking','rules','consent','binding','rule','--revision','9','--json'],{from:'user'});
+    expect(client.post).toHaveBeenCalledTimes(1);expect(client.post).toHaveBeenCalledWith('/v1/linking/bindings/binding/rules/rule/consent',{revision:'9'});
+  });
+});
+
+describe('three independent KMS consent pins',()=>{
+  afterEach(()=>{process.exitCode=0;});
+  beforeEach(()=>vi.clearAllMocks());
+  it.each(['--source-signer-pin','--destination-signer-pin','--destination-recipient-pin'])('refuses missing %s without fetching trust or protected input',async missing=>{
+    const pin='MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+    const pins=['--source-signer-pin','--destination-signer-pin','--destination-recipient-pin'].filter(flag=>flag!==missing).flatMap(flag=>[flag,pin]);
+    await program().parseAsync(['linking','consent','--kms','--source-profile','source','--destination-profile','destination','--source-binding','s','--destination-binding','d',...pins,'--json'],{from:'user'});
+    expect(client.get).not.toHaveBeenCalled();expect(client.post).not.toHaveBeenCalled();expect(promptPassword).not.toHaveBeenCalled();expect(output.error).toHaveBeenCalledWith('LINKING_KMS_PINS_REQUIRED');
+  });
+  it('rejects an explicit insecure global override before reading keys',async()=>{
+    const p=program().option('--insecure');const pin='MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+    await p.parseAsync(['--insecure','linking','consent','--kms','--source-profile','source','--destination-profile','destination','--source-binding','s','--destination-binding','d','--source-signer-pin',pin,'--destination-signer-pin',pin,'--destination-recipient-pin',pin,'--json'],{from:'user'});
+    expect(client.post).not.toHaveBeenCalled();expect(promptPassword).not.toHaveBeenCalled();expect(output.error).toHaveBeenCalledWith('LINKING_SECURE_PROFILE_REQUIRED');
+  });
+});

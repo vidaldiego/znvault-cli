@@ -7,6 +7,8 @@
 import type { Command } from 'commander';
 
 import Table from 'cli-table3';
+import { kmsPost } from '../../lib/linking-kms.js';
+import { linkingErrorCode, sanitiseLinkMetadata } from '../../lib/linking.js';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import type {
@@ -26,24 +28,29 @@ async function rotateKey(keyId: string, options: RotateOptions): Promise<void> {
   const spinner = output.spinner('Rotating key...').start();
 
   try {
-    const result = await client.post<{ keyId: string; newVersionId: string; message: string }>(
+    const result = await kmsPost<{ keyId: string; newVersionId: string; message: string }>(
       kmsKeysPath(options.tenant, `/${encodeKeyId(keyId)}/rotate`) + kmsKeysQuery(options.tenant),
-      {}
+      {}, options.requestId
     );
     spinner.stop();
 
     if (options.json) {
-      output.json(result);
+      output.json(sanitiseLinkMetadata({ ...result, ...(options.requestId ? { requestId: options.requestId } : {}) }));
       return;
     }
-
+    if (options.requestId) output.info(`Request ID: ${options.requestId}; reuse this exact ID on retry`);
     output.success('Key rotated successfully!');
     console.log(`  Key ID:        ${result.keyId}`);
     console.log(`  New Version:   ${result.newVersionId}`);
   } catch (error) {
     spinner.fail('Failed to rotate key');
-    output.error((error as Error).message);
-    process.exit(1);
+    const code = linkingErrorCode(error);
+    output.error(code);
+    if (code === 'KMS_REPLICATION_PENDING' && error !== null && typeof error === 'object' && 'details' in error) {
+      const details = error.details;
+      if (details !== null && typeof details === 'object') output.json(sanitiseLinkMetadata({ ...('operationId' in details ? { operationId: details.operationId } : {}), ...('version' in details ? { version: details.version } : {}), ...(options.requestId ? { requestId: options.requestId } : {}) }));
+    }
+    process.exitCode = 1;
   }
 }
 
@@ -97,11 +104,21 @@ async function listVersions(keyId: string, options: VersionsOptions): Promise<vo
   const spinner = output.spinner('Fetching key versions...').start();
 
   try {
-    const versions = await client.get<KeyVersion[]>(`/v1/kms/keys/${encodeKeyId(keyId)}/versions`);
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) {
+      if (!/^(?:[1-9]|[1-9][0-9]|100)$/.test(options.limit)) throw new Error('LINKING_INVALID_REQUEST');
+      query.set('limit', options.limit);
+    }
+    if (options.offset !== undefined) {
+      if (!/^(?:0|[1-9][0-9]{0,9})$/.test(options.offset)) throw new Error('LINKING_INVALID_REQUEST');
+      query.set('offset', options.offset);
+    }
+    const response = await client.get<KeyVersion[] | {items: Array<{version: number; createdAt: string; isPrimary: boolean; isPending: boolean}>; total: number; limit: number; offset: number}>(`/v1/kms/keys/${encodeKeyId(keyId)}/versions${query.size ? `?${query.toString()}` : ''}`);
+    const versions = Array.isArray(response) ? response : response.items;
     spinner.stop();
 
     if (options.json) {
-      output.json(versions);
+      output.json(sanitiseLinkMetadata(response));
       return;
     }
 
@@ -111,23 +128,24 @@ async function listVersions(keyId: string, options: VersionsOptions): Promise<vo
     }
 
     const table = new Table({
-      head: ['Version ID', 'Created', 'Current'],
-      colWidths: [40, 26, 10],
+      head: ['Version', 'Created', 'Current', 'Pending'],
+      colWidths: [40, 26, 10, 10],
     });
 
     for (const v of versions) {
       table.push([
-        v.versionId,
+        'version' in v ? String(v.version) : v.versionId,
         formatDate(v.createdAt),
-        v.isCurrentVersion ? 'Yes' : '-',
+        ('isPrimary' in v ? v.isPrimary : v.isCurrentVersion) ? 'Yes' : '-',
+        'isPending' in v && v.isPending ? 'Yes' : '-',
       ]);
     }
 
     console.log(table.toString());
   } catch (error) {
     spinner.fail('Failed to fetch versions');
-    output.error((error as Error).message);
-    process.exit(1);
+    output.error(linkingErrorCode(error));
+    process.exitCode = 1;
   }
 }
 
@@ -140,6 +158,7 @@ export function registerLifecycleCommands(parent: Command, asSuperadmin = false)
   parent
     .command('rotate <keyId>')
     .description('Rotate a KMS key (create new version)')
+    .option('--request-id <uuid>', 'Idempotency UUID; reuse the exact ID on retry')
     .option('-t, --tenant <id>', 'Tenant ID (superadmin only — routes via /v1/superadmin/kms/keys)')
     .option('--json', 'Output as JSON')
     .action((keyId: string, options: RotateOptions) =>
@@ -170,6 +189,8 @@ export function registerLifecycleCommands(parent: Command, asSuperadmin = false)
   parent
     .command('versions <keyId>')
     .description('List key versions')
+    .option('--limit <n>', 'Page size, 1 to 100')
+    .option('--offset <n>', 'Page offset, zero or greater')
     .option('--json', 'Output as JSON')
     .action((keyId: string, options: VersionsOptions) =>
       withKmsContext(asSuperadmin, () => listVersions(keyId, options))

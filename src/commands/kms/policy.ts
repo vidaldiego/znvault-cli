@@ -35,6 +35,7 @@
 import type { Command } from 'commander';
 import Table from 'cli-table3';
 
+import { linkingErrorCode } from '../../lib/linking.js';
 import { client } from '../../lib/client.js';
 import * as output from '../../lib/output.js';
 import { encodeKeyId } from './helpers.js';
@@ -220,7 +221,7 @@ async function createGrant(keyId: string, options: GrantCreateOptions): Promise<
   const spinner = output.spinner('Creating grant...').start();
 
   try {
-    const operations = options.operations
+    let operations = options.operations
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
@@ -228,11 +229,20 @@ async function createGrant(keyId: string, options: GrantCreateOptions): Promise<
       throw new Error('--operations must list at least one action, e.g. kms:Decrypt');
     }
 
+    let recoveryVersions: number[] | undefined;
+    if (options.recoveryVersions !== undefined) {
+      const parts = options.recoveryVersions.split(',');
+      if (parts.some(part => !/^(?:[1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/.test(part.trim()))) throw new Error('KMS_RECOVERY_VERSIONS_INVALID');
+      recoveryVersions = parts.map(part => Number(part.trim()));
+      if (new Set(recoveryVersions).size !== recoveryVersions.length) throw new Error('KMS_RECOVERY_VERSIONS_INVALID');
+      operations = ['kms:Decrypt'];
+    }
     const body: Record<string, unknown> = {
       keyId,
       granteePrincipal: options.grantee,
       operations,
     };
+    if (recoveryVersions !== undefined) body.recoveryVersions = recoveryVersions;
     if (options.name !== undefined) body.name = options.name;
     if (options.retiringPrincipal !== undefined) body.retiringPrincipal = options.retiringPrincipal;
     if (options.expiresAt !== undefined) body.expiresAt = options.expiresAt;
@@ -242,7 +252,7 @@ async function createGrant(keyId: string, options: GrantCreateOptions): Promise<
     spinner.stop();
 
     if (options.json === true) {
-      output.json(result);
+      output.json({ grantId: result.grantId, ...(result.grantToken !== undefined ? { grantToken: result.grantToken } : {}) });
       return;
     }
 
@@ -251,11 +261,11 @@ async function createGrant(keyId: string, options: GrantCreateOptions): Promise<
     console.log(`  Grantee:     ${options.grantee}`);
     console.log(`  Operations:  ${operations.join(', ')}`);
     if (options.expiresAt !== undefined) console.log(`  Expires:     ${options.expiresAt}`);
-    console.log(`  Grant token: ${result.grantToken}`);
+    if (result.grantToken !== undefined) console.log(`  Grant token: ${result.grantToken}`);
   } catch (err) {
     spinner.fail('Failed to create grant');
-    output.error((err as Error).message);
-    process.exit(1);
+    output.error(linkingErrorCode(err));
+    process.exitCode = 1;
   }
 }
 
@@ -344,6 +354,7 @@ export function registerPolicyCommands(parent: Command): void {
     .description('Create a grant allowing a principal to perform operations on a key')
     .requiredOption('--grantee <principal>', 'Principal to grant, e.g. apikey:key_<hex>')
     .requiredOption('--operations <ops>', 'Comma-separated actions, e.g. kms:Decrypt,kms:Encrypt')
+    .option('--recovery-versions <versions>', 'Retained versions 1..255, comma-separated; forces kms:Decrypt only')
     .option('--name <name>', 'Human-readable grant name')
     .option('--retiring-principal <p>', 'Principal allowed to retire this grant')
     .option('--expires-at <iso>', 'ISO-8601 expiration timestamp')

@@ -17,8 +17,9 @@ const log = createDebugLogger('kms-helpers');
 /**
  * URL-encode a key identifier for use as a SINGLE path segment.
  *
- * A KMS key may be addressed by UUID or by alias, and aliases are stored with
- * an `alias/` prefix (see createKey). Interpolating an alias raw yields
+ * A KMS key may be addressed by UUID or by its literal alias. Aliases can
+ * contain slashes, including an explicitly supplied `alias/` prefix. A raw
+ * `alias/foo` path yields
  * `/v1/kms/keys/alias/foo/public-key`, which does not match the server's
  * single-segment `:keyId` route and 404s. Encoding gives
  * `/v1/kms/keys/alias%2Ffoo/public-key`, which matches and decodes back to
