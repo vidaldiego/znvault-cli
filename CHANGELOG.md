@@ -5,6 +5,24 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.2.0] - Unreleased
+
+### Added
+
+- Manage selective KMS replication, historical-version metadata, bilateral literal
+  alias-prefix rules and inventory status through the existing authenticated CLI.
+- Reuse named profiles and existing local grants; metadata commands do not export
+  cryptographic key material. KMS linking commands require a ready Vault 1.86.0
+  installation with the corresponding negotiated capabilities.
+
+### Compatibility
+
+- Existing authentication, recovery credential decoding and command routing remain
+  unchanged. Node.js >=24.22.1 and the existing Vault >=1.84.0 event requirement
+  for QR/iPhone authentication are preserved.
+- Replication controls retain their server-side permissions and consent. Receiving
+  keys grants no automatic destination use or application failover.
+
 ## [7.1.1] - 2026-11-06
 
 ### Fixed
