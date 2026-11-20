@@ -143,7 +143,7 @@ describe('auth commands', () => {
       vi.mocked(prompts.promptSelect).mockResolvedValueOnce('qr');
       await program.parseAsync(['node', 'test', 'login']);
       expect(prompts.promptSelect).toHaveBeenCalled();
-      expect(presentation.terminalQrLogin).toHaveBeenCalledWith(expect.anything(), {rememberIphone: 'auto', expectedPreference: null});
+      expect(presentation.terminalQrLogin).toHaveBeenCalledWith(expect.anything(), {rememberIphone: 'auto', expectedPreference: null,beforeStart:expect.any(Function)});
       expect(prompts.promptPassword).not.toHaveBeenCalled();
     });
     it.each(['--web', '--json', 'ci', 'ci-one', 'nonTTY', 'ambient', 'credentials'])('does not add a method picker to %s', async kind => {
@@ -176,13 +176,19 @@ describe('auth commands', () => {
       const cfg = await import('../../src/lib/config.js'), recovery = await import('../../src/lib/cli-recovery.js');
       const presentation = await import('../../src/lib/qr-login-presentation.js');
       const initial = vi.mocked(cfg.getProfile).getMockImplementation()!;
+      let admitted=false;
+      vi.mocked(presentation.terminalQrLogin).mockImplementationOnce(async(_peer,options)=>{
+        await options?.beforeStart?.(cfg.authenticationFingerprint(cfg.getProfile('default')));
+        admitted=true;
+        return {success:true,user:{id:'123',username:'admin',role:'superadmin',tenantId:null,mfaVerified:true}};
+      });
       const retire = vi.spyOn(recovery, 'retireStoredCliRecovery').mockImplementationOnce(async () => {
         vi.mocked(cfg.getProfile).mockReturnValue({url:'https://localhost:8443',insecure:false,timeout:30000,cliRecoveryPreference:'off'});
       });
       const exit = vi.spyOn(process, 'exit').mockImplementation(() => {throw new Error('expected stale policy');});
       try {
         await expect(program.parseAsync(['node', 'test', 'login', '--qr'])).rejects.toThrow();
-        expect(presentation.terminalQrLogin).not.toHaveBeenCalled();
+        expect(admitted).toBe(false);expect(retire).toHaveBeenCalledOnce();
       } finally {vi.mocked(cfg.getProfile).mockImplementation(initial);retire.mockRestore();exit.mockRestore();}
     });
     it('uses explicit recovery without a browser, QR or password login', async () => {
@@ -234,7 +240,7 @@ describe('auth commands', () => {
       const {terminalQrLogin} = await import('../../src/lib/qr-login-presentation.js');
       const {webLogin} = await import('../../src/lib/web-login.js');
       await program.parseAsync(['node', 'test', 'login', '--qr']);
-      expect(terminalQrLogin).toHaveBeenCalledWith(client, {rememberIphone: 'auto', expectedPreference: null});
+      expect(terminalQrLogin).toHaveBeenCalledWith(client, {rememberIphone: 'auto', expectedPreference: null,beforeStart:expect.any(Function)});
       expect(webLogin).not.toHaveBeenCalled();
       expect(client.login).not.toHaveBeenCalled();
     });

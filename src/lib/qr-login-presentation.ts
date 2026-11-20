@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import {qrLogin, type QrLoginPeer, type QrLoginResult} from './qr-login.js';
+import {qrLogin, type QrLoginPeer, type QrLoginResult, type QrLoginOptions} from './qr-login.js';
 import {recoverCliLogin} from './cli-recovery.js';
 
 class QrTerminalError extends Error {}
@@ -28,7 +28,7 @@ export function renderTerminalQr(locator: string, columns: number, rows?: number
   return (preamble.length ? preamble.join('\n') + '\n' : '') + lines.join('\n') + '\n';
 }
 
-export async function terminalQrLogin(peer: QrLoginPeer, options?: {rememberIphone?: boolean | 'auto'; expectedPreference?: 'auto' | 'off' | null}): Promise<QrLoginResult> {
+export async function terminalQrLogin(peer: QrLoginPeer, options?: Pick<QrLoginOptions,'rememberIphone'|'expectedPreference'|'beforeStart'>): Promise<QrLoginResult> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return {success: false, error: 'QR sign-in requires an interactive terminal. For SSH, allocate a terminal with ssh -t.'};
   }
@@ -37,7 +37,7 @@ export async function terminalQrLogin(peer: QrLoginPeer, options?: {rememberIpho
   let presentationError: string | undefined;
   process.on('SIGINT', cancel);
   try {
-    const result = await qrLogin(peer, {signal: controller.signal, ...(options?.expectedPreference !== undefined ? {expectedPreference: options.expectedPreference} : {}), ...(options?.rememberIphone !== undefined ? {rememberIphone: options.rememberIphone} : {}), onPending: view => {
+    const result = await qrLogin(peer, {...options,signal: controller.signal,onPending: view => {
       try {
         const preamble = ['Sign in to ' + view.origin,
           'ZnVault Authenticator → Scan QR → choose account → approve with biometrics.',

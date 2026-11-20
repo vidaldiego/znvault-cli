@@ -9,7 +9,8 @@ import {deviceBytes, parseDeviceBytes} from './device-login/mobile-device-login.
 import {openDeviceKey, type DeviceEnvelopeContext} from './device-login/device-key-envelope.js';
 
 export interface QrLoginPending {locator: string; origin: string; expiresAt: number; rememberIphone?: boolean}
-export interface QrLoginOptions {signal?: AbortSignal; rememberIphone?: boolean | 'auto'; expectedPreference?: 'auto' | 'off' | null; onPending: (view: QrLoginPending) => void | Promise<void>}
+export interface QrLoginOptions {signal?: AbortSignal; rememberIphone?: boolean | 'auto'; expectedPreference?: 'auto' | 'off' | null;
+  beforeStart?: (expectedFingerprint: string) => Promise<Profile>; onPending: (view: QrLoginPending) => void | Promise<void>}
 export interface QrLoginUser {id: string; username: string; role: string; tenantId: string | null; mfaVerified: boolean}
 export interface RecoveryReceipt {profileName: string; authGeneration: string; grantId: string; expiresAtSec: number; origin: string; tlsSpkiSha256?: string | null; insecure?: boolean}
 export type QrLoginResult = {success: true; user: QrLoginUser; recoveryReceipt?: RecoveryReceipt} | {success: false; error: string; statusCode?: number; errorCode?: string; retryAfterSeconds?: number};
@@ -56,6 +57,26 @@ export function parseCliLoginResponse(value: unknown, enrollment?: {origin: stri
 }
 const hash = (value: Uint8Array): string => createHash('sha256').update(value).digest('hex');
 
+/** Read-only admission check; callers may retire a prior recovery only after this succeeds. */
+export async function preflightQrLogin(peer: QrLoginPeer, options: {signal?: AbortSignal; check?: () => void} = {}): Promise<Record<string, unknown>> {
+  options.check?.();options.signal?.throwIfAborted();
+  const origin = cliLoginOrigin(peer.getBaseUrl());
+  const protocol = row(await peer.request<unknown>({method:'GET',path:base+'/protocol',skipAuth:true,skipAuthRefresh:true,
+    ...(options.signal ? {signal:options.signal} : {}),...(options.check ? {sessionGuard:options.check} : {}),
+    headers:{'User-Agent':'znvault-cli/'+getVersion()}}));
+  options.signal?.throwIfAborted();options.check?.();
+  const capability = row(protocol.deviceLogin);
+  if (protocol.protocolVersion !== 3 || capability.version !== 1 || capability.enabled !== true) {
+    fail('Device sign-in is not enabled on this Vault.');
+  }
+  const waitEvents = row(protocol.waitEvents ?? {});
+  if (waitEvents.version !== 1 || waitEvents.enabled !== true || !peer.openEventStream) {
+    fail('Live authentication events are unavailable. Explicitly retry or use password/TOTP.');
+  }
+  if (protocol.origin !== origin || !uuid.test(text(protocol.installationId))) fail();
+  return protocol;
+}
+
 /** A terminal initiator of the existing protocol; Vault remains the session/authority owner. */
 export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promise<QrLoginResult> {
   const previous = getRuntimeProfile(), profileName = getActiveProfileName();
@@ -65,6 +86,8 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
   let rememberIphone = false;
   let completed = false, stored = false, origin = '', snapshot: string | undefined, generation: string | undefined;
   const initialPin = peer.getTlsSpkiSha256?.();
+  const initialInsecure = peer.getInsecure?.();
+  let expectedPreference = options.expectedPreference;
   let deadline = Date.now() + 120_000;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const cancel = (): void => {controller.abort('cancelled');};
@@ -82,18 +105,16 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     setRuntimeProfile(profileName);
     const check = (current?: Profile): void => {
       if (controller.signal.aborted || Date.now() >= deadline) fail(controller.signal.reason === 'expired' || Date.now() >= deadline ? 'QR sign-in expired. Start again.' : 'QR sign-in cancelled.');
-      if (options.expectedPreference !== undefined && ((current ?? getProfile(profileName))?.cliRecoveryPreference ?? null) !== options.expectedPreference) {
+      if (expectedPreference !== undefined && ((current ?? getProfile(profileName))?.cliRecoveryPreference ?? null) !== expectedPreference) {
         fail('CLI recovery preference changed. Start login again.');
       }
       if (getActiveProfileName() !== profileName || process.env.ZNVAULT_API_KEY || authenticationFingerprint(current ?? getProfile(profileName)) !== snapshot ||
-          peer.getTlsSpkiSha256?.() !== initialPin) {
+          peer.getTlsSpkiSha256?.() !== initialPin || peer.getInsecure?.() !== initialInsecure) {
         fail('QR sign-in profile or session changed. Start again.');
       }
       invalidateProfileCache(profileName);
       if (cliLoginOrigin(peer.getBaseUrl()) !== origin) fail('QR sign-in profile or Vault changed. Start again.');
     };
-    const begun = beginProfileAuthentication(profileName, current => {check(current);});
-    generation = begun.authGeneration;snapshot = authenticationFingerprint(begun);
     const request = async (action: string, body?: unknown): Promise<unknown> => {
       check();
       const value = await peer.request<unknown>({method: action === 'protocol' ? 'GET' : 'POST',
@@ -103,14 +124,9 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
       check(); return value;
     };
     timer = setTimeout(expire, deadline - Date.now());
-    const protocol = row(await request('protocol'));
-    const capability = row(protocol.deviceLogin);
-    if (protocol.protocolVersion !== 3 || capability.version !== 1 || capability.enabled !== true) {
-      fail('Device sign-in is not enabled on this Vault.');
-    }
-    const waitEvents = row(protocol.waitEvents ?? {}), openEvents = peer.openEventStream?.bind(peer);
-    if (waitEvents.version !== 1 || waitEvents.enabled !== true || !openEvents) fail('Live authentication events are unavailable. Explicitly retry or use password/TOTP.');
-    if (protocol.origin !== origin || !uuid.test(text(protocol.installationId))) fail();
+    const protocol = await preflightQrLogin(peer,{signal:controller.signal,check});
+    const openEvents = peer.openEventStream?.bind(peer);
+    if (!openEvents) fail('Live authentication events are unavailable. Explicitly retry or use password/TOTP.');
     if (options.rememberIphone !== undefined && options.rememberIphone !== false) {
       let available = false;
       if (Object.hasOwn(protocol, 'cliRecovery')) {
@@ -121,6 +137,17 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
       if (options.rememberIphone === true && !available) fail('CLI recovery is not enabled on this Vault.');
       rememberIphone = available;
     }
+    if (profile.cliRecovery?.state === 'active' && profile.cliRecovery.installationId !== protocol.installationId) {
+      fail('The remembered iPhone belongs to a different Vault installation. Verify the original installation before retiring this binding; use a separate profile for this Vault.');
+    }
+    if (options.beforeStart) {
+      check();
+      const prepared = await options.beforeStart(snapshot);
+      snapshot = authenticationFingerprint(prepared);
+      expectedPreference = prepared.cliRecoveryPreference ?? null;
+    }
+    const begun = beginProfileAuthentication(profileName, current => {check(current);});
+    generation = begun.authGeneration;snapshot = authenticationFingerprint(begun);
     const pair = await crypto.subtle.generateKey({name: 'ECDH', namedCurve: 'P-256'}, false, ['deriveBits']);
     privateKey = pair.privateKey;
     const publicPoint = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
@@ -183,6 +210,8 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     const message = controller.signal.reason === 'expired' ? 'QR sign-in expired. Start again.' : controller.signal.aborted ? 'QR sign-in cancelled.' :
       error instanceof Error && error.message === 'MOBILE_AUTH_EVENTS_DISCONNECTED' ? 'Live authentication events disconnected. Explicitly retry QR sign-in; no session was stored.' :
       error instanceof Error && error.message.startsWith('MOBILE_AUTH_EVENTS_') ? 'Live authentication events are unavailable. Explicitly retry or use password/TOTP; no session was stored.' :
+      error !== null && typeof error === 'object' && 'code' in error && error.code === 'CLI_RECOVERY_RETIREMENT_PENDING' ?
+        'Local session cleared. CLI recovery retirement is pending on its original Vault; retry logout when it is reachable.' :
       error instanceof QrLoginError ? error.message : 'QR sign-in could not finish. Start again; no session was stored.';
     return {success: false, error: message};
   } finally {
@@ -192,7 +221,7 @@ export async function qrLogin(peer: QrLoginPeer, options: QrLoginOptions): Promi
     if (attempt && !completed) {
       try {
         if (authenticationFingerprint(getProfile(profileName)) === snapshot && cliLoginOrigin(peer.getBaseUrl()) === origin &&
-            peer.getTlsSpkiSha256?.() === initialPin) {
+            peer.getTlsSpkiSha256?.() === initialPin && peer.getInsecure?.() === initialInsecure) {
           await peer.request({method: 'POST', path: base + '/device-login/cancel',
             body: {requestId: attempt.requestId, claimant: attempt.claimant}, skipAuth: true, skipAuthRefresh: true,
             headers: {'User-Agent': 'znvault-cli/' + getVersion()}, signal: AbortSignal.timeout(1000)});

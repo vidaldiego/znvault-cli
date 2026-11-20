@@ -157,6 +157,10 @@ account for that Vault and approve with biometrics:
     znvault --profile vault-sec-tenant login --qr
 
 The QR expires within two minutes; no browser or local callback is used.
+The CLI checks live authentication support before replacing an existing session.
+An unavailable server/event protocol preserves the current session and remembered
+iPhone binding during this initial check. Once a replacement attempt is admitted,
+the normal session-retirement and cancellation rules apply.
 An SSH session needs a terminal (ssh -t), and credentials are stored on the
 computer running the CLI. Enlarge the terminal if instructed so the whole QR
 fits. QR login requires a user profile, interactive output and a configured

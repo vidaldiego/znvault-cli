@@ -5,6 +5,18 @@ All notable changes to the ZnVault CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.2.1] - 2026-11-20
+
+### Fixed
+
+- Preserve the current session and remembered iPhone when QR or recovery
+  capability checks fail before a replacement attempt starts. Validate origin,
+  installation, event support and remember policy before retiring a binding.
+- Bind retirement and replacement to the exact initiating authentication
+  generation, and commit remember preferences only after admission.
+- Report missing local login separately from human-session eligibility during
+  session-approval commands. Existing token and approval lifetimes are unchanged.
+
 ## [7.2.0] - Unreleased
 
 ### Added
