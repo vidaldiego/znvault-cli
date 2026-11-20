@@ -51,6 +51,12 @@ beforeEach(()=>{
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();setRuntimeProfile(null);invalidateAllProfileCaches();});
 
 describe('session approval binds the named profile, actor and refresh family',()=>{
+  it('reports missing login separately from human-session eligibility without contacting Vault',async()=>{
+    const profiles=store.get('profiles');delete profiles.a.credentials;store.set('profiles',profiles);invalidateAllProfileCaches();
+    await expect(withApprovalSession(async session=>await getApprovalStatus(session,'user-sealed')))
+      .rejects.toThrow('Not logged in (profile: a). Run "znvault --profile a login" first.');
+    expect(sent).toEqual([]);
+  });
   it('uses the initiating profile even if another process changes only the default',async()=>{
     const other=structuredClone(store.get('profiles').b);
     onRequest=request=>{if(request.path.endsWith('/start'))store.set('activeProfile','b');};

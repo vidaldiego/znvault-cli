@@ -35,15 +35,18 @@ function checkedGrant(value: StoredCliRecovery, active: boolean): StoredCliRecov
 }
 
 /** No HTTP under the Conf lock. Failed retirement preserves only a non-usable proof. */
-export async function retireStoredCliRecovery(profileName: string): Promise<void> {
+export async function retireStoredCliRecovery(profileName: string, expectedFingerprint?: string): Promise<Profile | undefined> {
   const original = getProfile(profileName);
-  if (!original?.cliRecovery) return;
+  if (expectedFingerprint !== undefined && authenticationFingerprint(original) !== expectedFingerprint) {
+    return fail('Profile changed during retirement. Retry the requested command.');
+  }
+  if (!original?.cliRecovery) return original;
   const saved = checkedGrant(original.cliRecovery, false), snapshot = authenticationFingerprint(original);
   const pin = client.getTlsSpkiSha256();
   const pending: StoredCliRecovery = {state: 'revocation_pending', grantId: saved.grantId, credential: saved.credential,
     origin: saved.origin, expiresAtSec: saved.expiresAtSec};
   const generation = randomUUID();
-  mutateProfileAuthentication(profileName, current => {
+  const retiring = mutateProfileAuthentication(profileName, current => {
     if (authenticationFingerprint(current) !== snapshot) return fail('Profile changed during retirement. Retry the requested command.');
     delete current.credentials;delete current.apiKey;delete current.apiKeyId;delete current.apiKeyName;
     return {...current, authGeneration: generation, cliRecovery: pending};
@@ -56,9 +59,9 @@ export async function retireStoredCliRecovery(profileName: string): Promise<void
       body: {grantId: saved.grantId, credential: saved.credential}, skipAuth: true, skipAuthRefresh: true,
       signal: AbortSignal.timeout(original.timeout)}));
     if (result.revoked !== true || client.getTlsSpkiSha256() !== pin) throw new Error('Unconfirmed retirement');
-  } catch {return fail('Local session cleared. CLI recovery retirement is pending on its original Vault; retry logout when it is reachable.');}
-  mutateProfileAuthentication(profileName, current => {
-    if (current.authGeneration !== generation || current.cliRecovery?.grantId !== saved.grantId ||
+  } catch {throw Object.assign(new Error('Local session cleared. CLI recovery retirement is pending on its original Vault; retry logout when it is reachable.'),{code:'CLI_RECOVERY_RETIREMENT_PENDING'});}
+  return mutateProfileAuthentication(profileName, current => {
+    if (authenticationFingerprint(current) !== authenticationFingerprint(retiring) || current.authGeneration !== generation || current.cliRecovery?.grantId !== saved.grantId ||
         current.cliRecovery.credential !== saved.credential || current.cliRecovery.state !== 'revocation_pending') {
       return fail('Profile changed during retirement. Retry the requested command.');
     }
@@ -95,8 +98,6 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
         fail('CLI recovery profile or session changed. Start again.');
       }
     };
-    const begun = beginProfileAuthentication(name, current => {check(current);}, true);
-    generation = begun.authGeneration;snapshot = authenticationFingerprint(begun);
     const request = async (action: string, body?: unknown): Promise<unknown> => {
       check();
       const result = await peer.request<unknown>({method: action === 'protocol' ? 'GET' : 'POST',
@@ -112,6 +113,8 @@ export async function recoverCliLogin(peer: QrLoginPeer, options: RecoverCliOpti
     }
     const waitEvents = record(protocol.waitEvents ?? {}), openEvents = peer.openEventStream?.bind(peer);
     if (waitEvents.version !== 1 || waitEvents.enabled !== true || !openEvents) fail('Live authentication events are unavailable. Explicitly retry or use password/TOTP.');
+    const begun = beginProfileAuthentication(name, current => {check(current);}, true);
+    generation = begun.authGeneration;snapshot = authenticationFingerprint(begun);
     const codeVerifier = randomBytes(32).toString('base64url');
     const started = record(await request('start', {grantId: saved.grantId, credential: saved.credential,
       codeChallenge: createHash('sha256').update(codeVerifier).digest('base64url')}));

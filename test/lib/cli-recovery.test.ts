@@ -21,6 +21,13 @@ beforeEach(() => {
 afterEach(() => {vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllEnvs();setRuntimeProfile(null);invalidateAllProfileCaches();});
 
 describe('durable CLI recovery profile authority', () => {
+  it('refuses retirement if another login replaced the preflight snapshot',async()=>{
+    const before=authenticationFingerprint(getProfile('remembered'));
+    const replacement=profile();store.set('profiles',{remembered:replacement});invalidateAllProfileCaches();
+    const {retireStoredCliRecovery}=await import('../../src/lib/cli-recovery.js');
+    await expect(retireStoredCliRecovery('remembered',before)).rejects.toThrow(/changed/i);
+    expect(getProfile('remembered')).toEqual(replacement);
+  });
   it('preserves opt-out through stale metadata writes, logout and profile copy without copying authority', () => {
     const stale = getProfile('remembered')!, before = authenticationFingerprint(stale);
     mutateProfileAuthentication('remembered', p => ({...p, cliRecoveryPreference: 'off'}));
@@ -85,6 +92,21 @@ function recoveryPeer() {
 }
 
 describe('explicit same-iPhone recovery', () => {
+  it.each(['events','network','installation','cancelled'])('preserves credentials and recovery authority after %s preflight failure',async fault=>{
+    const f=recoveryPeer(),original=f.peer.request.getMockImplementation()!,controller=new AbortController();
+    mutateProfileAuthentication('remembered',p=>({...p,credentials:{...p.credentials!,expiresAt:Date.now()+3600000}}));
+    const before=structuredClone(getProfile('remembered'));
+    f.peer.request.mockImplementation(async options=>{
+      if(fault==='network')throw new Error('Synthetic transport unavailable');
+      const value=await original(options) as Record<string,unknown>;
+      if(fault==='cancelled')controller.abort();
+      return {...value,...(fault==='events'?{waitEvents:{version:1,enabled:false}}:fault==='installation'?{installationId:randomUUID()}:{})};
+    });
+    const {recoverCliLogin}=await import('../../src/lib/cli-recovery.js');
+    expect(await recoverCliLogin(f.peer,{signal:controller.signal,onPending:vi.fn(async()=>{})})).toMatchObject({success:false});
+    expect(f.peer.request.mock.calls.filter(([x])=>x.path.endsWith('/start'))).toHaveLength(0);
+    expect(getProfile('remembered')).toEqual(before);
+  });
   it('stays idle for 90 seconds and reads only on a real revision', async () => {
     vi.useFakeTimers();const f = recoveryPeer(), original = f.peer.request.getMockImplementation()!;let reads = 0, send!:()=>void;
     f.peer.request.mockImplementation(async options => {
@@ -213,6 +235,18 @@ describe('explicit same-iPhone recovery', () => {
 });
 
 describe('retirement before replacing local profiles', () => {
+  it('preserves a concurrent preference change during the real revocation handoff',async()=>{
+    const {HttpClient}=await import('../../src/lib/client/http.js');
+    let changed:ReturnType<typeof getProfile>;
+    vi.spyOn(HttpClient.prototype,'request').mockImplementation(async()=>{
+      changed=mutateProfileAuthentication('remembered',p=>({...p,cliRecoveryPreference:'off'}));
+      return {revoked:true};
+    });
+    const {retireStoredCliRecovery}=await import('../../src/lib/cli-recovery.js');
+    await expect(retireStoredCliRecovery('remembered',authenticationFingerprint(getProfile('remembered')))).rejects.toThrow(/Profile changed/);
+    expect(getProfile('remembered')).toEqual(changed);
+    expect(getProfile('remembered')?.cliRecovery?.state).toBe('revocation_pending');
+  });
   it('keeps an explicit invocation TLS pin and never restores a stored insecure mode', async () => {
     const {client} = await import('../../src/lib/client.js');const {HttpClient} = await import('../../src/lib/client/http.js');
     const p = getProfile('remembered')!;p.insecure = true;store.set('profiles',{remembered:p});invalidateAllProfileCaches();

@@ -332,9 +332,40 @@ describe('terminal QR device login', () => {
   });
   it.each([undefined,{version:1,enabled:false}])('fails clearly without event support %j and never starts or polls',async capability=>{
     const f=fixture(), original=f.peer.request.getMockImplementation()!;
+    const before=structuredClone(state.profile);
     f.peer.request.mockImplementation(async options=>{const value=await original(options);if(options.path.endsWith('/protocol'))return {...value as object,waitEvents:capability};return value;});
     expect(await qrLogin(f.peer,{onPending:vi.fn()})).toMatchObject({success:false,error:expect.stringContaining('events are unavailable')});
     expect(f.calls('start')).toHaveLength(0);expect(f.calls('status')).toHaveLength(0);
+    expect(state.profile).toEqual(before);
+  });
+  it.each(['network','origin','installation','disabled','cancelled'])('preserves the existing session after %s preflight failure',async fault=>{
+    const f=fixture(),original=f.peer.request.getMockImplementation()!,controller=new AbortController();
+    const before=structuredClone(state.profile);
+    f.peer.request.mockImplementation(async options=>{
+      if(fault==='network')throw new Error('Synthetic transport unavailable');
+      const value=await original(options) as Record<string,unknown>;
+      if(fault==='cancelled')controller.abort();
+      return {...value,...(fault==='origin'?{origin:'https://other.example.test'}:fault==='installation'?{installationId:'invalid'}:fault==='disabled'?{deviceLogin:{version:1,enabled:false}}:{})};
+    });
+    expect(await qrLogin(f.peer,{signal:controller.signal,onPending:vi.fn()})).toMatchObject({success:false});
+    expect(f.calls('start')).toHaveLength(0);expect(state.profile).toEqual(before);
+  });
+  it('does not adopt a new login installed between retirement and QR admission',async()=>{
+    const f=fixture();let replacement:Record<string,unknown>|undefined;
+    expect(await qrLogin(f.peer,{onPending:vi.fn(),beforeStart:async()=>{
+      const prepared=structuredClone(state.profile);
+      replacement={...state.profile,authGeneration:randomUUID(),credentials:{accessToken:'new-session',refreshToken:'new-refresh'}};
+      state.profile=replacement;
+      return prepared as never;
+    }})).toMatchObject({success:false});
+    expect(f.calls('start')).toHaveLength(0);expect(state.profile).toEqual(replacement);
+  });
+  it('preserves a binding for a replaced installation without recommending secret retirement there',async()=>{
+    const f=fixture();state.profile.cliRecovery={state:'active',installationId:randomUUID()};
+    const before=structuredClone(state.profile),beforeStart=vi.fn();
+    const result=await qrLogin(f.peer,{onPending:vi.fn(),beforeStart});
+    expect(result).toMatchObject({success:false,error:expect.stringContaining('use a separate profile')});
+    expect(beforeStart).not.toHaveBeenCalled();expect(state.profile).toEqual(before);
   });
   it('reports a disconnected event stream with zero fallback reads or replay',async()=>{
     const f=fixture(), original=f.peer.request.getMockImplementation()!;

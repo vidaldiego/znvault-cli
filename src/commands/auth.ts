@@ -185,18 +185,10 @@ export function registerAuthCommands(program: Command): void {
             process.exit(1);
           }
 
-          // Resolve policy before retirement, and refuse a concurrent preference change.
-          let preference = getProfile(profileName)?.cliRecoveryPreference;
-          if (options.qr && options.rememberIphone !== undefined) {
-            const snapshot = authenticationFingerprint(getProfile(profileName));
-            preference = options.rememberIphone ? 'auto' : 'off';
-            mutateProfileAuthentication(profileName, current => {
-              if (authenticationFingerprint(current) !== snapshot) throw new Error('CLI profile changed. Start login again.');
-              return {...current, cliRecoveryPreference: preference};
-            });
-          }
+          // QR admits the full profile/protocol before retirement or policy mutation.
+          const preference = getProfile(profileName)?.cliRecoveryPreference;
           const rememberIphone = options.rememberIphone ?? (preference === 'off' ? false : 'auto');
-          if (!options.recover) await retireStoredCliRecovery(profileName);
+          if (!options.recover && !options.qr) await retireStoredCliRecovery(profileName);
           if (options.qr && getProfile(profileName)?.cliRecoveryPreference !== preference) {
             throw new Error('CLI recovery preference changed. Start login again.');
           }
@@ -205,7 +197,18 @@ export function registerAuthCommands(program: Command): void {
               const credentials = getCredentials();if (!credentials || getProfile(profileName)?.authGeneration !== receipt.authGeneration) throw new Error('CLI recovery session changed.');return {success: true as const, user: {id: credentials.userId, username: credentials.username, role: credentials.role, tenantId: credentials.tenantId, mfaVerified: true}};
             } catch (error) {return {success: false as const, error: error instanceof Error ? error.message : 'CLI recovery failed.'};}
           })() : options.qr ?
-            await terminalQrLogin(client, {rememberIphone, expectedPreference: preference ?? null}) : await webLogin(client.getBaseUrl());
+            await terminalQrLogin(client, {rememberIphone, expectedPreference: preference ?? null,beforeStart:async expected=>{
+              let prepared = await retireStoredCliRecovery(profileName,expected);
+              if (!prepared) throw new Error('CLI profile changed. Start login again.');
+              if (options.rememberIphone !== undefined) {
+                const snapshot = authenticationFingerprint(prepared);
+                prepared = mutateProfileAuthentication(profileName,current=>{
+                  if (authenticationFingerprint(current) !== snapshot) throw new Error('CLI profile changed. Start login again.');
+                  return {...current,cliRecoveryPreference:options.rememberIphone ? 'auto' : 'off'};
+                });
+              }
+              return prepared;
+            }}) : await webLogin(client.getBaseUrl());
 
           if (!result.success) {
             if (options.json) {

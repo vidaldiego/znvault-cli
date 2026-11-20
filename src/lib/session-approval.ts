@@ -57,7 +57,8 @@ export async function withApprovalSession<T>(operation: (session: ApprovalSessio
   const previous = getRuntimeProfile(), profileName = getActiveProfileName();
   const profile = getProfile(profileName);
   const ambientAuth = (): boolean => ['ZNVAULT_API_KEY', 'ZNVAULT_USERNAME', 'ZNVAULT_PASSWORD'].some(key => !!process.env[key]);
-  if (!profile?.credentials || profile.apiKey || ambientAuth()) return fail('SESSION_APPROVAL_HUMAN_SESSION_REQUIRED');
+  if (profile?.apiKey || ambientAuth()) return fail('SESSION_APPROVAL_HUMAN_SESSION_REQUIRED');
+  if (!profile?.credentials) return fail(`Not logged in (profile: ${profileName}). Run "znvault --profile ${profileName} login" first.`);
   const origin = originOf(profile.url), actor = identity(profile.credentials.accessToken);
   // Refuse an invocation override aimed at a different Vault; do not send profile credentials there.
   if (originOf(client.getBaseUrl()) !== origin) return fail('SESSION_APPROVAL_CONTEXT_CHANGED');
